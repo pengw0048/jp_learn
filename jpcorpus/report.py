@@ -71,8 +71,9 @@ def build_markdown_report(
             ]
         )
         for index, example in enumerate(stats.examples[:examples_per_word], start=1):
-            lines.append(f"{index}.")
-            lines.extend(format_context_block(example, stats, inline_reference=True))
+            context_lines = format_context_block(example, stats, inline_reference=True)
+            lines.append(f"{index}. {context_lines[0]}")
+            lines.extend(f"   {line}" for line in context_lines[1:])
             if example.scene_description:
                 lines.append(f"   {tr.t('report.col.scene')}: {_escape(example.scene_description)}")
             lines.append("")
@@ -162,14 +163,13 @@ def format_context_block(
     lines: list[str] = []
     if example.context_before:
         before = " / ".join(example.context_before[-2:])
-        lines.append(f"   …{_escape(before)}")
-    current = _escape(highlight_example(example.sentence, stats, example=example))
-    if inline_reference:
-        current += f" （{_escape(format_reference(example, brackets=False))}）"
-    lines.append(f"   {current}")
+        lines.append(f"…{_escape(before)}")
+    lines.append(_escape(highlight_example(example.sentence, stats, example=example)))
     if example.context_after:
         after = " / ".join(example.context_after[:2])
-        lines.append(f"   …{_escape(after)}")
+        lines.append(f"…{_escape(after)}")
+    if inline_reference and lines:
+        lines[-1] += f" （{_escape(format_reference(example, brackets=False))}）"
     return lines
 
 

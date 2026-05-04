@@ -7,7 +7,7 @@ from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.models import WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
-from jpcorpus.zh_dict import ChineseGlossary
+from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
 
 
 def test_report_from_local_srt(tmp_path: Path):
@@ -22,7 +22,7 @@ def test_report_from_local_srt(tmp_path: Path):
         encoding="utf-8",
     )
 
-    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path), context_lines=1)
     report = build_markdown_report(
         analysis,
         target_level=3,
@@ -37,7 +37,12 @@ def test_report_from_local_srt(tmp_path: Path):
     assert "私は約束を見る。" in report
     assert "明日も行く。" in report
     assert "微妙，细微" in report
-    assert "**微妙**な気持ちだ。 （Local subtitles sample.srt 00:07）" in report
+    assert "<br>" not in report
+    assert (
+        "1. …私は約束を見る。\n"
+        "   **微妙**な気持ちだ。\n"
+        "   …明日も行く。 （Local subtitles sample.srt 00:07）"
+    ) in report
     assert "Personal Japanese Corpus Word List" in english_report
     assert "微妙" in report
     assert analysis.total_tokens > 0
@@ -136,6 +141,11 @@ def test_jlpt_duplicate_surface_prefers_basic_level_reading():
     assert entry is not None
     assert entry.level == 5
     assert entry.reading == "くる"
+
+
+def test_clean_chinese_gloss_removes_leading_reading():
+    assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
+    assert clean_gloss("(いま1) 现在") == "现在"
 
 
 def load_jlpt_words_from_entries(entries):
