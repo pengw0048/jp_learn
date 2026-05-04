@@ -49,6 +49,7 @@ class WordExample:
     sentence: str
     source_title: str
     subtitle_file: str
+    matched_text: str
     episode: int | None = None
     start_ms: int | None = None
     end_ms: int | None = None
@@ -172,6 +173,7 @@ def analyze_subtitles(
                         sentence=line.text,
                         source_title=subtitle_file.show_title,
                         subtitle_file=subtitle_file.name,
+                        matched_text=token.surface,
                         episode=subtitle_file.episode,
                         start_ms=line.start_ms,
                         end_ms=line.end_ms,

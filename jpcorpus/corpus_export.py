@@ -99,6 +99,7 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "sentence": example.sentence,
         "source_title": example.source_title,
         "subtitle_file": example.subtitle_file,
+        "matched_text": example.matched_text,
         "episode": example.episode,
         "start_ms": example.start_ms,
         "end_ms": example.end_ms,

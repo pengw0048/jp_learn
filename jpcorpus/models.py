@@ -64,8 +64,8 @@ class WordEntry:
     reading: str | None
     level: int
     meaning: str | None = None
+    meaning_zh: str | None = None
 
     @property
     def level_label(self) -> str:
         return f"N{self.level}"
-

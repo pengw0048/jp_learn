@@ -19,11 +19,13 @@ from .paths import (
     DEFAULT_JIMAKU_CACHE,
     DEFAULT_JLPT_WORDS,
     DEFAULT_STATE_DB,
+    DEFAULT_ZH_DICT,
     ensure_dir,
     ensure_parent,
 )
 from .report import build_markdown_report
 from .state import State
+from .zh_dict import ChineseGlossary, download_zh_dict
 
 
 load_dotenv()
@@ -223,6 +225,7 @@ def report(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
     ),
+    zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
 ) -> None:
     """Generate a Markdown personal frequency report."""
     language = validate_language(language)
@@ -241,6 +244,7 @@ def report(
             top=top,
             language=language,
             examples_per_word=examples_per_word,
+            zh_glossary=ChineseGlossary.load(zh_dict) if language == "zh" else None,
         ),
         encoding="utf-8",
     )
@@ -339,3 +343,17 @@ def fetch_jlpt_words(
     words = load_jlpt_words(path)
     counts = ", ".join(f"N{level}: {words.total_by_level(level)}" for level in range(5, 0, -1))
     typer.echo(f"Wrote JLPT word list: {path} ({counts})")
+
+
+@data_app.command("fetch-zh-dict")
+def fetch_zh_dict(
+    output: Path = typer.Option(DEFAULT_ZH_DICT, help="Output JSON path."),
+    source_url: str = typer.Option(
+        "https://raw.githubusercontent.com/lxl66566/Japanese-Chinese-thesaurus/main/final.json",
+        help="Japanese-Chinese glossary source URL.",
+    ),
+) -> None:
+    """Download a lightweight Japanese-Chinese glossary for Chinese reports."""
+    path = download_zh_dict(output, source_url=source_url)
+    glossary = ChineseGlossary.load(path)
+    typer.echo(f"Wrote Japanese-Chinese glossary: {path} ({len(glossary.entries)} entries)")

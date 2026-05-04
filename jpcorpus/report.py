@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .analysis import CorpusAnalysis, WordExample
+from .analysis import CorpusAnalysis, WordExample, WordStats
 from .i18n import Translator
+from .zh_dict import ChineseGlossary
 
 
 def build_markdown_report(
@@ -13,6 +14,7 @@ def build_markdown_report(
     top: int = 50,
     language: str = "zh",
     examples_per_word: int = 2,
+    zh_glossary: ChineseGlossary | None = None,
 ) -> str:
     tr = Translator(language)
     coverage = " / ".join(
@@ -51,9 +53,9 @@ def build_markdown_report(
             "| {word} | {reading} | {meaning} | {count} | {example} |".format(
                 word=_escape(stats.entry.surface),
                 reading=_escape(stats.display_reading),
-                meaning=_escape(stats.entry.meaning or ""),
+                meaning=_escape(display_meaning(stats, language=language, zh_glossary=zh_glossary)),
                 count=stats.count,
-                example=_escape(stats.example_sentence or ""),
+                example=_escape(highlight_example(stats.example_sentence or "", stats)),
             )
         )
 
@@ -63,24 +65,15 @@ def build_markdown_report(
             [
                 f"### {_escape_heading(stats.entry.surface)}（{_escape_heading(stats.display_reading)}）",
                 "",
-                f"- {tr.t('report.col.meaning')}: {_escape(stats.entry.meaning or '')}",
+                f"- {tr.t('report.col.meaning')}: {_escape(display_meaning(stats, language=language, zh_glossary=zh_glossary))}",
                 f"- {tr.t('report.col.count')}: {stats.count:,}",
                 "",
             ]
         )
         for index, example in enumerate(stats.examples[:examples_per_word], start=1):
-            lines.append(f"{index}. {_escape(example.sentence)}")
+            lines.append(f"{index}.")
+            lines.extend(format_context_block(example, stats))
             lines.append(f"   {tr.t('report.col.reference')}: {_escape(format_reference(example))}")
-            if example.context_before:
-                lines.append(
-                    f"   {tr.t('report.col.context_before')}: "
-                    + _escape(" / ".join(example.context_before))
-                )
-            if example.context_after:
-                lines.append(
-                    f"   {tr.t('report.col.context_after')}: "
-                    + _escape(" / ".join(example.context_after))
-                )
             if example.scene_description:
                 lines.append(f"   {tr.t('report.col.scene')}: {_escape(example.scene_description)}")
             lines.append("")
@@ -132,7 +125,7 @@ def build_markdown_report(
                 level=stats.entry.level,
                 reading=_escape(stats.display_reading),
                 count=stats.count,
-                meaning=_escape(stats.entry.meaning or ""),
+                meaning=_escape(display_meaning(stats, language=language, zh_glossary=zh_glossary)),
             )
         )
 
@@ -145,6 +138,43 @@ def _escape(value: str) -> str:
 
 def _escape_heading(value: str) -> str:
     return value.replace("\n", " ").strip()
+
+
+def display_meaning(stats: WordStats, *, language: str, zh_glossary: ChineseGlossary | None) -> str:
+    if language == "zh":
+        glossary_meaning = (
+            zh_glossary.lookup(stats.entry.surface, stats.display_reading)
+            if zh_glossary
+            else None
+        )
+        if glossary_meaning:
+            return glossary_meaning
+        if stats.entry.meaning_zh:
+            return stats.entry.meaning_zh
+    return stats.entry.meaning or ""
+
+
+def format_context_block(example: WordExample, stats: WordStats) -> list[str]:
+    lines: list[str] = []
+    if example.context_before:
+        before = " / ".join(example.context_before[-2:])
+        lines.append(f"   …{_escape(before)}")
+    lines.append(f"   {_escape(highlight_example(example.sentence, stats, example=example))}")
+    if example.context_after:
+        after = " / ".join(example.context_after[:2])
+        lines.append(f"   …{_escape(after)}")
+    return lines
+
+
+def highlight_example(sentence: str, stats: WordStats, *, example: WordExample | None = None) -> str:
+    candidates = []
+    if example and example.matched_text:
+        candidates.append(example.matched_text)
+    candidates.extend([stats.entry.surface, stats.display_reading])
+    for candidate in candidates:
+        if candidate and candidate in sentence:
+            return sentence.replace(candidate, f"**{candidate}**", 1)
+    return sentence
 
 
 def format_reference(example: WordExample) -> str:

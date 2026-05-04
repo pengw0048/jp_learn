@@ -7,6 +7,7 @@ from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.models import WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
+from jpcorpus.zh_dict import ChineseGlossary
 
 
 def test_report_from_local_srt(tmp_path: Path):
@@ -22,15 +23,22 @@ def test_report_from_local_srt(tmp_path: Path):
     )
 
     analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
-    report = build_markdown_report(analysis, target_level=3, top=10)
+    report = build_markdown_report(
+        analysis,
+        target_level=3,
+        top=10,
+        zh_glossary=ChineseGlossary({"微妙": "微妙，细微；难以形容"}),
+    )
     english_report = build_markdown_report(analysis, target_level=3, top=10, language="en")
 
     assert "个人日语语料单词表" in report
     assert "N3 单词表" in report
     assert "N3 单词例句" in report
     assert "引用" in report
-    assert "前文" in report
-    assert "后文" in report
+    assert "私は約束を見る。" in report
+    assert "明日も行く。" in report
+    assert "微妙，细微" in report
+    assert "**微妙**" in report
     assert "Personal Japanese Corpus Word List" in english_report
     assert "微妙" in report
     assert analysis.total_tokens > 0
@@ -69,6 +77,7 @@ def test_export_corpus_json(tmp_path: Path):
     assert payload["schema_version"] == 2
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
+    assert payload["words"][0]["examples"][0]["matched_text"] == "約束"
     assert payload["words"][0]["examples"][0]["context_before"] == []
     assert payload["words"][0]["examples"][0]["scene_description"] is None
     assert output.exists()
