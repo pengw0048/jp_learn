@@ -39,10 +39,10 @@ def test_report_from_local_srt(tmp_path: Path):
     assert "微妙，细微" in report
     assert "<br>" not in report
     assert (
-        "1. …私は約束を見る。\n"
-        "   **微妙**な気持ちだ。\n"
-        "   …明日も行く。 （Local subtitles sample.srt 00:07）"
+        "…私は約束を見る。 **微妙**な気持ちだ。 "
+        "…明日も行く。 （Local subtitles sample.srt 00:07）"
     ) in report
+    assert "1. …私は約束を見る。" not in report
     assert "Personal Japanese Corpus Word List" in english_report
     assert "微妙" in report
     assert analysis.total_tokens > 0
