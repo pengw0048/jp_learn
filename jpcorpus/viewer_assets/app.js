@@ -32,8 +32,7 @@ const text = {
     noExamples: "这个词暂时没有例句",
     shows: "作品",
     subtitles: "字幕",
-    tokens: "词形",
-    unique: "独特词形",
+    studyWords: "可学词",
   },
   en: {
     appTitle: "Personal Japanese Corpus",
@@ -65,8 +64,7 @@ const text = {
     noExamples: "No examples for this word yet",
     shows: "Shows",
     subtitles: "Subtitles",
-    tokens: "Tokens",
-    unique: "Unique",
+    studyWords: "Study words",
   },
 };
 
@@ -179,8 +177,8 @@ function renderHeader() {
   const items = [
     [t("shows"), summary.watched_show_count],
     [t("subtitles"), summary.subtitle_file_count],
-    [t("tokens"), formatNumber(summary.total_tokens)],
-    [t("unique"), formatNumber(summary.unique_token_count)],
+    [t("studyWords"), app.words.length],
+    [t("examples"), totalExampleCount()],
   ];
   refs.summaryStrip.replaceChildren(
     ...items.map(([label, value]) => {
@@ -332,9 +330,9 @@ function renderExamples(word) {
   examples.forEach((example) => {
     const item = el("div", "example");
     const paragraph = el("div", "example-text");
-    appendContext(paragraph, lastItems(example.context_before));
+    appendContext(paragraph, lastItems(example.context_before), "before");
     appendHighlighted(paragraph, example.sentence || "", example.matched_text || word.word);
-    appendContext(paragraph, firstItems(example.context_after));
+    appendContext(paragraph, firstItems(example.context_after), "after");
     paragraph.append(" ");
     paragraph.append(el("span", "reference", `（${formatReference(example)}）`));
     item.append(paragraph);
@@ -346,12 +344,13 @@ function renderExamples(word) {
   return section;
 }
 
-function appendContext(parent, lines) {
+function appendContext(parent, lines, position) {
   const textValue = lines.filter(Boolean).join(" ");
   if (!textValue) {
     return;
   }
-  parent.append(el("span", "context", `…${textValue}`), " ");
+  const displayText = position === "before" ? `…${textValue}` : `${textValue}…`;
+  parent.append(el("span", "context", displayText), " ");
 }
 
 function appendHighlighted(parent, value, match) {
@@ -430,6 +429,13 @@ function displayMeaning(word) {
     return word.meaning_zh || word.meaning || "";
   }
   return word.meaning || word.meaning_zh || "";
+}
+
+function totalExampleCount() {
+  return app.words.reduce(
+    (total, word) => total + (Array.isArray(word.examples) ? word.examples.length : 0),
+    0,
+  );
 }
 
 function formatReference(example) {
