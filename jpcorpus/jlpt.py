@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable
+
+import httpx
 
 from .models import WordEntry
 from .paths import ensure_parent
@@ -12,6 +15,7 @@ from .paths import ensure_parent
 WORD_KEYS = ("word", "surface", "kanji", "expression", "term", "vocab", "text")
 READING_KEYS = ("reading", "kana", "furigana", "pronunciation")
 LEVEL_KEYS = ("level", "jlpt", "jlpt_level")
+TAG_KEYS = ("tags", "tag")
 MEANING_KEYS = ("meaning", "translation", "gloss", "english", "zh")
 
 
@@ -22,7 +26,7 @@ class JLPTWords:
         self.by_level: dict[int, list[WordEntry]] = {level: [] for level in range(1, 6)}
         for entry in self.entries:
             existing = self.by_surface.get(entry.surface)
-            if existing is None or entry.level < existing.level:
+            if existing is None or entry.level > existing.level:
                 self.by_surface[entry.surface] = entry
             self.by_level.setdefault(entry.level, []).append(entry)
 
@@ -72,7 +76,7 @@ def _entry_from_mapping(mapping: dict[str, Any], default_level: int | None = Non
     surface = _first(mapping, WORD_KEYS)
     if not surface:
         raise ValueError(f"JLPT word row has no word field: {mapping!r}")
-    level = parse_level(_first(mapping, LEVEL_KEYS)) or default_level
+    level = parse_level(_first(mapping, LEVEL_KEYS)) or parse_level(_first(mapping, TAG_KEYS)) or default_level
     if level is None:
         raise ValueError(f"JLPT word row has no level field: {mapping!r}")
     return WordEntry(
@@ -103,6 +107,9 @@ def parse_level(value: Any) -> int | None:
     if isinstance(value, int) and 1 <= value <= 5:
         return value
     text = str(value).upper().strip()
+    match = re.search(r"(?:JLPT[_\s-]?|N)([1-5])\b", text)
+    if match:
+        return int(match.group(1))
     if text.startswith("N"):
         text = text[1:]
     try:
@@ -112,6 +119,31 @@ def parse_level(value: Any) -> int | None:
     if 1 <= number <= 5:
         return number
     return None
+
+
+def download_jlpt_words(
+    path: Path,
+    *,
+    source_url: str = "https://raw.githubusercontent.com/elzup/jlpt-word-list/master/out/all.csv",
+    timeout: float = 60.0,
+) -> Path:
+    ensure_parent(path)
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        response = client.get(source_url)
+        response.raise_for_status()
+    rows = list(csv.DictReader(response.text.splitlines()))
+    entries = [_entry_from_mapping(row) for row in rows if any(row.values())]
+    payload = [
+        {
+            "word": entry.surface,
+            "reading": entry.reading,
+            "level": entry.level_label,
+            "meaning": entry.meaning,
+        }
+        for entry in entries
+    ]
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def write_sample_jlpt(path: Path) -> Path:
@@ -130,4 +162,3 @@ def write_sample_jlpt(path: Path) -> Path:
     ]
     path.write_text(json.dumps(sample, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
-

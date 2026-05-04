@@ -64,10 +64,9 @@ def _note_for_stats(genanki: object, model: object, stats: WordStats) -> object:
         guid=guid,
         fields=[
             stats.entry.surface,
-            stats.entry.reading or "",
+            stats.display_reading,
             stats.entry.meaning or "",
             stats.example_sentence or "",
             source,
         ],
     )
-

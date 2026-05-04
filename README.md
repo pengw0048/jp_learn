@@ -29,7 +29,7 @@ Shell environment variables take precedence over `.env`.
 
 ```bash
 uv run jpcorpus data fetch-anime-db
-uv run jpcorpus data init-sample-jlpt
+uv run jpcorpus data fetch-jlpt-words
 uv run jpcorpus link bangumi
 uv run jpcorpus sync
 uv run jpcorpus report --level 3 --output report.md
@@ -37,7 +37,7 @@ uv run jpcorpus report --language en --level 3 --output report.en.md
 uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 ```
 
-Replace `data/jlpt-words.json` with a real JLPT word list before trusting the coverage numbers. The sample list exists only to make the pipeline runnable.
+`jpcorpus data fetch-jlpt-words` downloads and normalizes the MIT-licensed `elzup/jlpt-word-list` CSV data, which is based on community JLPT decks originally derived from Tanos-style lists. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 

@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from jpcorpus.analysis import analyze_paths
+from jpcorpus.analysis import analyze_paths, is_study_candidate, to_hiragana
 from jpcorpus.anki_export import export_anki_deck
-from jpcorpus.jlpt import load_jlpt_words, write_sample_jlpt
+from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
+from jpcorpus.models import WordEntry
 from jpcorpus.report import build_markdown_report
 
 
@@ -41,3 +42,40 @@ def test_export_anki_deck(tmp_path: Path):
 
     assert output.exists()
     assert output.stat().st_size > 0
+
+
+def test_parse_jlpt_level_from_tags():
+    assert parse_level("JLPT_1 JLPT") == 1
+    assert parse_level("JLPT_5 JLPT") == 5
+
+
+def test_study_candidate_filter_removes_function_words():
+    assert not is_study_candidate("と", "助詞")
+    assert not is_study_candidate("何", "代名詞")
+    assert not is_study_candidate("する", "動詞")
+    assert is_study_candidate("約束", "名詞")
+
+
+def test_to_hiragana():
+    assert to_hiragana("ヤクソク") == "やくそく"
+
+
+def test_jlpt_duplicate_surface_prefers_basic_level_reading():
+    words = load_jlpt_words_from_entries(
+        [
+            WordEntry(surface="来る", reading="きたる", level=1),
+            WordEntry(surface="来る", reading="くる", level=5),
+        ]
+    )
+
+    entry = words.lookup("来る")
+
+    assert entry is not None
+    assert entry.level == 5
+    assert entry.reading == "くる"
+
+
+def load_jlpt_words_from_entries(entries):
+    from jpcorpus.jlpt import JLPTWords
+
+    return JLPTWords(entries)

@@ -10,13 +10,56 @@ from .subtitle import parse_subtitle
 from .tokenize import JapaneseTokenizer
 
 
+EXCLUDED_POS = {"助詞", "助動詞", "補助記号", "代名詞", "接続詞"}
+STUDY_STOPWORDS = {
+    "ある",
+    "いる",
+    "する",
+    "なる",
+    "ない",
+    "これ",
+    "それ",
+    "あれ",
+    "この",
+    "その",
+    "あの",
+    "ここ",
+    "そこ",
+    "あそこ",
+    "どこ",
+    "何",
+    "はい",
+    "いいえ",
+    "そう",
+    "どう",
+    "もう",
+    "また",
+    "まだ",
+    "ずっと",
+    "もっと",
+    "とても",
+    "うん",
+    "ああ",
+    "まあ",
+}
+
+
 @dataclass
 class WordStats:
     entry: WordEntry
     count: int = 0
     sources: Counter[str] = field(default_factory=Counter)
+    readings: Counter[str] = field(default_factory=Counter)
     example_sentence: str | None = None
     example_source: str | None = None
+
+    @property
+    def display_reading(self) -> str:
+        if self.entry.reading:
+            return self.entry.reading
+        if self.readings:
+            return self.readings.most_common(1)[0][0]
+        return ""
 
 
 @dataclass
@@ -81,6 +124,8 @@ def analyze_subtitles(
                 total_tokens += 1
                 show.total_tokens += 1
                 unique_tokens.add(token.base)
+                if not is_study_candidate(token.base, token.pos):
+                    continue
                 entry = jlpt_words.lookup(token.base, token.surface)
                 if entry is None:
                     continue
@@ -90,6 +135,8 @@ def analyze_subtitles(
                 stats = word_stats.setdefault(entry.surface, WordStats(entry=entry))
                 stats.count += 1
                 stats.sources[subtitle_file.show_title] += 1
+                if token.reading:
+                    stats.readings[to_hiragana(token.reading)] += 1
                 if stats.example_sentence is None:
                     stats.example_sentence = line.text
                     stats.example_source = subtitle_file.show_title
@@ -108,6 +155,25 @@ def analyze_subtitles(
     )
 
 
+def is_study_candidate(base: str, pos: str | None) -> bool:
+    if pos in EXCLUDED_POS:
+        return False
+    if base in STUDY_STOPWORDS:
+        return False
+    return True
+
+
+def to_hiragana(value: str) -> str:
+    chars = []
+    for char in value:
+        codepoint = ord(char)
+        if 0x30A1 <= codepoint <= 0x30F6:
+            chars.append(chr(codepoint - 0x60))
+        else:
+            chars.append(char)
+    return "".join(chars)
+
+
 def analyze_paths(
     *,
     paths: list[Path],
@@ -123,4 +189,3 @@ def analyze_paths(
         subtitle_files=subtitle_files,
         jlpt_words=jlpt_words,
     )
-

@@ -11,7 +11,7 @@ from .anki_export import export_anki_deck
 from .bangumi import BangumiClient, collection_to_show, run_oauth_flow
 from .env import load_dotenv
 from .jimaku import JimakuClient
-from .jlpt import load_jlpt_words, write_sample_jlpt
+from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .i18n import SUPPORTED_LANGUAGES
 from .paths import (
     DEFAULT_ANIME_DB,
@@ -269,3 +269,18 @@ def init_sample_jlpt(
         return
     write_sample_jlpt(output)
     typer.echo(f"Wrote sample JLPT list: {output}")
+
+
+@data_app.command("fetch-jlpt-words")
+def fetch_jlpt_words(
+    output: Path = typer.Option(DEFAULT_JLPT_WORDS, help="Output JSON path."),
+    source_url: str = typer.Option(
+        "https://raw.githubusercontent.com/elzup/jlpt-word-list/master/out/all.csv",
+        help="CSV word list source URL.",
+    ),
+) -> None:
+    """Download and normalize a community JLPT vocabulary list."""
+    path = download_jlpt_words(output, source_url=source_url)
+    words = load_jlpt_words(path)
+    counts = ", ".join(f"N{level}: {words.total_by_level(level)}" for level in range(5, 0, -1))
+    typer.echo(f"Wrote JLPT word list: {path} ({counts})")

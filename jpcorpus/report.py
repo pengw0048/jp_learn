@@ -49,7 +49,7 @@ def build_markdown_report(
         lines.append(
             "| {word} | {reading} | {count} | {sources} | {example} |".format(
                 word=_escape(stats.entry.surface),
-                reading=_escape(stats.entry.reading or ""),
+                reading=_escape(stats.display_reading),
                 count=stats.count,
                 sources=_escape(sources),
                 example=_escape(stats.example_sentence or ""),
@@ -101,7 +101,7 @@ def build_markdown_report(
             "| {word} | N{level} | {reading} | {count} | {meaning} |".format(
                 word=_escape(stats.entry.surface),
                 level=stats.entry.level,
-                reading=_escape(stats.entry.reading or ""),
+                reading=_escape(stats.display_reading),
                 count=stats.count,
                 meaning=_escape(stats.entry.meaning or ""),
             )
