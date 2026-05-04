@@ -7,9 +7,10 @@ from typing import Any
 
 from .analysis import CorpusAnalysis, WordExample, WordStats
 from .paths import ensure_parent
+from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def analysis_to_dict(
@@ -18,6 +19,7 @@ def analysis_to_dict(
     level: int | None = None,
     limit: int | None = None,
     examples_per_word: int = 3,
+    zh_glossary: ChineseGlossary | None = None,
 ) -> dict[str, Any]:
     words = analysis.top_words(level=level, limit=len(analysis.word_stats))
     if limit is not None:
@@ -50,7 +52,7 @@ def analysis_to_dict(
             for show in sorted(analysis.show_stats.values(), key=lambda item: item.title)
         ],
         "words": [
-            _word_to_dict(word, examples_per_word=examples_per_word)
+            _word_to_dict(word, examples_per_word=examples_per_word, zh_glossary=zh_glossary)
             for word in words
         ],
     }
@@ -63,6 +65,7 @@ def write_corpus_json(
     level: int | None = None,
     limit: int | None = None,
     examples_per_word: int = 3,
+    zh_glossary: ChineseGlossary | None = None,
 ) -> Path:
     ensure_parent(output)
     payload = analysis_to_dict(
@@ -70,18 +73,25 @@ def write_corpus_json(
         level=level,
         limit=limit,
         examples_per_word=examples_per_word,
+        zh_glossary=zh_glossary,
     )
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return output
 
 
-def _word_to_dict(word: WordStats, *, examples_per_word: int) -> dict[str, Any]:
+def _word_to_dict(
+    word: WordStats,
+    *,
+    examples_per_word: int,
+    zh_glossary: ChineseGlossary | None,
+) -> dict[str, Any]:
     return {
         "word": word.entry.surface,
         "reading": word.display_reading,
         "level": f"N{word.entry.level}",
         "level_number": word.entry.level,
         "meaning": word.entry.meaning,
+        "meaning_zh": _meaning_zh(word, zh_glossary),
         "count": word.count,
         "sources": [
             {"title": title, "count": count}
@@ -92,6 +102,14 @@ def _word_to_dict(word: WordStats, *, examples_per_word: int) -> dict[str, Any]:
             for example in word.examples[:examples_per_word]
         ],
     }
+
+
+def _meaning_zh(word: WordStats, zh_glossary: ChineseGlossary | None) -> str | None:
+    if zh_glossary:
+        meaning = zh_glossary.lookup(word.entry.surface, word.display_reading)
+        if meaning:
+            return meaning
+    return word.entry.meaning_zh
 
 
 def _example_to_dict(example: WordExample) -> dict[str, Any]:

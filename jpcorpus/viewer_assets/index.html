@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jpcorpus viewer</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">日</span>
+          <div>
+            <h1 data-i18n="appTitle">个人日语语料</h1>
+            <p id="generated-at" class="subtle"></p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div id="summary-strip" class="summary-strip"></div>
+          <div class="segmented" aria-label="Language">
+            <button type="button" data-lang="zh">中</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar">
+          <div class="search-wrap">
+            <input id="search-input" type="search" autocomplete="off" data-i18n-placeholder="searchPlaceholder" />
+          </div>
+
+          <div id="level-filter" class="chip-row" aria-label="JLPT level"></div>
+
+          <div class="toolbar-row">
+            <label>
+              <span data-i18n="sortLabel">排序</span>
+              <select id="sort-select">
+                <option value="count" data-i18n="sortCount">频次</option>
+                <option value="level" data-i18n="sortLevel">等级</option>
+                <option value="word" data-i18n="sortWord">词</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="statusLabel">状态</span>
+              <select id="status-filter">
+                <option value="all" data-i18n="statusAll">全部</option>
+                <option value="none" data-i18n="statusNone">未标记</option>
+                <option value="learning" data-i18n="statusLearning">想学</option>
+                <option value="known" data-i18n="statusKnown">认识</option>
+                <option value="ignored" data-i18n="statusIgnored">忽略</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="result-count" class="result-count"></div>
+          <div id="word-list" class="word-list"></div>
+        </aside>
+
+        <section class="detail-pane">
+          <div id="empty-state" class="empty-state">
+            <h2 data-i18n="loadingTitle">正在读取 corpus.json</h2>
+            <p data-i18n="loadingBody">如果这里停住了，请确认本地服务能访问 corpus.json。</p>
+          </div>
+          <article id="word-detail" class="word-detail" hidden></article>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

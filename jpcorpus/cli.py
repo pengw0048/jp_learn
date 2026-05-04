@@ -25,6 +25,7 @@ from .paths import (
 )
 from .report import build_markdown_report
 from .state import State
+from .viewer import serve_viewer
 from .zh_dict import ChineseGlossary, download_zh_dict
 
 
@@ -285,6 +286,7 @@ def export_corpus_json(
     limit: int | None = typer.Option(None, help="Maximum words to export."),
     examples_per_word: int = typer.Option(3, min=1, help="Examples to include per word."),
     context_lines: int = typer.Option(2, min=0, help="Subtitle lines to keep before and after each example."),
+    zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
     subtitles: list[Path] | None = typer.Option(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
@@ -304,8 +306,20 @@ def export_corpus_json(
         level=level,
         limit=limit,
         examples_per_word=examples_per_word,
+        zh_glossary=ChineseGlossary.load(zh_dict),
     )
     typer.echo(f"Wrote corpus JSON: {output}")
+
+
+@app.command()
+def view(
+    corpus: Path = typer.Option(Path("corpus.json"), help="Structured corpus JSON file."),
+    host: str = typer.Option("127.0.0.1", help="Host to bind."),
+    port: int = typer.Option(8765, min=0, max=65535, help="Port to bind. Use 0 for a random port."),
+    open_browser: bool = typer.Option(True, help="Open the viewer in a browser."),
+) -> None:
+    """Serve the local corpus web viewer."""
+    serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=typer.echo)
 
 
 @data_app.command("fetch-anime-db")
