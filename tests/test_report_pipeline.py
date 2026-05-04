@@ -2,6 +2,7 @@ from pathlib import Path
 
 from jpcorpus.analysis import analyze_paths, is_study_candidate, to_hiragana
 from jpcorpus.anki_export import export_anki_deck
+from jpcorpus.corpus_export import analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.models import WordEntry
 from jpcorpus.report import build_markdown_report
@@ -21,8 +22,10 @@ def test_report_from_local_srt(tmp_path: Path):
     report = build_markdown_report(analysis, target_level=3, top=10)
     english_report = build_markdown_report(analysis, target_level=3, top=10, language="en")
 
-    assert "你的日语个人词频报告" in report
-    assert "Your Personal Japanese Frequency Report" in english_report
+    assert "个人日语语料单词表" in report
+    assert "N3 单词表" in report
+    assert "N3 单词例句" in report
+    assert "Personal Japanese Corpus Word List" in english_report
     assert "微妙" in report
     assert analysis.total_tokens > 0
 
@@ -42,6 +45,25 @@ def test_export_anki_deck(tmp_path: Path):
 
     assert output.exists()
     assert output.stat().st_size > 0
+
+
+def test_export_corpus_json(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n私は約束を見る。\n",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(analysis, level=4, examples_per_word=2)
+    output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4)
+
+    assert payload["schema_version"] == 1
+    assert payload["words"][0]["word"] == "約束"
+    assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
+    assert output.exists()
 
 
 def test_parse_jlpt_level_from_tags():

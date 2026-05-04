@@ -9,12 +9,13 @@ SUPPORTED_LANGUAGES = ("zh", "en")
 
 MESSAGES: dict[str, dict[str, str]] = {
     "zh": {
-        "report.title": "你的日语个人词频报告",
+        "report.title": "个人日语语料单词表",
         "report.generated_at": "生成时间",
         "report.summary": "总览：",
         "report.summary_counts": "{watched} 部看过 -> {subtitle_shows} 部有字幕 -> {tokens} 个词形 -> {unique_tokens} 个独特词形",
         "report.coverage": "已覆盖 JLPT {coverage}",
-        "report.top_level": "你最该学的 N{level} 词",
+        "report.word_list": "N{level} 单词表",
+        "report.word_examples": "N{level} 单词例句",
         "report.by_show": "按作品的覆盖",
         "report.all_top_words": "全部高频 JLPT 词",
         "report.col.word": "词",
@@ -31,12 +32,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report.col.meaning": "释义",
     },
     "en": {
-        "report.title": "Your Personal Japanese Frequency Report",
+        "report.title": "Personal Japanese Corpus Word List",
         "report.generated_at": "Generated at",
         "report.summary": "Summary:",
         "report.summary_counts": "{watched} watched shows -> {subtitle_shows} with subtitles -> {tokens} tokens -> {unique_tokens} unique tokens",
         "report.coverage": "JLPT coverage: {coverage}",
-        "report.top_level": "Highest-priority N{level} words",
+        "report.word_list": "N{level} Word List",
+        "report.word_examples": "N{level} Word Examples",
         "report.by_show": "Coverage by show",
         "report.all_top_words": "Top JLPT words overall",
         "report.col.word": "Word",
@@ -70,4 +72,3 @@ class Translator:
         if template is None:
             return key
         return template.format(**values)
-

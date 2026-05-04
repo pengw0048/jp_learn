@@ -10,3 +10,4 @@ data/jlpt-words.json
 data/jimaku-cache/
 *.apkg
 report*.md
+corpus*.json

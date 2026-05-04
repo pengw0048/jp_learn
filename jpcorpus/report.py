@@ -12,6 +12,7 @@ def build_markdown_report(
     target_level: int = 3,
     top: int = 50,
     language: str = "zh",
+    examples_per_word: int = 2,
 ) -> str:
     tr = Translator(language)
     coverage = " / ".join(
@@ -33,28 +34,48 @@ def build_markdown_report(
         ),
         f"- {tr.t('report.coverage', coverage=coverage)}",
         "",
-        f"## {tr.t('report.top_level', level=target_level)}",
+        f"## {tr.t('report.word_list', level=target_level)}",
         "",
-        "| {word} | {reading} | {count} | {sources} | {example} |".format(
+        "| {word} | {reading} | {meaning} | {count} | {sources} | {example} |".format(
             word=tr.t("report.col.word"),
             reading=tr.t("report.col.reading"),
+            meaning=tr.t("report.col.meaning"),
             count=tr.t("report.col.count"),
             sources=tr.t("report.col.sources"),
             example=tr.t("report.col.example"),
         ),
-        "|---|---|---:|---|---|",
+        "|---|---|---|---:|---|---|",
     ]
-    for stats in analysis.top_words(level=target_level, limit=top):
+    target_words = analysis.top_words(level=target_level, limit=top)
+    for stats in target_words:
         sources = "、".join(source for source, _ in stats.sources.most_common(3))
         lines.append(
-            "| {word} | {reading} | {count} | {sources} | {example} |".format(
+            "| {word} | {reading} | {meaning} | {count} | {sources} | {example} |".format(
                 word=_escape(stats.entry.surface),
                 reading=_escape(stats.display_reading),
+                meaning=_escape(stats.entry.meaning or ""),
                 count=stats.count,
                 sources=_escape(sources),
                 example=_escape(stats.example_sentence or ""),
             )
         )
+
+    lines.extend(["", f"## {tr.t('report.word_examples', level=target_level)}", ""])
+    for stats in target_words:
+        lines.extend(
+            [
+                f"### {_escape_heading(stats.entry.surface)}（{_escape_heading(stats.display_reading)}）",
+                "",
+                f"- {tr.t('report.col.meaning')}: {_escape(stats.entry.meaning or '')}",
+                f"- {tr.t('report.col.count')}: {stats.count:,}",
+                f"- {tr.t('report.col.sources')}: {_escape('、'.join(source for source, _ in stats.sources.most_common(3)))}",
+                "",
+            ]
+        )
+        for index, example in enumerate(stats.examples[:examples_per_word], start=1):
+            lines.append(f"{index}. {_escape(example.sentence)}")
+            lines.append(f"   {tr.t('report.col.sources')}: {_escape(example.source_title)}")
+            lines.append("")
 
     lines.extend(
         [
@@ -112,3 +133,7 @@ def build_markdown_report(
 
 def _escape(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ")
+
+
+def _escape_heading(value: str) -> str:
+    return value.replace("\n", " ").strip()

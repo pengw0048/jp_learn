@@ -45,13 +45,22 @@ STUDY_STOPWORDS = {
 
 
 @dataclass
+class WordExample:
+    sentence: str
+    source_title: str
+    subtitle_file: str
+    episode: int | None = None
+    start_ms: int | None = None
+    end_ms: int | None = None
+
+
+@dataclass
 class WordStats:
     entry: WordEntry
     count: int = 0
     sources: Counter[str] = field(default_factory=Counter)
     readings: Counter[str] = field(default_factory=Counter)
-    example_sentence: str | None = None
-    example_source: str | None = None
+    examples: list[WordExample] = field(default_factory=list)
 
     @property
     def display_reading(self) -> str:
@@ -60,6 +69,21 @@ class WordStats:
         if self.readings:
             return self.readings.most_common(1)[0][0]
         return ""
+
+    @property
+    def example_sentence(self) -> str | None:
+        return self.examples[0].sentence if self.examples else None
+
+    @property
+    def example_source(self) -> str | None:
+        return self.examples[0].source_title if self.examples else None
+
+    def add_example(self, example: WordExample, *, limit: int) -> None:
+        if len(self.examples) >= limit:
+            return
+        if any(existing.sentence == example.sentence for existing in self.examples):
+            return
+        self.examples.append(example)
 
 
 @dataclass
@@ -102,6 +126,7 @@ def analyze_subtitles(
     watched_show_count: int,
     subtitle_files: list[SubtitleFile],
     jlpt_words: JLPTWords,
+    max_examples_per_word: int = 3,
 ) -> CorpusAnalysis:
     tokenizer = JapaneseTokenizer()
     word_stats: dict[str, WordStats] = {}
@@ -137,9 +162,17 @@ def analyze_subtitles(
                 stats.sources[subtitle_file.show_title] += 1
                 if token.reading:
                     stats.readings[to_hiragana(token.reading)] += 1
-                if stats.example_sentence is None:
-                    stats.example_sentence = line.text
-                    stats.example_source = subtitle_file.show_title
+                stats.add_example(
+                    WordExample(
+                        sentence=line.text,
+                        source_title=subtitle_file.show_title,
+                        subtitle_file=subtitle_file.name,
+                        episode=subtitle_file.episode,
+                        start_ms=line.start_ms,
+                        end_ms=line.end_ms,
+                    ),
+                    limit=max_examples_per_word,
+                )
 
     subtitle_show_count = len({file.bangumi_id for file in subtitle_files if file.path.exists()})
     return CorpusAnalysis(
@@ -179,6 +212,7 @@ def analyze_paths(
     paths: list[Path],
     jlpt_words: JLPTWords,
     title: str = "Local subtitles",
+    max_examples_per_word: int = 3,
 ) -> CorpusAnalysis:
     subtitle_files = [
         SubtitleFile(bangumi_id=index + 1, show_title=title, path=path, name=path.name)
@@ -188,4 +222,5 @@ def analyze_paths(
         watched_show_count=1 if paths else 0,
         subtitle_files=subtitle_files,
         jlpt_words=jlpt_words,
+        max_examples_per_word=max_examples_per_word,
     )

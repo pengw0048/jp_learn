@@ -9,6 +9,7 @@ from .analysis import analyze_paths, analyze_subtitles
 from .anime_db import AnimeOfflineIndex, download_latest_anime_db
 from .anki_export import export_anki_deck
 from .bangumi import BangumiClient, collection_to_show, run_oauth_flow
+from .corpus_export import write_corpus_json
 from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
@@ -46,6 +47,29 @@ def validate_language(language: str) -> str:
             f"Unsupported language '{language}'. Choose one of: {', '.join(SUPPORTED_LANGUAGES)}."
         )
     return language
+
+
+def load_analysis(
+    *,
+    state_db: Path,
+    jlpt_words: Path,
+    subtitles: list[Path] | None,
+    max_examples_per_word: int = 3,
+):
+    words = load_jlpt_words(jlpt_words)
+    if subtitles:
+        return analyze_paths(
+            paths=subtitles,
+            jlpt_words=words,
+            max_examples_per_word=max_examples_per_word,
+        )
+    state = State(state_db)
+    return analyze_subtitles(
+        watched_show_count=state.count_watched_shows(),
+        subtitle_files=state.list_subtitle_files(),
+        jlpt_words=words,
+        max_examples_per_word=max_examples_per_word,
+    )
 
 
 @link_app.command("bangumi")
@@ -189,7 +213,8 @@ def report(
         "-l",
         help=f"Report language: {', '.join(SUPPORTED_LANGUAGES)}.",
     ),
-    top: int = typer.Option(50, help="Rows per top-word table."),
+    top: int = typer.Option(50, help="Words to include in the target-level table."),
+    examples_per_word: int = typer.Option(2, min=1, help="Examples to show per target word."),
     subtitles: list[Path] | None = typer.Option(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
@@ -197,19 +222,21 @@ def report(
 ) -> None:
     """Generate a Markdown personal frequency report."""
     language = validate_language(language)
-    words = load_jlpt_words(jlpt_words)
-    if subtitles:
-        analysis = analyze_paths(paths=subtitles, jlpt_words=words)
-    else:
-        state = State(state_db)
-        analysis = analyze_subtitles(
-            watched_show_count=state.count_watched_shows(),
-            subtitle_files=state.list_subtitle_files(),
-            jlpt_words=words,
-        )
+    analysis = load_analysis(
+        state_db=state_db,
+        jlpt_words=jlpt_words,
+        subtitles=subtitles,
+        max_examples_per_word=examples_per_word,
+    )
     ensure_parent(output)
     output.write_text(
-        build_markdown_report(analysis, target_level=level, top=top, language=language),
+        build_markdown_report(
+            analysis,
+            target_level=level,
+            top=top,
+            language=language,
+            examples_per_word=examples_per_word,
+        ),
         encoding="utf-8",
     )
     typer.echo(f"Wrote report: {output}")
@@ -229,16 +256,7 @@ def export_anki(
     ),
 ) -> None:
     """Export a genanki .apkg deck from cached subtitles."""
-    words = load_jlpt_words(jlpt_words)
-    if subtitles:
-        analysis = analyze_paths(paths=subtitles, jlpt_words=words)
-    else:
-        state = State(state_db)
-        analysis = analyze_subtitles(
-            watched_show_count=state.count_watched_shows(),
-            subtitle_files=state.list_subtitle_files(),
-            jlpt_words=words,
-        )
+    analysis = load_analysis(state_db=state_db, jlpt_words=jlpt_words, subtitles=subtitles)
     export_anki_deck(
         analysis,
         output=output,
@@ -247,6 +265,36 @@ def export_anki(
         deck_name=deck_name,
     )
     typer.echo(f"Wrote Anki deck: {output}")
+
+
+@export_app.command("corpus-json")
+def export_corpus_json(
+    output: Path = typer.Option(Path("corpus.json"), help="Structured corpus JSON output path."),
+    state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
+    jlpt_words: Path = typer.Option(DEFAULT_JLPT_WORDS, help="JLPT word list JSON/CSV path."),
+    level: int | None = typer.Option(None, min=1, max=5, help="Only export one JLPT level."),
+    limit: int | None = typer.Option(None, help="Maximum words to export."),
+    examples_per_word: int = typer.Option(3, min=1, help="Examples to include per word."),
+    subtitles: list[Path] | None = typer.Option(
+        None,
+        help="Analyze local subtitle files instead of the synced state database.",
+    ),
+) -> None:
+    """Export structured word/source/example data for future UI work."""
+    analysis = load_analysis(
+        state_db=state_db,
+        jlpt_words=jlpt_words,
+        subtitles=subtitles,
+        max_examples_per_word=examples_per_word,
+    )
+    write_corpus_json(
+        analysis,
+        output,
+        level=level,
+        limit=limit,
+        examples_per_word=examples_per_word,
+    )
+    typer.echo(f"Wrote corpus JSON: {output}")
 
 
 @data_app.command("fetch-anime-db")
