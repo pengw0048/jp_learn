@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .jlpt import JLPTWords
+from .models import SubtitleFile, WordEntry
+from .subtitle import parse_subtitle
+from .tokenize import JapaneseTokenizer
+
+
+@dataclass
+class WordStats:
+    entry: WordEntry
+    count: int = 0
+    sources: Counter[str] = field(default_factory=Counter)
+    example_sentence: str | None = None
+    example_source: str | None = None
+
+
+@dataclass
+class ShowStats:
+    title: str
+    file_count: int = 0
+    total_tokens: int = 0
+    jlpt_counts: Counter[int] = field(default_factory=Counter)
+    unique_words: set[str] = field(default_factory=set)
+
+
+@dataclass
+class CorpusAnalysis:
+    watched_show_count: int
+    subtitle_show_count: int
+    subtitle_file_count: int
+    total_tokens: int
+    unique_token_count: int
+    word_stats: dict[str, WordStats]
+    show_stats: dict[str, ShowStats]
+    seen_by_level: dict[int, set[str]]
+    jlpt_words: JLPTWords
+
+    def top_words(self, *, level: int | None = None, limit: int = 50) -> list[WordStats]:
+        words = list(self.word_stats.values())
+        if level is not None:
+            words = [word for word in words if word.entry.level == level]
+        words.sort(key=lambda item: (-item.count, item.entry.level, item.entry.surface))
+        return words[:limit]
+
+    def coverage(self, level: int) -> float:
+        total = self.jlpt_words.total_by_level(level)
+        if total == 0:
+            return 0.0
+        return len(self.seen_by_level.get(level, set())) / total
+
+
+def analyze_subtitles(
+    *,
+    watched_show_count: int,
+    subtitle_files: list[SubtitleFile],
+    jlpt_words: JLPTWords,
+) -> CorpusAnalysis:
+    tokenizer = JapaneseTokenizer()
+    word_stats: dict[str, WordStats] = {}
+    show_stats: dict[str, ShowStats] = {}
+    seen_by_level: dict[int, set[str]] = defaultdict(set)
+    unique_tokens: set[str] = set()
+    total_tokens = 0
+
+    for subtitle_file in subtitle_files:
+        if not subtitle_file.path.exists():
+            continue
+        show = show_stats.setdefault(
+            subtitle_file.show_title,
+            ShowStats(title=subtitle_file.show_title),
+        )
+        show.file_count += 1
+        for line in parse_subtitle(subtitle_file.path):
+            tokens = tokenizer.tokenize(line.text)
+            for token in tokens:
+                total_tokens += 1
+                show.total_tokens += 1
+                unique_tokens.add(token.base)
+                entry = jlpt_words.lookup(token.base, token.surface)
+                if entry is None:
+                    continue
+                seen_by_level[entry.level].add(entry.surface)
+                show.jlpt_counts[entry.level] += 1
+                show.unique_words.add(entry.surface)
+                stats = word_stats.setdefault(entry.surface, WordStats(entry=entry))
+                stats.count += 1
+                stats.sources[subtitle_file.show_title] += 1
+                if stats.example_sentence is None:
+                    stats.example_sentence = line.text
+                    stats.example_source = subtitle_file.show_title
+
+    subtitle_show_count = len({file.bangumi_id for file in subtitle_files if file.path.exists()})
+    return CorpusAnalysis(
+        watched_show_count=watched_show_count,
+        subtitle_show_count=subtitle_show_count,
+        subtitle_file_count=len([file for file in subtitle_files if file.path.exists()]),
+        total_tokens=total_tokens,
+        unique_token_count=len(unique_tokens),
+        word_stats=word_stats,
+        show_stats=show_stats,
+        seen_by_level=dict(seen_by_level),
+        jlpt_words=jlpt_words,
+    )
+
+
+def analyze_paths(
+    *,
+    paths: list[Path],
+    jlpt_words: JLPTWords,
+    title: str = "Local subtitles",
+) -> CorpusAnalysis:
+    subtitle_files = [
+        SubtitleFile(bangumi_id=index + 1, show_title=title, path=path, name=path.name)
+        for index, path in enumerate(paths)
+    ]
+    return analyze_subtitles(
+        watched_show_count=1 if paths else 0,
+        subtitle_files=subtitle_files,
+        jlpt_words=jlpt_words,
+    )
+

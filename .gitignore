@@ -1,0 +1,12 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+data/anime-offline-database.json
+data/jlpt-words.json
+data/jimaku-cache/
+*.apkg
+report*.md
