@@ -34,11 +34,10 @@ def test_report_from_local_srt(tmp_path: Path):
     assert "个人日语语料单词表" in report
     assert "N3 单词表" in report
     assert "N3 单词例句" in report
-    assert "引用" in report
     assert "私は約束を見る。" in report
     assert "明日も行く。" in report
     assert "微妙，细微" in report
-    assert "**微妙**" in report
+    assert "**微妙**な気持ちだ。 （Local subtitles sample.srt 00:07）" in report
     assert "Personal Japanese Corpus Word List" in english_report
     assert "微妙" in report
     assert analysis.total_tokens > 0
@@ -104,6 +103,7 @@ def test_example_context_and_reference_format(tmp_path: Path):
     assert example.context_before == ["今日は学校へ行く。"]
     assert example.context_after == ["微妙な気持ちだ。"]
     assert format_reference(example) == "《Local subtitles》 sample.srt 00:04"
+    assert format_reference(example, brackets=False) == "Local subtitles sample.srt 00:04"
     assert format_timestamp(3_661_000) == "01:01:01"
 
 

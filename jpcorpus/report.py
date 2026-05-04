@@ -72,8 +72,7 @@ def build_markdown_report(
         )
         for index, example in enumerate(stats.examples[:examples_per_word], start=1):
             lines.append(f"{index}.")
-            lines.extend(format_context_block(example, stats))
-            lines.append(f"   {tr.t('report.col.reference')}: {_escape(format_reference(example))}")
+            lines.extend(format_context_block(example, stats, inline_reference=True))
             if example.scene_description:
                 lines.append(f"   {tr.t('report.col.scene')}: {_escape(example.scene_description)}")
             lines.append("")
@@ -154,12 +153,20 @@ def display_meaning(stats: WordStats, *, language: str, zh_glossary: ChineseGlos
     return stats.entry.meaning or ""
 
 
-def format_context_block(example: WordExample, stats: WordStats) -> list[str]:
+def format_context_block(
+    example: WordExample,
+    stats: WordStats,
+    *,
+    inline_reference: bool = False,
+) -> list[str]:
     lines: list[str] = []
     if example.context_before:
         before = " / ".join(example.context_before[-2:])
         lines.append(f"   …{_escape(before)}")
-    lines.append(f"   {_escape(highlight_example(example.sentence, stats, example=example))}")
+    current = _escape(highlight_example(example.sentence, stats, example=example))
+    if inline_reference:
+        current += f" （{_escape(format_reference(example, brackets=False))}）"
+    lines.append(f"   {current}")
     if example.context_after:
         after = " / ".join(example.context_after[:2])
         lines.append(f"   …{_escape(after)}")
@@ -177,8 +184,9 @@ def highlight_example(sentence: str, stats: WordStats, *, example: WordExample |
     return sentence
 
 
-def format_reference(example: WordExample) -> str:
-    parts = [f"《{example.source_title}》"]
+def format_reference(example: WordExample, *, brackets: bool = True) -> str:
+    source = f"《{example.source_title}》" if brackets else example.source_title
+    parts = [source]
     if example.episode is not None:
         parts.append(f"EP{example.episode:02d}")
     elif example.subtitle_file:
