@@ -9,7 +9,7 @@ const text = {
     sortLabel: "排序",
     sortCount: "频次",
     sortLevel: "等级",
-    sortWord: "词",
+    sortWord: "五十音",
     statusLabel: "状态",
     statusAll: "全部",
     statusNone: "未标记",
@@ -28,7 +28,7 @@ const text = {
     sources: "作品分布",
     sourceCount: "{count} 次",
     chineseMeaning: "日中",
-    fallbackMeaning: "原释义",
+    fallbackMeaning: "英文释义",
     noExamples: "这个词暂时没有例句",
     shows: "作品",
     subtitles: "字幕",
@@ -42,7 +42,7 @@ const text = {
     sortLabel: "Sort",
     sortCount: "Count",
     sortLevel: "Level",
-    sortWord: "Word",
+    sortWord: "Kana",
     statusLabel: "Status",
     statusAll: "All",
     statusNone: "Unmarked",
@@ -61,7 +61,7 @@ const text = {
     sources: "Sources",
     sourceCount: "{count} hits",
     chineseMeaning: "ZH",
-    fallbackMeaning: "Original",
+    fallbackMeaning: "Source meaning",
     noExamples: "No examples for this word yet",
     shows: "Shows",
     subtitles: "Subtitles",
@@ -399,12 +399,23 @@ function filteredWords() {
 
 function compareWords(left, right) {
   if (app.sort === "word") {
-    return String(left.word || "").localeCompare(String(right.word || ""), "ja");
+    return compareKana(left, right);
   }
   if (app.sort === "level") {
     return (left.level_number || 0) - (right.level_number || 0) || (right.count || 0) - (left.count || 0);
   }
-  return (right.count || 0) - (left.count || 0) || String(left.word || "").localeCompare(String(right.word || ""), "ja");
+  return (right.count || 0) - (left.count || 0) || compareKana(left, right);
+}
+
+function compareKana(left, right) {
+  const readingCompare = String(left.reading || left.word || "").localeCompare(
+    String(right.reading || right.word || ""),
+    "ja",
+  );
+  if (readingCompare !== 0) {
+    return readingCompare;
+  }
+  return String(left.word || "").localeCompare(String(right.word || ""), "ja");
 }
 
 function chooseInitialWord(words = app.words) {
