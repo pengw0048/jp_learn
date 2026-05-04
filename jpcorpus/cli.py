@@ -55,6 +55,7 @@ def load_analysis(
     jlpt_words: Path,
     subtitles: list[Path] | None,
     max_examples_per_word: int = 3,
+    context_lines: int = 2,
 ):
     words = load_jlpt_words(jlpt_words)
     if subtitles:
@@ -62,6 +63,7 @@ def load_analysis(
             paths=subtitles,
             jlpt_words=words,
             max_examples_per_word=max_examples_per_word,
+            context_lines=context_lines,
         )
     state = State(state_db)
     return analyze_subtitles(
@@ -69,6 +71,7 @@ def load_analysis(
         subtitle_files=state.list_subtitle_files(),
         jlpt_words=words,
         max_examples_per_word=max_examples_per_word,
+        context_lines=context_lines,
     )
 
 
@@ -215,6 +218,7 @@ def report(
     ),
     top: int = typer.Option(50, help="Words to include in the target-level table."),
     examples_per_word: int = typer.Option(2, min=1, help="Examples to show per target word."),
+    context_lines: int = typer.Option(2, min=0, help="Subtitle lines to keep before and after each example."),
     subtitles: list[Path] | None = typer.Option(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
@@ -227,6 +231,7 @@ def report(
         jlpt_words=jlpt_words,
         subtitles=subtitles,
         max_examples_per_word=examples_per_word,
+        context_lines=context_lines,
     )
     ensure_parent(output)
     output.write_text(
@@ -275,6 +280,7 @@ def export_corpus_json(
     level: int | None = typer.Option(None, min=1, max=5, help="Only export one JLPT level."),
     limit: int | None = typer.Option(None, help="Maximum words to export."),
     examples_per_word: int = typer.Option(3, min=1, help="Examples to include per word."),
+    context_lines: int = typer.Option(2, min=0, help="Subtitle lines to keep before and after each example."),
     subtitles: list[Path] | None = typer.Option(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
@@ -286,6 +292,7 @@ def export_corpus_json(
         jlpt_words=jlpt_words,
         subtitles=subtitles,
         max_examples_per_word=examples_per_word,
+        context_lines=context_lines,
     )
     write_corpus_json(
         analysis,

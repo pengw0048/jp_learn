@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .analysis import CorpusAnalysis
+from .analysis import CorpusAnalysis, WordExample
 from .i18n import Translator
 
 
@@ -36,26 +36,23 @@ def build_markdown_report(
         "",
         f"## {tr.t('report.word_list', level=target_level)}",
         "",
-        "| {word} | {reading} | {meaning} | {count} | {sources} | {example} |".format(
+        "| {word} | {reading} | {meaning} | {count} | {example} |".format(
             word=tr.t("report.col.word"),
             reading=tr.t("report.col.reading"),
             meaning=tr.t("report.col.meaning"),
             count=tr.t("report.col.count"),
-            sources=tr.t("report.col.sources"),
             example=tr.t("report.col.example"),
         ),
-        "|---|---|---|---:|---|---|",
+        "|---|---|---|---:|---|",
     ]
     target_words = analysis.top_words(level=target_level, limit=top)
     for stats in target_words:
-        sources = "、".join(source for source, _ in stats.sources.most_common(3))
         lines.append(
-            "| {word} | {reading} | {meaning} | {count} | {sources} | {example} |".format(
+            "| {word} | {reading} | {meaning} | {count} | {example} |".format(
                 word=_escape(stats.entry.surface),
                 reading=_escape(stats.display_reading),
                 meaning=_escape(stats.entry.meaning or ""),
                 count=stats.count,
-                sources=_escape(sources),
                 example=_escape(stats.example_sentence or ""),
             )
         )
@@ -68,13 +65,24 @@ def build_markdown_report(
                 "",
                 f"- {tr.t('report.col.meaning')}: {_escape(stats.entry.meaning or '')}",
                 f"- {tr.t('report.col.count')}: {stats.count:,}",
-                f"- {tr.t('report.col.sources')}: {_escape('、'.join(source for source, _ in stats.sources.most_common(3)))}",
                 "",
             ]
         )
         for index, example in enumerate(stats.examples[:examples_per_word], start=1):
             lines.append(f"{index}. {_escape(example.sentence)}")
-            lines.append(f"   {tr.t('report.col.sources')}: {_escape(example.source_title)}")
+            lines.append(f"   {tr.t('report.col.reference')}: {_escape(format_reference(example))}")
+            if example.context_before:
+                lines.append(
+                    f"   {tr.t('report.col.context_before')}: "
+                    + _escape(" / ".join(example.context_before))
+                )
+            if example.context_after:
+                lines.append(
+                    f"   {tr.t('report.col.context_after')}: "
+                    + _escape(" / ".join(example.context_after))
+                )
+            if example.scene_description:
+                lines.append(f"   {tr.t('report.col.scene')}: {_escape(example.scene_description)}")
             lines.append("")
 
     lines.extend(
@@ -137,3 +145,23 @@ def _escape(value: str) -> str:
 
 def _escape_heading(value: str) -> str:
     return value.replace("\n", " ").strip()
+
+
+def format_reference(example: WordExample) -> str:
+    parts = [f"《{example.source_title}》"]
+    if example.episode is not None:
+        parts.append(f"EP{example.episode:02d}")
+    elif example.subtitle_file:
+        parts.append(example.subtitle_file)
+    if example.start_ms is not None:
+        parts.append(format_timestamp(example.start_ms))
+    return " ".join(parts)
+
+
+def format_timestamp(milliseconds: int) -> str:
+    seconds = milliseconds // 1000
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"

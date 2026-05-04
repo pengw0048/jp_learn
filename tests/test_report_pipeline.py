@@ -6,6 +6,7 @@ from jpcorpus.corpus_export import analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.models import WordEntry
 from jpcorpus.report import build_markdown_report
+from jpcorpus.report import format_reference, format_timestamp
 
 
 def test_report_from_local_srt(tmp_path: Path):
@@ -13,8 +14,10 @@ def test_report_from_local_srt(tmp_path: Path):
     write_sample_jlpt(jlpt_path)
     subtitle = tmp_path / "sample.srt"
     subtitle.write_text(
-        "1\n00:00:01,000 --> 00:00:03,000\n私は約束を見る。\n\n"
-        "2\n00:00:04,000 --> 00:00:06,000\n微妙な気持ちだ。\n",
+        "1\n00:00:01,000 --> 00:00:03,000\n今日は学校へ行く。\n\n"
+        "2\n00:00:04,000 --> 00:00:06,000\n私は約束を見る。\n\n"
+        "3\n00:00:07,000 --> 00:00:09,000\n微妙な気持ちだ。\n\n"
+        "4\n00:00:10,000 --> 00:00:12,000\n明日も行く。\n",
         encoding="utf-8",
     )
 
@@ -25,6 +28,9 @@ def test_report_from_local_srt(tmp_path: Path):
     assert "个人日语语料单词表" in report
     assert "N3 单词表" in report
     assert "N3 单词例句" in report
+    assert "引用" in report
+    assert "前文" in report
+    assert "后文" in report
     assert "Personal Japanese Corpus Word List" in english_report
     assert "微妙" in report
     assert analysis.total_tokens > 0
@@ -60,10 +66,36 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4)
 
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
+    assert payload["words"][0]["examples"][0]["context_before"] == []
+    assert payload["words"][0]["examples"][0]["scene_description"] is None
     assert output.exists()
+
+
+def test_example_context_and_reference_format(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n今日は学校へ行く。\n\n"
+        "2\n00:00:04,000 --> 00:00:06,000\n私は約束を見る。\n\n"
+        "3\n00:00:07,000 --> 00:00:09,000\n微妙な気持ちだ。\n",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(
+        paths=[subtitle],
+        jlpt_words=load_jlpt_words(jlpt_path),
+        context_lines=1,
+    )
+
+    example = analysis.word_stats["約束"].examples[0]
+
+    assert example.context_before == ["今日は学校へ行く。"]
+    assert example.context_after == ["微妙な気持ちだ。"]
+    assert format_reference(example) == "《Local subtitles》 sample.srt 00:04"
+    assert format_timestamp(3_661_000) == "01:01:01"
 
 
 def test_parse_jlpt_level_from_tags():

@@ -34,7 +34,7 @@ uv run jpcorpus link bangumi
 uv run jpcorpus sync
 uv run jpcorpus report --level 3 --output report.md
 uv run jpcorpus report --language en --level 3 --output report.en.md
-uv run jpcorpus export corpus-json --level 3 --output corpus.json
+uv run jpcorpus export corpus-json --level 3 --examples-per-word 3 --context-lines 2 --output corpus.json
 uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 ```
 
@@ -42,7 +42,7 @@ uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 
-The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the same word/source/example data as structured JSON so future web UI work can consume a stable shape instead of parsing Markdown.
+The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the same word/example/context data as structured JSON so future web UI work can consume a stable shape instead of parsing Markdown. Example records include source title, episode when detected, subtitle timing, nearby context lines, and a nullable `scene_description` field reserved for later LLM annotation.
 
 ## Local Smoke Test Without API Keys
 

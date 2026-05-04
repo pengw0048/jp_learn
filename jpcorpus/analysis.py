@@ -52,6 +52,9 @@ class WordExample:
     episode: int | None = None
     start_ms: int | None = None
     end_ms: int | None = None
+    context_before: list[str] = field(default_factory=list)
+    context_after: list[str] = field(default_factory=list)
+    scene_description: str | None = None
 
 
 @dataclass
@@ -127,6 +130,7 @@ def analyze_subtitles(
     subtitle_files: list[SubtitleFile],
     jlpt_words: JLPTWords,
     max_examples_per_word: int = 3,
+    context_lines: int = 2,
 ) -> CorpusAnalysis:
     tokenizer = JapaneseTokenizer()
     word_stats: dict[str, WordStats] = {}
@@ -143,7 +147,8 @@ def analyze_subtitles(
             ShowStats(title=subtitle_file.show_title),
         )
         show.file_count += 1
-        for line in parse_subtitle(subtitle_file.path):
+        subtitle_lines = parse_subtitle(subtitle_file.path)
+        for line_index, line in enumerate(subtitle_lines):
             tokens = tokenizer.tokenize(line.text)
             for token in tokens:
                 total_tokens += 1
@@ -170,6 +175,18 @@ def analyze_subtitles(
                         episode=subtitle_file.episode,
                         start_ms=line.start_ms,
                         end_ms=line.end_ms,
+                        context_before=[
+                            context_line.text
+                            for context_line in subtitle_lines[
+                                max(0, line_index - context_lines) : line_index
+                            ]
+                        ],
+                        context_after=[
+                            context_line.text
+                            for context_line in subtitle_lines[
+                                line_index + 1 : line_index + 1 + context_lines
+                            ]
+                        ],
                     ),
                     limit=max_examples_per_word,
                 )
@@ -213,6 +230,7 @@ def analyze_paths(
     jlpt_words: JLPTWords,
     title: str = "Local subtitles",
     max_examples_per_word: int = 3,
+    context_lines: int = 2,
 ) -> CorpusAnalysis:
     subtitle_files = [
         SubtitleFile(bangumi_id=index + 1, show_title=title, path=path, name=path.name)
@@ -223,4 +241,5 @@ def analyze_paths(
         subtitle_files=subtitle_files,
         jlpt_words=jlpt_words,
         max_examples_per_word=max_examples_per_word,
+        context_lines=context_lines,
     )

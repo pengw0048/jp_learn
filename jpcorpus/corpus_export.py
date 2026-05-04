@@ -9,7 +9,7 @@ from .analysis import CorpusAnalysis, WordExample, WordStats
 from .paths import ensure_parent
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def analysis_to_dict(
@@ -102,4 +102,13 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "episode": example.episode,
         "start_ms": example.start_ms,
         "end_ms": example.end_ms,
+        "context_before": example.context_before,
+        "context_after": example.context_after,
+        "scene_description": example.scene_description,
+        "reference": {
+            "source_title": example.source_title,
+            "episode": example.episode,
+            "start_ms": example.start_ms,
+            "end_ms": example.end_ms,
+        },
     }
