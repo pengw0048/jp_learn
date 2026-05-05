@@ -174,6 +174,8 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "sentence": example.sentence,
         "source_type": example.source_type,
         "source_title": example.source_title,
+        "source_artist": example.source_artist,
+        "source_album": example.source_album,
         "subtitle_file": example.subtitle_file,
         "matched_text": example.matched_text,
         "episode": example.episode,
@@ -190,6 +192,8 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "usage_note_zh": None,
         "reference": {
             "source_title": example.source_title,
+            "source_artist": example.source_artist,
+            "source_album": example.source_album,
             "source_type": example.source_type,
             "source_file": example.subtitle_file,
             "episode": example.episode,

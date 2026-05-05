@@ -197,6 +197,7 @@ def test_analysis_combines_subtitles_and_lyrics(tmp_path: Path):
                 album_title="Sample Album",
                 path=lyric,
                 provider="lrclib",
+                artist="Sample Artist",
                 synced=True,
             )
         ],
@@ -214,6 +215,11 @@ def test_analysis_combines_subtitles_and_lyrics(tmp_path: Path):
         "subtitle",
         "lyrics",
     }
+    lyric_example = next(
+        example for example in payload["words"][0]["examples"] if example["source_type"] == "lyrics"
+    )
+    assert lyric_example["source_artist"] == "Sample Artist"
+    assert lyric_example["source_album"] == "Sample Album"
 
 
 def test_clean_subtitle_text_preserves_cue_line_breaks():

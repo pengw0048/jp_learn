@@ -335,7 +335,7 @@ function renderExamples(word) {
     appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
     lines.append(current);
     appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
-    lines.append(el("div", "reference", `（${formatReference(example)}）`));
+    lines.append(el("small", "reference", formatReference(example)));
     item.append(lines);
     if (example.translation_zh) {
       item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
@@ -481,6 +481,14 @@ function formatReference(example) {
   const parts = [];
   if (example.source_title) {
     parts.push(example.source_title);
+  }
+  if (example.source_type === "lyrics") {
+    if (example.source_artist) {
+      parts.push(example.source_artist);
+    }
+    if (example.source_album && example.source_album !== example.source_title) {
+      parts.push(example.source_album);
+    }
   }
   if (Number.isInteger(example.episode)) {
     parts.push(`EP${String(example.episode).padStart(2, "0")}`);

@@ -52,6 +52,8 @@ class WordExample:
     subtitle_file: str
     matched_text: str
     source_type: str = "subtitle"
+    source_artist: str | None = None
+    source_album: str | None = None
     episode: int | None = None
     start_ms: int | None = None
     end_ms: int | None = None
@@ -192,6 +194,8 @@ def analyze_media(
         source_title: str,
         source_file: str,
         lines: list[SubtitleLine],
+        source_artist: str | None = None,
+        source_album: str | None = None,
         episode: int | None = None,
         show_summary: str | None = None,
         show_characters: list[str] | None = None,
@@ -227,6 +231,8 @@ def analyze_media(
                         subtitle_file=source_file,
                         matched_text=token.surface,
                         source_type=source_type,
+                        source_artist=source_artist,
+                        source_album=source_album,
                         episode=episode,
                         start_ms=line.start_ms,
                         end_ms=line.end_ms,
@@ -272,6 +278,8 @@ def analyze_media(
             source_type="lyrics",
             source_title=lyric_file.track_title,
             source_file=lyric_file.path.name,
+            source_artist=lyric_file.artist,
+            source_album=lyric_file.album_title,
             lines=parse_lyrics(lyric_file.path),
         )
 
