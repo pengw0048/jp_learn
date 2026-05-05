@@ -324,6 +324,7 @@ def annotate_corpus(
     overwrite: bool = False,
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
+    bypass_cache: bool = False,
     include_example: ExamplePredicate | None = None,
     concurrency: int = 1,
     request_interval_seconds: float = 0.0,
@@ -343,19 +344,20 @@ def annotate_corpus(
             cache_key = None
             if cache_state is not None:
                 cache_key = annotation_cache_key(word, example, cache_context or {})
-                cached = cache_state.get_cache_entry(
-                    purpose=ANNOTATION_CACHE_PURPOSE,
-                    cache_key=cache_key,
-                    version=ANNOTATION_CACHE_VERSION,
-                )
-                if cached and cached["status"] == "hit" and _has_required_annotations(cached.get("value")):
-                    for field, value in cached["value"].items():
-                        if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
-                            example[field] = value
-                    annotated += 1
-                    if on_progress is not None:
-                        on_progress("cache_hit", {"word": word.get("word") or ""})
-                    continue
+                if not bypass_cache:
+                    cached = cache_state.get_cache_entry(
+                        purpose=ANNOTATION_CACHE_PURPOSE,
+                        cache_key=cache_key,
+                        version=ANNOTATION_CACHE_VERSION,
+                    )
+                    if cached and cached["status"] == "hit" and _has_required_annotations(cached.get("value")):
+                        for field, value in cached["value"].items():
+                            if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
+                                example[field] = value
+                        annotated += 1
+                        if on_progress is not None:
+                            on_progress("cache_hit", {"word": word.get("word") or ""})
+                        continue
             targets.append((word, example, cache_key))
         if annotated + len(targets) >= limit:
             break
@@ -468,6 +470,7 @@ def annotate_corpus_file(
     overwrite: bool = False,
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
+    bypass_cache: bool = False,
     include_example: ExamplePredicate | None = None,
     concurrency: int = 1,
     request_interval_seconds: float = 0.0,
@@ -481,6 +484,7 @@ def annotate_corpus_file(
         overwrite=overwrite,
         cache_state=cache_state,
         cache_context=cache_context,
+        bypass_cache=bypass_cache,
         include_example=include_example,
         concurrency=concurrency,
         request_interval_seconds=request_interval_seconds,

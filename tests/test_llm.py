@@ -239,6 +239,61 @@ def test_annotate_corpus_reuses_versioned_cache(tmp_path):
     assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
 
 
+def test_annotate_corpus_can_bypass_cached_annotations(tmp_path):
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "examples": [
+                    {
+                        "sentence": "明日行く。",
+                        "translation_zh": "旧翻译。",
+                        "usage_note_zh": "旧用法。",
+                        "scene_description": "",
+                    }
+                ],
+            }
+        ],
+    }
+    state = State(tmp_path / "state.db")
+    context = {"provider": "test", "model": "fake"}
+    cache_key = annotation_cache_key(corpus["words"][0], corpus["words"][0]["examples"][0], context)
+    state.save_cache_entry(
+        purpose=ANNOTATION_CACHE_PURPOSE,
+        cache_key=cache_key,
+        version=ANNOTATION_CACHE_VERSION,
+        status="hit",
+        value={
+            "translation_zh": "缓存里的旧翻译。",
+            "usage_note_zh": "缓存里的旧用法。",
+            "scene_description": "",
+        },
+    )
+    client = FakeAnnotationClient()
+
+    annotate_corpus(
+        corpus,
+        client=client,
+        limit=10,
+        overwrite=True,
+        cache_state=state,
+        cache_context=context,
+        bypass_cache=True,
+    )
+
+    cached = state.get_cache_entry(
+        purpose=ANNOTATION_CACHE_PURPOSE,
+        cache_key=cache_key,
+        version=ANNOTATION_CACHE_VERSION,
+    )
+    assert client.calls == 1
+    assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
+    assert cached["value"]["translation_zh"] == "翻译: 明日行く。"
+
+
 def test_annotate_corpus_ignores_empty_cached_annotations(tmp_path):
     corpus = {
         "schema_version": 6,

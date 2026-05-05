@@ -27,10 +27,27 @@ from .paths import DEFAULT_STATE_DB, ensure_parent
 from .state import State
 
 
-ALLOWED_ANNOTATION_SCOPES = {"current_word", "filtered_words", "first_unannotated"}
+ALLOWED_ANNOTATION_SCOPES = {
+    "current_word",
+    "filtered_words",
+    "first_unannotated",
+    "selected_examples",
+}
 ALLOWED_SOURCES = {"all", "subtitle", "lyrics"}
 ALLOWED_LEVELS = {"all", "N5", "N4", "N3", "N2", "N1"}
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
+EXAMPLE_SELECTION_FIELDS = (
+    "source_type",
+    "source_title",
+    "source_artist",
+    "source_album",
+    "subtitle_file",
+    "episode",
+    "start_ms",
+    "end_ms",
+    "matched_text",
+    "sentence",
+)
 ALLOWED_MAINTENANCE_TASKS = {
     "sync_media",
     "refresh_all",
@@ -187,6 +204,7 @@ class ViewerJobRunner:
                     overwrite=spec["overwrite"],
                     cache_state=State(self.state_db),
                     cache_context=cache_context,
+                    bypass_cache=spec["bypass_cache"],
                     include_example=include_example,
                     concurrency=spec["concurrency"],
                     request_interval_seconds=(60.0 / spec["rpm"]) if spec.get("rpm") else 0.0,
@@ -417,8 +435,14 @@ def normalize_annotation_spec(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(words, list):
         raise ValueError("words must be a list.")
     words = [str(word) for word in words if str(word)]
-    if scope in {"current_word", "filtered_words"} and not words:
+    if scope in {"current_word", "filtered_words", "selected_examples"} and not words:
         raise ValueError("This annotation scope requires at least one word.")
+    examples = raw.get("examples") or []
+    if not isinstance(examples, list):
+        raise ValueError("examples must be a list.")
+    examples = [normalize_example_selector(example) for example in examples]
+    if scope == "selected_examples" and not examples:
+        raise ValueError("This annotation scope requires at least one example.")
     limit = clamp_int(raw.get("limit"), default=20, minimum=1, maximum=5000)
     concurrency = clamp_int(raw.get("concurrency"), default=1, minimum=1, maximum=16)
     rpm = raw.get("rpm")
@@ -430,12 +454,14 @@ def normalize_annotation_spec(raw: dict[str, Any]) -> dict[str, Any]:
         "provider": provider,
         "model": str(raw.get("model") or "") or None,
         "words": words[:10000],
+        "examples": examples[:1000],
         "source": source,
         "level": level,
         "limit": limit,
         "concurrency": concurrency,
         "rpm": rpm_value,
         "cache_only": bool(raw.get("cache_only", True)),
+        "bypass_cache": bool(raw.get("bypass_cache", False)),
         "overwrite": bool(raw.get("overwrite", False)),
         "use_show_context": bool(raw.get("use_show_context", False)),
     }
@@ -444,6 +470,7 @@ def normalize_annotation_spec(raw: dict[str, Any]) -> dict[str, Any]:
 def public_annotation_spec(spec: dict[str, Any]) -> dict[str, Any]:
     public = dict(spec)
     public["word_count"] = len(public.pop("words", []))
+    public["example_count"] = len(public.pop("examples", []))
     return public
 
 
@@ -464,12 +491,23 @@ def public_maintenance_spec(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_annotation_predicate(spec: dict[str, Any]):
-    word_set = set(spec["words"]) if spec["scope"] in {"current_word", "filtered_words"} else None
+    word_set = (
+        set(spec["words"])
+        if spec["scope"] in {"current_word", "filtered_words", "selected_examples"}
+        else None
+    )
+    example_set = (
+        {example_selection_key(example) for example in spec.get("examples", [])}
+        if spec["scope"] == "selected_examples"
+        else None
+    )
     source = spec["source"]
     level = spec["level"]
 
     def include_example(word: dict[str, Any], example: dict[str, Any]) -> bool:
         if word_set is not None and str(word.get("word") or "") not in word_set:
+            return False
+        if example_set is not None and example_selection_key(example) not in example_set:
             return False
         if level != "all" and word.get("level") != level:
             return False
@@ -478,6 +516,23 @@ def build_annotation_predicate(spec: dict[str, Any]):
         return True
 
     return include_example
+
+
+def normalize_example_selector(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("examples must contain objects.")
+    return {field: normalize_example_selection_value(raw.get(field)) for field in EXAMPLE_SELECTION_FIELDS}
+
+
+def normalize_example_selection_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def example_selection_key(example: dict[str, Any]) -> str:
+    payload = normalize_example_selector(example)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def count_annotation_targets(

@@ -2,6 +2,18 @@ const STORAGE_LANG = "jpcorpus.viewer.lang";
 const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
+const EXAMPLE_SELECTION_FIELDS = [
+  "source_type",
+  "source_title",
+  "source_artist",
+  "source_album",
+  "subtitle_file",
+  "episode",
+  "start_ms",
+  "end_ms",
+  "matched_text",
+  "sentence",
+];
 
 const text = {
   zh: {
@@ -39,6 +51,8 @@ const text = {
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
+    reannotateExample: "重标",
+    reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
     shows: "作品",
     subtitles: "字幕",
     lyrics: "歌词",
@@ -69,6 +83,7 @@ const text = {
     scopeFilteredWords: "当前筛选结果",
     scopeFirstUnannotated: "前 N 条缺失例句",
     maintenanceEstimate: "将处理约 {count} 条例句；会先查本地 LLM 缓存，缺失时才调用 API；当前来源 {source}，等级 {level}",
+    maintenanceEstimateRefresh: "将重新生成约 {count} 条例句，并更新本地 LLM 缓存；当前来源 {source}，等级 {level}",
     maintenanceTaskSyncMedia: "从 Bangumi 同步动画/字幕和音乐，再从 LRCLIB 拉歌词，最后刷新页面语料",
     maintenanceTaskExportCorpus: "不联网，只用现有本地数据重新生成网页语料",
     maintenanceTaskRefreshAll: "更新词表、词典和动画数据库，再同步媒体、拉歌词并刷新语料",
@@ -116,6 +131,8 @@ const text = {
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
+    reannotateExample: "Refresh",
+    reannotateExampleTitle: "Regenerate this example translation and usage note",
     shows: "Shows",
     subtitles: "Subtitles",
     lyrics: "Lyrics",
@@ -146,6 +163,7 @@ const text = {
     scopeFilteredWords: "Current filtered words",
     scopeFirstUnannotated: "First N missing examples",
     maintenanceEstimate: "About {count} examples; local LLM cache is checked first, API is used only for misses; source {source}, level {level}",
+    maintenanceEstimateRefresh: "Regenerate about {count} examples and update the local LLM cache; source {source}, level {level}",
     maintenanceTaskSyncMedia: "Syncs Bangumi anime/subtitles and music, fetches LRCLIB lyrics, then refreshes the corpus",
     maintenanceTaskExportCorpus: "Uses existing local data only and regenerates the viewer corpus",
     maintenanceTaskRefreshAll: "Updates word/dictionary/anime data, syncs media, fetches lyrics, then refreshes the corpus",
@@ -383,11 +401,14 @@ function renderMaintenance() {
   if (!app.maintenance.enabled) {
     refs.maintenanceEstimate.textContent = t("maintenanceDisabled");
   } else if (isAnnotation) {
-    refs.maintenanceEstimate.textContent = t("maintenanceEstimate", {
-      count: formatNumber(estimate.planned),
-      source: sourceLabel(spec.source),
-      level: spec.level,
-    });
+    refs.maintenanceEstimate.textContent = t(
+      spec.bypass_cache ? "maintenanceEstimateRefresh" : "maintenanceEstimate",
+      {
+        count: formatNumber(estimate.planned),
+        source: sourceLabel(spec.source),
+        level: spec.level,
+      },
+    );
   } else {
     refs.maintenanceEstimate.textContent = maintenanceTaskDescription(task);
   }
@@ -397,6 +418,7 @@ function renderMaintenance() {
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
+  updateExampleActionButtons();
 }
 
 function renderLevelFilter() {
@@ -547,6 +569,53 @@ async function startMaintenanceJob() {
   }
 }
 
+async function startExampleAnnotationJob(word, example, button) {
+  if (!app.maintenance.enabled || app.maintenance.job?.status === "running") {
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  refs.maintenancePanel.hidden = false;
+  refs.maintenanceToggle.classList.add("active");
+  const spec = {
+    scope: "selected_examples",
+    provider: refs.maintenanceProvider.value,
+    words: [word.word].filter(Boolean),
+    examples: [exampleAnnotationSelector(example)],
+    source: "all",
+    level: "all",
+    limit: 1,
+    concurrency: 1,
+    rpm: numberValue(refs.maintenanceRpm, 0) || null,
+    cache_only: false,
+    bypass_cache: true,
+    overwrite: true,
+    use_show_context: refs.maintenanceShowContext.checked,
+  };
+  try {
+    const response = await fetch("/api/jobs/annotate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spec),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    app.maintenance.job = payload.job;
+    app.maintenance.reloadedJobId = null;
+    renderMaintenance();
+    pollMaintenanceJob();
+  } catch (error) {
+    app.maintenance.job = {
+      status: "failed",
+      log: [String(error.message || error)],
+    };
+    renderMaintenance();
+  }
+}
+
 function pollMaintenanceJob() {
   if (app.maintenance.pollTimer) {
     clearInterval(app.maintenance.pollTimer);
@@ -618,7 +687,7 @@ function renderExamples(word) {
     lines.append(current);
     appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
     lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
-    item.append(lines);
+    item.append(lines, renderExampleActions(word, example));
     if (example.translation_zh) {
       item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
     }
@@ -629,6 +698,17 @@ function renderExamples(word) {
   });
   section.append(grid);
   return section;
+}
+
+function renderExampleActions(word, example) {
+  const wrap = el("div", "example-actions");
+  const button = el("button", "example-action-button", t("reannotateExample"));
+  button.type = "button";
+  button.title = t("reannotateExampleTitle");
+  button.disabled = !app.maintenance.enabled || app.maintenance.job?.status === "running";
+  button.addEventListener("click", () => startExampleAnnotationJob(word, example, button));
+  wrap.append(button);
+  return wrap;
 }
 
 function renderExampleColumnControl() {
@@ -889,6 +969,7 @@ function annotationJobSpec() {
     concurrency: numberValue(refs.maintenanceConcurrency, 1),
     rpm: numberValue(refs.maintenanceRpm, 0) || null,
     cache_only: false,
+    bypass_cache: refs.maintenanceOverwrite.checked,
     overwrite: refs.maintenanceOverwrite.checked,
     use_show_context: refs.maintenanceShowContext.checked,
   };
@@ -896,6 +977,9 @@ function annotationJobSpec() {
 
 function estimateAnnotationJob(spec) {
   const wordSet = spec.scope === "first_unannotated" ? null : new Set(spec.words);
+  const exampleSet = spec.scope === "selected_examples"
+    ? new Set((spec.examples || []).map(exampleAnnotationSignature))
+    : null;
   let selected = 0;
   app.words.forEach((word) => {
     if (wordSet && !wordSet.has(word.word)) {
@@ -905,6 +989,9 @@ function estimateAnnotationJob(spec) {
       return;
     }
     (word.examples || []).forEach((example) => {
+      if (exampleSet && !exampleSet.has(exampleAnnotationSignature(example))) {
+        return;
+      }
       if (spec.source !== "all" && example.source_type !== spec.source) {
         return;
       }
@@ -918,6 +1005,25 @@ function estimateAnnotationJob(spec) {
     selected,
     planned: Math.min(selected, spec.limit),
   };
+}
+
+function updateExampleActionButtons() {
+  const disabled = !app.maintenance.enabled || app.maintenance.job?.status === "running";
+  document.querySelectorAll(".example-action-button").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function exampleAnnotationSelector(example) {
+  const selector = {};
+  EXAMPLE_SELECTION_FIELDS.forEach((field) => {
+    selector[field] = example[field] ?? null;
+  });
+  return selector;
+}
+
+function exampleAnnotationSignature(example) {
+  return JSON.stringify(exampleAnnotationSelector(example));
 }
 
 function displayCount(word) {

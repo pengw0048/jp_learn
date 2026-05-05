@@ -664,6 +664,33 @@ mark {
   color: var(--lyrics);
 }
 
+.example-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.example-action-button {
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.example-action-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.example-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .annotation-line {
   margin-top: 6px;
   font-size: 14px;

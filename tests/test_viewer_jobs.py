@@ -1,9 +1,12 @@
 import pytest
 
 from jpcorpus.viewer_jobs import (
+    build_annotation_predicate,
     composite_maintenance_steps,
     maintenance_command,
+    normalize_annotation_spec,
     normalize_maintenance_spec,
+    public_annotation_spec,
 )
 
 
@@ -28,6 +31,50 @@ def test_normalize_maintenance_spec_accepts_fetch_lyrics_options():
 def test_normalize_maintenance_spec_rejects_unknown_task():
     with pytest.raises(ValueError, match="Unsupported maintenance task"):
         normalize_maintenance_spec({"type": "shell"})
+
+
+def test_selected_examples_annotation_scope_matches_exact_example():
+    target = {
+        "source_type": "subtitle",
+        "source_title": "CLANNAD",
+        "subtitle_file": "clannad_ep05.srt",
+        "episode": 5,
+        "start_ms": 705240,
+        "end_ms": 709000,
+        "matched_text": "届か",
+        "sentence": "声が届かないから、風子はこうしてるんだと思います",
+    }
+    spec = normalize_annotation_spec(
+        {
+            "scope": "selected_examples",
+            "provider": "openai-compatible",
+            "words": ["届く"],
+            "examples": [target],
+            "cache_only": False,
+            "bypass_cache": True,
+            "overwrite": True,
+        }
+    )
+
+    include_example = build_annotation_predicate(spec)
+
+    assert spec["bypass_cache"] is True
+    assert public_annotation_spec(spec)["example_count"] == 1
+    assert include_example({"word": "届く", "level": "N4"}, target)
+    assert not include_example({"word": "届く", "level": "N4"}, {**target, "start_ms": 705241})
+    assert not include_example({"word": "届ける", "level": "N4"}, target)
+
+
+def test_selected_examples_annotation_scope_requires_examples():
+    with pytest.raises(ValueError, match="requires at least one example"):
+        normalize_annotation_spec(
+            {
+                "scope": "selected_examples",
+                "provider": "openai-compatible",
+                "words": ["届く"],
+                "examples": [],
+            }
+        )
 
 
 def test_normalize_maintenance_spec_accepts_simple_sync_action():
