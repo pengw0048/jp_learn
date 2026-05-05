@@ -59,7 +59,6 @@ const text = {
     count: "Count",
     examples: "Examples",
     chineseMeaning: "ZH",
-    fallbackMeaning: "Source meaning",
     noExamples: "No examples for this word yet",
     scene: "Scene",
     translation: "Translation",
@@ -277,7 +276,7 @@ function renderDetailHeader(word) {
   const meanings = el("div", "meaning-block");
   const mainMeaning = displayMeaning(word);
   meanings.append(el("div", "meaning-main", mainMeaning || "—"));
-  if (word.meaning_zh && word.meaning && word.meaning_zh !== word.meaning) {
+  if (app.lang === "zh" && word.meaning_zh && word.meaning && word.meaning_zh !== word.meaning) {
     meanings.append(el("div", "meaning-alt", `${t("fallbackMeaning")}: ${word.meaning}`));
   }
 

@@ -14,7 +14,7 @@ from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .i18n import SUPPORTED_LANGUAGES
-from .llm import LLMConfig, OpenAICompatibleClient, annotate_corpus_file
+from .llm import AppleFoundationModelsClient, LLMConfig, OpenAICompatibleClient, annotate_corpus_file
 from .paths import (
     DEFAULT_ANIME_DB,
     DEFAULT_JIMAKU_CACHE,
@@ -332,6 +332,11 @@ def annotate(
         envvar="JPCORPUS_LLM_MODEL",
         help="LLM model name for the configured provider.",
     ),
+    provider: str = typer.Option(
+        "openai-compatible",
+        envvar="JPCORPUS_LLM_PROVIDER",
+        help="LLM provider: openai-compatible or apple.",
+    ),
     base_url: str = typer.Option(
         "https://api.openai.com/v1",
         envvar="JPCORPUS_LLM_BASE_URL",
@@ -346,15 +351,20 @@ def annotate(
     overwrite: bool = typer.Option(False, help="Regenerate existing annotations."),
 ) -> None:
     """Annotate corpus examples with translation, usage notes, and scene descriptions."""
-    if not model:
-        raise typer.BadParameter("Set --model or JPCORPUS_LLM_MODEL.")
-    if not api_key:
-        api_key = os.environ.get("OPENAI_API_KEY")
-    if "api.openai.com" in base_url and not api_key:
-        raise typer.BadParameter("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY for OpenAI.")
-    client = OpenAICompatibleClient(
-        LLMConfig(model=model, base_url=base_url, api_key=api_key)
-    )
+    if provider == "apple":
+        client = AppleFoundationModelsClient()
+    elif provider == "openai-compatible":
+        if not model:
+            raise typer.BadParameter("Set --model or JPCORPUS_LLM_MODEL.")
+        if not api_key:
+            api_key = os.environ.get("OPENAI_API_KEY")
+        if "api.openai.com" in base_url and not api_key:
+            raise typer.BadParameter("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY for OpenAI.")
+        client = OpenAICompatibleClient(
+            LLMConfig(model=model, base_url=base_url, api_key=api_key)
+        )
+    else:
+        raise typer.BadParameter("Unsupported provider. Use 'openai-compatible' or 'apple'.")
     count = annotate_corpus_file(
         input,
         output,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -12,6 +13,7 @@ from .paths import ensure_parent
 
 
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
+APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,35 @@ class OpenAICompatibleClient:
         return parse_annotation_response(content)
 
 
+class AppleFoundationModelsClient:
+    def __init__(self, *, timeout: float = 120.0) -> None:
+        self.timeout = timeout
+
+    def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
+        payload = {
+            "word": word.get("word") or "",
+            "reading": word.get("reading") or "",
+            "level": word.get("level") or "",
+            "meaning_zh": word.get("meaning_zh") or "",
+            "meaning": word.get("meaning") or "",
+            "matched_text": example.get("matched_text") or "",
+            "sentence": example.get("sentence") or "",
+            "context_before": example.get("context_before") or [],
+            "context_after": example.get("context_after") or [],
+        }
+        result = subprocess.run(
+            ["xcrun", "swift", str(APPLE_FM_SCRIPT)],
+            input=json.dumps(payload, ensure_ascii=False),
+            text=True,
+            capture_output=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "Apple Foundation Models request failed.")
+        return parse_annotation_response(result.stdout)
+
+
 def build_annotation_prompt(word: dict[str, Any], example: dict[str, Any]) -> str:
     context_before = "\n".join(example.get("context_before") or [])
     context_after = "\n".join(example.get("context_after") or [])
@@ -76,9 +107,10 @@ def build_annotation_prompt(word: dict[str, Any], example: dict[str, Any]) -> st
         f"Next subtitle lines:\n{context_after or '(none)'}\n\n"
         "Return JSON with exactly these string fields:\n"
         "- translation_zh: natural Chinese translation of the current line only.\n"
-        "- usage_note_zh: one short Chinese note explaining how the target word is used here.\n"
-        "- scene_description: one short Chinese description of the likely scene/context.\n"
-        "Keep each field concise. Do not invent episode facts beyond the provided subtitles."
+        "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this line.\n"
+        "- scene_description: one short Chinese description based only on the provided subtitle lines.\n"
+        "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts. "
+        "If the scene is unclear, say that it is unclear."
     )
 
 

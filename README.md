@@ -49,12 +49,14 @@ The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes th
 Optional LLM annotation:
 
 ```bash
-JPCORPUS_LLM_MODEL=your-model uv run jpcorpus annotate \
+uv run jpcorpus annotate --provider apple \
   --input corpus.json \
   --output corpus.annotated.json \
   --limit 20
 uv run jpcorpus view --corpus corpus.annotated.json
 ```
+
+Use `--provider openai-compatible --model your-model` instead for OpenAI, LiteLLM, Ollama/Open WebUI, or any compatible local server.
 
 ## Local Smoke Test Without API Keys
 
