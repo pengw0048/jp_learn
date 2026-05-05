@@ -606,10 +606,10 @@ select {
   position: sticky;
   bottom: 0;
   z-index: 5;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
   gap: 10px;
-  flex-wrap: wrap;
   padding: 12px 0 0;
   background: var(--bg);
 }
@@ -617,11 +617,14 @@ select {
 .study-actions button {
   min-height: 34px;
   padding: 6px 11px;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   color: var(--muted);
   font-weight: 720;
+  white-space: normal;
+  text-align: center;
 }
 
 .study-primary-action {
@@ -632,6 +635,7 @@ select {
 
 .study-status-actions {
   display: flex;
+  min-width: 0;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -643,7 +647,7 @@ select {
 }
 
 .study-next-action {
-  margin-left: auto;
+  justify-self: end;
 }
 
 .section-title {
@@ -1043,8 +1047,17 @@ mark {
     text-align: left;
   }
 
+  .study-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .study-status-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .study-next-action {
-    margin-left: 0;
+    justify-self: stretch;
   }
 }
 

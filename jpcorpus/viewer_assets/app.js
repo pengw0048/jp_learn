@@ -63,14 +63,14 @@ const text = {
     studyMode: "学习",
     browseMode: "浏览",
     studyProgress: "第 {current} / {total} 个",
-    revealAnswer: "显示答案",
-    hideAnswer: "收起答案",
-    nextWord: "下一个",
+    revealAnswer: "看答案",
+    hideAnswer: "先不看答案",
+    nextWord: "跳过",
     studyUnsure: "模糊",
-    studyKnown: "认识",
+    studyKnown: "已经会了",
     studyMastered: "已记住",
     studyChecks: "勾 {count}/{target}",
-    studyCheckButton: "打勾 +1",
+    studyCheckButton: "不熟，记一勾",
     studyHint: "先读例句，想一下意思；不会就打一个勾，满 7 勾算记住。",
     shows: "作品",
     subtitles: "字幕",
@@ -158,14 +158,14 @@ const text = {
     studyMode: "Study",
     browseMode: "Browse",
     studyProgress: "{current} / {total}",
-    revealAnswer: "Show answer",
+    revealAnswer: "Reveal",
     hideAnswer: "Hide answer",
-    nextWord: "Next",
+    nextWord: "Skip",
     studyUnsure: "Unsure",
-    studyKnown: "Known",
+    studyKnown: "Already know it",
     studyMastered: "Mastered",
     studyChecks: "{count}/{target} checks",
-    studyCheckButton: "+1 check",
+    studyCheckButton: "Not solid, add a check",
     studyHint: "Read first and guess; add a check when it is not solid. Seven checks means mastered.",
     shows: "Shows",
     subtitles: "Subtitles",
@@ -648,29 +648,34 @@ function renderStudyActions(word) {
   });
 
   const statusActions = el("div", "study-status-actions");
-  [
-    ["check", t("studyCheckButton")],
-    ["known", t("studyKnown")],
-    ["ignored", stateLabels.ignored[app.lang]],
-  ].forEach(([action, label]) => {
-    const button = el("button", "", label);
-    button.type = "button";
-    button.classList.toggle("active", action !== "check" && statusFor(word) === action);
-    button.addEventListener("click", () => {
-      if (action === "check") {
-        addStudyCheck(word);
-      } else {
-        markStudyWord(action);
-      }
+  if (app.study.showAnswer) {
+    [
+      ["check", t("studyCheckButton")],
+      ["known", t("studyKnown")],
+    ].forEach(([action, label]) => {
+      const button = el("button", "", label);
+      button.type = "button";
+      button.classList.toggle("active", action !== "check" && statusFor(word) === action);
+      button.addEventListener("click", () => {
+        if (action === "check") {
+          addStudyCheck(word);
+        } else {
+          markStudyWord(action);
+        }
+      });
+      statusActions.append(button);
     });
-    statusActions.append(button);
-  });
+  }
 
   const next = el("button", "study-next-action", t("nextWord"));
   next.type = "button";
   next.addEventListener("click", nextStudyWord);
 
-  actions.append(reveal, statusActions, next);
+  actions.append(reveal);
+  if (app.study.showAnswer) {
+    actions.append(statusActions);
+  }
+  actions.append(next);
   return actions;
 }
 
