@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -19,6 +21,7 @@ from .llm import (
     OpenAICompatibleClient,
     annotate_corpus,
     apply_cached_annotations,
+    apply_cached_annotations_file,
 )
 from .paths import DEFAULT_STATE_DB, ensure_parent
 from .state import State
@@ -28,6 +31,16 @@ ALLOWED_ANNOTATION_SCOPES = {"current_word", "filtered_words", "first_unannotate
 ALLOWED_SOURCES = {"all", "subtitle", "lyrics"}
 ALLOWED_LEVELS = {"all", "N5", "N4", "N3", "N2", "N1"}
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
+ALLOWED_MAINTENANCE_TASKS = {
+    "sync_anime",
+    "sync_music",
+    "fetch_lyrics",
+    "export_corpus",
+    "fetch_anime_db",
+    "fetch_zh_dict",
+    "fetch_jlpt_words",
+}
+CORPUS_RELOAD_TASKS = {"annotate", "export_corpus"}
 
 
 def _now_iso() -> str:
@@ -82,6 +95,17 @@ class ViewerJobRunner:
         thread.start()
         return job.to_dict()
 
+    def start_maintenance(self, raw_spec: dict[str, Any]) -> dict[str, Any]:
+        spec = normalize_maintenance_spec(raw_spec)
+        with self._lock:
+            if self._job and self._job.status == "running":
+                raise RuntimeError("Another maintenance job is already running.")
+            job = ViewerJob(id=str(uuid.uuid4()), kind=spec["type"], spec=public_maintenance_spec(spec))
+            self._job = job
+        thread = threading.Thread(target=self._run_maintenance_job, args=(job, spec), daemon=True)
+        thread.start()
+        return job.to_dict()
+
     def _run_annotation_job(self, job: ViewerJob, spec: dict[str, Any]) -> None:
         client: Any | None = None
         try:
@@ -128,7 +152,11 @@ class ViewerJobRunner:
                 )
                 self._log(job, f"Annotated {annotated} examples with {len(errors)} failures.")
             write_corpus_atomic(self.corpus_path, payload)
-            self._finish(job, "succeeded", {"annotated": annotated, "selected": selected_count})
+            self._finish(
+                job,
+                "succeeded",
+                {"annotated": annotated, "selected": selected_count, "reload_corpus": True},
+            )
         except Exception as exc:
             self._log(job, f"Job failed: {exc}")
             self._finish(job, "failed", {}, error=str(exc))
@@ -136,6 +164,72 @@ class ViewerJobRunner:
             close_client = getattr(client, "close", None)
             if callable(close_client):
                 close_client()
+
+    def _run_maintenance_job(self, job: ViewerJob, spec: dict[str, Any]) -> None:
+        try:
+            if spec["type"] == "export_corpus":
+                result = self._run_export_corpus(job)
+            else:
+                command = maintenance_command(spec)
+                result = self._run_command(job, command)
+                result["reload_corpus"] = spec["type"] in CORPUS_RELOAD_TASKS
+            self._finish(job, "succeeded", result)
+        except Exception as exc:
+            self._log(job, f"Job failed: {exc}")
+            self._finish(job, "failed", {}, error=str(exc))
+
+    def _run_export_corpus(self, job: ViewerJob) -> dict[str, Any]:
+        raw_path = Path("corpus.json")
+        command = jpcorpus_command() + ["export", "corpus-json", "--output", str(raw_path)]
+        self._run_command(job, command)
+        served_path = self.corpus_path.resolve()
+        if served_path == raw_path.resolve():
+            return {"output": str(raw_path), "reload_corpus": True}
+
+        self._log(job, f"Applying cached annotations to served corpus: {served_path}")
+        cache_context, _client = resolve_annotation_runtime(
+            {
+                "provider": os.environ.get("JPCORPUS_LLM_PROVIDER") or "openai-compatible",
+                "model": os.environ.get("JPCORPUS_LLM_MODEL") or os.environ.get("ANTHROPIC_MODEL"),
+                "cache_only": True,
+                "use_show_context": False,
+            }
+        )
+        annotated = apply_cached_annotations_file(
+            raw_path,
+            served_path,
+            cache_state=State(self.state_db),
+            cache_context=cache_context,
+            limit=500000,
+            overwrite=False,
+        )
+        self._log(job, f"Applied {annotated} cached annotations.")
+        return {
+            "output": str(served_path),
+            "raw_output": str(raw_path),
+            "cached_annotations": annotated,
+            "reload_corpus": True,
+        }
+
+    def _run_command(self, job: ViewerJob, command: list[str]) -> dict[str, Any]:
+        self._log(job, f"Running: {' '.join(command)}")
+        process = subprocess.Popen(
+            command,
+            cwd=Path.cwd(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                self._log(job, line)
+        return_code = process.wait()
+        if return_code != 0:
+            raise RuntimeError(f"Command exited with status {return_code}.")
+        return {"return_code": return_code}
 
     def _log(self, job: ViewerJob, message: str) -> None:
         timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -161,6 +255,7 @@ def maintenance_status(runner: ViewerJobRunner | None) -> dict[str, Any]:
     return {
         "enabled": runner is not None,
         "corpus_path": str(runner.corpus_path) if runner else None,
+        "tasks": sorted(ALLOWED_MAINTENANCE_TASKS | {"annotate"}),
         "llm": {
             "provider": os.environ.get("JPCORPUS_LLM_PROVIDER", "openai-compatible"),
             "model": (
@@ -219,6 +314,22 @@ def public_annotation_spec(spec: dict[str, Any]) -> dict[str, Any]:
     public = dict(spec)
     public["word_count"] = len(public.pop("words", []))
     return public
+
+
+def normalize_maintenance_spec(raw: dict[str, Any]) -> dict[str, Any]:
+    task_type = str(raw.get("type") or "")
+    if task_type not in ALLOWED_MAINTENANCE_TASKS:
+        raise ValueError(f"Unsupported maintenance task: {task_type}")
+    return {
+        "type": task_type,
+        "limit": optional_clamped_int(raw.get("limit"), minimum=1, maximum=50000),
+        "concurrency": clamp_int(raw.get("concurrency"), default=4, minimum=1, maximum=16),
+        "overwrite": bool(raw.get("overwrite", False)),
+    }
+
+
+def public_maintenance_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    return dict(spec)
 
 
 def build_annotation_predicate(spec: dict[str, Any]):
@@ -314,9 +425,49 @@ def write_corpus_atomic(path: Path, payload: dict[str, Any]) -> None:
     temp_path.replace(path)
 
 
+def maintenance_command(spec: dict[str, Any]) -> list[str]:
+    command = jpcorpus_command()
+    task_type = spec["type"]
+    if task_type == "sync_anime":
+        return command + ["sync"]
+    if task_type == "sync_music":
+        return command + ["lyrics", "sync"]
+    if task_type == "fetch_lyrics":
+        args = command + ["lyrics", "fetch", "--concurrency", str(spec["concurrency"])]
+        if spec["limit"] is not None:
+            args.extend(["--limit", str(spec["limit"])])
+        if spec["overwrite"]:
+            args.append("--overwrite")
+        return args
+    if task_type == "fetch_anime_db":
+        return command + ["data", "fetch-anime-db"]
+    if task_type == "fetch_zh_dict":
+        return command + ["data", "fetch-zh-dict"]
+    if task_type == "fetch_jlpt_words":
+        return command + ["data", "fetch-jlpt-words"]
+    raise ValueError(f"Unsupported maintenance task: {task_type}")
+
+
+def jpcorpus_command() -> list[str]:
+    script_path = Path(sys.executable).with_name("jpcorpus")
+    if script_path.exists():
+        return [str(script_path)]
+    return ["jpcorpus"]
+
+
 def clamp_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
     try:
         number = int(value)
     except (TypeError, ValueError):
         number = default
+    return min(max(number, minimum), maximum)
+
+
+def optional_clamped_int(value: Any, *, minimum: int, maximum: int) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
     return min(max(number, minimum), maximum)

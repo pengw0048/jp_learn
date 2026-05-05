@@ -45,19 +45,37 @@ const text = {
     studyWords: "单词",
     maintenance: "维护",
     maintenanceTitle: "维护",
+    maintenanceTask: "任务",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
     maintenanceLimit: "上限",
+    maintenanceLimitOptional: "上限（空=全部）",
     maintenanceConcurrency: "并发",
     maintenanceRpm: "RPM",
     maintenanceCacheOnly: "只应用缓存",
     maintenanceOverwrite: "覆盖已有标注",
+    maintenanceOverwriteLyrics: "覆盖已有歌词",
     maintenanceShowContext: "使用作品简介",
     maintenanceStart: "开始",
+    taskAnnotate: "LLM 标注",
+    taskExportCorpus: "重新导出语料",
+    taskSyncAnime: "同步动画/字幕",
+    taskSyncMusic: "同步音乐",
+    taskFetchLyrics: "拉取歌词",
+    taskFetchAnimeDb: "更新动画数据库",
+    taskFetchZhDict: "更新中文词典",
+    taskFetchJlptWords: "更新 JLPT 词表",
     scopeCurrentWord: "当前词",
     scopeFilteredWords: "当前筛选结果",
     scopeFirstUnannotated: "前 N 条缺失例句",
     maintenanceEstimate: "将处理约 {count} 条例句；当前来源 {source}，等级 {level}",
+    maintenanceTaskExportCorpus: "会重新生成 corpus.json，并把已有 LLM 缓存应用到当前 viewer 文件",
+    maintenanceTaskSyncAnime: "会同步 Bangumi 动画收藏，并在有 JIMAKU_API_KEY 时拉字幕",
+    maintenanceTaskSyncMusic: "会同步 Bangumi 音乐收藏，并把专辑拆成曲目",
+    maintenanceTaskFetchLyrics: "会从 LRCLIB 拉歌词；上限为空时尝试全部缺失曲目",
+    maintenanceTaskFetchAnimeDb: "会下载最新 Anime Offline Database",
+    maintenanceTaskFetchZhDict: "会下载最新日中词典",
+    maintenanceTaskFetchJlptWords: "会下载并规范化 JLPT 词表",
     maintenanceDisabled: "维护 API 未启用",
     maintenanceIdle: "空闲",
     maintenanceRunning: "运行中",
@@ -105,19 +123,37 @@ const text = {
     studyWords: "Study words",
     maintenance: "Maintain",
     maintenanceTitle: "Maintenance",
+    maintenanceTask: "Task",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
     maintenanceLimit: "Limit",
+    maintenanceLimitOptional: "Limit (blank = all)",
     maintenanceConcurrency: "Concurrency",
     maintenanceRpm: "RPM",
     maintenanceCacheOnly: "Cache only",
     maintenanceOverwrite: "Overwrite annotations",
+    maintenanceOverwriteLyrics: "Overwrite lyrics",
     maintenanceShowContext: "Use show context",
     maintenanceStart: "Start",
+    taskAnnotate: "LLM annotations",
+    taskExportCorpus: "Export corpus",
+    taskSyncAnime: "Sync anime/subtitles",
+    taskSyncMusic: "Sync music",
+    taskFetchLyrics: "Fetch lyrics",
+    taskFetchAnimeDb: "Update anime DB",
+    taskFetchZhDict: "Update ZH dictionary",
+    taskFetchJlptWords: "Update JLPT words",
     scopeCurrentWord: "Current word",
     scopeFilteredWords: "Current filtered words",
     scopeFirstUnannotated: "First N missing examples",
     maintenanceEstimate: "About {count} examples; source {source}, level {level}",
+    maintenanceTaskExportCorpus: "Regenerates corpus.json and applies existing LLM cache to the served viewer file",
+    maintenanceTaskSyncAnime: "Syncs Bangumi anime and fetches subtitles when JIMAKU_API_KEY is set",
+    maintenanceTaskSyncMusic: "Syncs Bangumi music and splits albums into tracks",
+    maintenanceTaskFetchLyrics: "Fetches LRCLIB lyrics; blank limit tries all missing tracks",
+    maintenanceTaskFetchAnimeDb: "Downloads the latest Anime Offline Database",
+    maintenanceTaskFetchZhDict: "Downloads the latest Japanese-Chinese dictionary",
+    maintenanceTaskFetchJlptWords: "Downloads and normalizes the JLPT word list",
     maintenanceDisabled: "Maintenance API disabled",
     maintenanceIdle: "Idle",
     maintenanceRunning: "Running",
@@ -170,12 +206,15 @@ const refs = {
   maintenanceToggle: $("#maintenance-toggle"),
   maintenancePanel: $("#maintenance-panel"),
   maintenanceClose: $("#maintenance-close"),
+  maintenanceTask: $("#maintenance-task"),
   maintenanceScope: $("#maintenance-scope"),
   maintenanceProvider: $("#maintenance-provider"),
+  maintenanceLimitLabel: $("#maintenance-limit-label"),
   maintenanceLimit: $("#maintenance-limit"),
   maintenanceConcurrency: $("#maintenance-concurrency"),
   maintenanceRpm: $("#maintenance-rpm"),
   maintenanceCacheOnly: $("#maintenance-cache-only"),
+  maintenanceOverwriteLabel: $("#maintenance-overwrite-label"),
   maintenanceOverwrite: $("#maintenance-overwrite"),
   maintenanceShowContext: $("#maintenance-show-context"),
   maintenanceStart: $("#maintenance-start"),
@@ -242,6 +281,7 @@ function bindControls() {
     refs.maintenanceToggle.classList.remove("active");
   });
   [
+    refs.maintenanceTask,
     refs.maintenanceScope,
     refs.maintenanceProvider,
     refs.maintenanceLimit,
@@ -254,7 +294,7 @@ function bindControls() {
     control.addEventListener("input", renderMaintenance);
     control.addEventListener("change", renderMaintenance);
   });
-  refs.maintenanceStart.addEventListener("click", startAnnotationJob);
+  refs.maintenanceStart.addEventListener("click", startMaintenanceJob);
 }
 
 function applyLanguage() {
@@ -328,19 +368,35 @@ function renderMaintenance() {
   if (!refs.maintenancePanel) {
     return;
   }
-  const spec = annotationJobSpec();
-  const estimate = estimateAnnotationJob(spec);
+  const task = maintenanceTask();
+  const isAnnotation = task === "annotate";
+  const spec = isAnnotation ? annotationJobSpec() : maintenanceJobSpec();
+  const estimate = isAnnotation ? estimateAnnotationJob(spec) : { planned: 1 };
   const job = app.maintenance.job;
+  document.querySelectorAll(".annotation-control").forEach((node) => {
+    node.hidden = !isAnnotation && !node.classList.contains("lyrics-control");
+  });
+  document.querySelectorAll(".lyrics-control").forEach((node) => {
+    node.hidden = !(isAnnotation || task === "fetch_lyrics");
+  });
+  refs.maintenanceLimitLabel.textContent =
+    task === "fetch_lyrics" ? t("maintenanceLimitOptional") : t("maintenanceLimit");
+  refs.maintenanceOverwriteLabel.textContent =
+    task === "fetch_lyrics" ? t("maintenanceOverwriteLyrics") : t("maintenanceOverwrite");
   refs.maintenanceToggle.disabled = !app.maintenance.enabled;
-  refs.maintenanceEstimate.textContent = app.maintenance.enabled
-    ? t("maintenanceEstimate", {
-        count: formatNumber(estimate.planned),
-        source: sourceLabel(spec.source),
-        level: spec.level,
-      })
-    : t("maintenanceDisabled");
+  if (!app.maintenance.enabled) {
+    refs.maintenanceEstimate.textContent = t("maintenanceDisabled");
+  } else if (isAnnotation) {
+    refs.maintenanceEstimate.textContent = t("maintenanceEstimate", {
+      count: formatNumber(estimate.planned),
+      source: sourceLabel(spec.source),
+      level: spec.level,
+    });
+  } else {
+    refs.maintenanceEstimate.textContent = maintenanceTaskDescription(task);
+  }
   refs.maintenanceStart.disabled =
-    !app.maintenance.enabled || job?.status === "running" || estimate.planned <= 0;
+    !app.maintenance.enabled || job?.status === "running" || (isAnnotation && estimate.planned <= 0);
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job.status) : t("maintenanceIdle");
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
 }
@@ -465,11 +521,13 @@ function selectWord(word, button) {
   renderMaintenance();
 }
 
-async function startAnnotationJob() {
-  const spec = annotationJobSpec();
+async function startMaintenanceJob() {
+  const task = maintenanceTask();
+  const spec = task === "annotate" ? annotationJobSpec() : maintenanceJobSpec();
+  const endpoint = task === "annotate" ? "/api/jobs/annotate" : "/api/jobs/maintenance";
   refs.maintenanceStart.disabled = true;
   try {
-    const response = await fetch("/api/jobs/annotate", {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(spec),
@@ -516,7 +574,7 @@ async function refreshMaintenanceJob() {
       clearInterval(app.maintenance.pollTimer);
       app.maintenance.pollTimer = null;
     }
-    if (job.status === "succeeded" && app.maintenance.reloadedJobId !== job.id) {
+    if (job.status === "succeeded" && job.result?.reload_corpus && app.maintenance.reloadedJobId !== job.id) {
       app.maintenance.reloadedJobId = job.id;
       await reloadCorpus();
     }
@@ -716,6 +774,20 @@ function examplesForWord(word) {
   return examples.filter((example) => example.source_type === app.source);
 }
 
+function maintenanceTask() {
+  return refs.maintenanceTask?.value || "annotate";
+}
+
+function maintenanceJobSpec() {
+  const task = maintenanceTask();
+  return {
+    type: task,
+    limit: optionalNumberValue(refs.maintenanceLimit),
+    concurrency: numberValue(refs.maintenanceConcurrency, 4),
+    overwrite: refs.maintenanceOverwrite.checked,
+  };
+}
+
 function annotationJobSpec() {
   const scope = refs.maintenanceScope.value;
   let words = [];
@@ -730,7 +802,7 @@ function annotationJobSpec() {
     words,
     source: app.source,
     level: app.level,
-    limit: numberValue(refs.maintenanceLimit, 20),
+    limit: optionalNumberValue(refs.maintenanceLimit) || 20,
     concurrency: numberValue(refs.maintenanceConcurrency, 1),
     rpm: numberValue(refs.maintenanceRpm, 0) || null,
     cache_only: refs.maintenanceCacheOnly.checked,
@@ -782,6 +854,19 @@ function sourceLabel(source) {
   return t("sourceAll");
 }
 
+function maintenanceTaskDescription(task) {
+  const key = {
+    export_corpus: "maintenanceTaskExportCorpus",
+    sync_anime: "maintenanceTaskSyncAnime",
+    sync_music: "maintenanceTaskSyncMusic",
+    fetch_lyrics: "maintenanceTaskFetchLyrics",
+    fetch_anime_db: "maintenanceTaskFetchAnimeDb",
+    fetch_zh_dict: "maintenanceTaskFetchZhDict",
+    fetch_jlpt_words: "maintenanceTaskFetchJlptWords",
+  }[task];
+  return key ? t(key) : "";
+}
+
 function maintenanceStatusLabel(status) {
   if (status === "running") {
     return t("maintenanceRunning");
@@ -798,6 +883,15 @@ function maintenanceStatusLabel(status) {
 function numberValue(input, fallback) {
   const value = Number.parseInt(input.value, 10);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function optionalNumberValue(input) {
+  const value = input.value.trim();
+  if (!value) {
+    return null;
+  }
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) ? number : null;
 }
 
 function sourceCount(word, sourceType) {

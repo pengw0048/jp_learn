@@ -680,6 +680,10 @@ mark {
   font-weight: 700;
 }
 
+.maintenance-grid label[hidden] {
+  display: none;
+}
+
 .maintenance-grid input[type="number"] {
   width: 100%;
   min-height: 36px;

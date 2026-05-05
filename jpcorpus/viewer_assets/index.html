@@ -82,6 +82,19 @@
         </div>
         <div class="maintenance-grid">
           <label>
+            <span data-i18n="maintenanceTask">任务</span>
+            <select id="maintenance-task">
+              <option value="annotate" data-i18n="taskAnnotate">LLM 标注</option>
+              <option value="export_corpus" data-i18n="taskExportCorpus">重新导出语料</option>
+              <option value="sync_anime" data-i18n="taskSyncAnime">同步动画/字幕</option>
+              <option value="sync_music" data-i18n="taskSyncMusic">同步音乐</option>
+              <option value="fetch_lyrics" data-i18n="taskFetchLyrics">拉取歌词</option>
+              <option value="fetch_anime_db" data-i18n="taskFetchAnimeDb">更新动画数据库</option>
+              <option value="fetch_zh_dict" data-i18n="taskFetchZhDict">更新中文词典</option>
+              <option value="fetch_jlpt_words" data-i18n="taskFetchJlptWords">更新 JLPT 词表</option>
+            </select>
+          </label>
+          <label class="annotation-control">
             <span data-i18n="maintenanceScope">范围</span>
             <select id="maintenance-scope">
               <option value="current_word" data-i18n="scopeCurrentWord">当前词</option>
@@ -89,7 +102,7 @@
               <option value="first_unannotated" data-i18n="scopeFirstUnannotated">前 N 条缺失例句</option>
             </select>
           </label>
-          <label>
+          <label class="annotation-control">
             <span data-i18n="maintenanceProvider">Provider</span>
             <select id="maintenance-provider">
               <option value="openai-compatible">OpenAI compatible</option>
@@ -97,27 +110,27 @@
               <option value="apple">Apple</option>
             </select>
           </label>
-          <label>
-            <span data-i18n="maintenanceLimit">上限</span>
-            <input id="maintenance-limit" type="number" min="1" max="5000" value="20" />
+          <label class="annotation-control lyrics-control">
+            <span id="maintenance-limit-label" data-i18n="maintenanceLimit">上限</span>
+            <input id="maintenance-limit" type="number" min="1" max="50000" placeholder="20" />
           </label>
-          <label>
+          <label class="annotation-control lyrics-control">
             <span data-i18n="maintenanceConcurrency">并发</span>
-            <input id="maintenance-concurrency" type="number" min="1" max="16" value="1" />
+            <input id="maintenance-concurrency" type="number" min="1" max="16" placeholder="1" />
           </label>
-          <label>
+          <label class="annotation-control">
             <span data-i18n="maintenanceRpm">RPM</span>
             <input id="maintenance-rpm" type="number" min="1" value="50" />
           </label>
-          <label class="checkbox-label">
+          <label class="checkbox-label annotation-control">
             <input id="maintenance-cache-only" type="checkbox" checked />
             <span data-i18n="maintenanceCacheOnly">只应用缓存</span>
           </label>
-          <label class="checkbox-label">
+          <label class="checkbox-label annotation-control lyrics-control">
             <input id="maintenance-overwrite" type="checkbox" />
-            <span data-i18n="maintenanceOverwrite">覆盖已有标注</span>
+            <span id="maintenance-overwrite-label" data-i18n="maintenanceOverwrite">覆盖已有标注</span>
           </label>
-          <label class="checkbox-label">
+          <label class="checkbox-label annotation-control">
             <input id="maintenance-show-context" type="checkbox" />
             <span data-i18n="maintenanceShowContext">使用作品简介</span>
           </label>

@@ -60,7 +60,7 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request_path = unquote(urlparse(self.path).path)
-        if request_path != "/api/jobs/annotate":
+        if request_path not in {"/api/jobs/annotate", "/api/jobs/maintenance"}:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
         if self.job_runner is None:
@@ -68,7 +68,10 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             return
         try:
             payload = self._read_json()
-            job = self.job_runner.start_annotation(payload)
+            if request_path == "/api/jobs/annotate":
+                job = self.job_runner.start_annotation(payload)
+            else:
+                job = self.job_runner.start_maintenance(payload)
         except Exception as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
