@@ -721,6 +721,11 @@ def annotate(
     ),
     limit: int = typer.Option(20, min=1, help="Maximum examples to annotate this run."),
     concurrency: int = typer.Option(1, min=1, max=16, help="Parallel LLM annotation requests."),
+    rpm: float | None = typer.Option(
+        None,
+        min=0.1,
+        help="Maximum uncached LLM requests per minute. Cache hits do not count.",
+    ),
     overwrite: bool = typer.Option(False, help="Regenerate existing annotations."),
     use_show_context: bool = typer.Option(
         False,
@@ -773,6 +778,7 @@ def annotate(
         label = word.get("word") or example.get("matched_text") or example.get("sentence") or "example"
         typer.echo(f"Annotation failed for {label}: {exc}", err=True)
 
+    request_interval_seconds = 60.0 / rpm if rpm else 0.0
     count = 0
     try:
         count = annotate_corpus_file(
@@ -789,6 +795,7 @@ def annotate(
                 "use_show_context": use_show_context,
             },
             concurrency=concurrency,
+            request_interval_seconds=request_interval_seconds,
             on_error=on_annotation_error,
         )
     finally:

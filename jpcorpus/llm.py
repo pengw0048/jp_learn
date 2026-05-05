@@ -6,6 +6,7 @@ import re
 import select
 import subprocess
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,23 @@ class LLMConfig:
 class AnnotationClient(Protocol):
     def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         ...
+
+
+class RequestRateLimiter:
+    def __init__(self, *, min_interval_seconds: float) -> None:
+        self.min_interval_seconds = max(0.0, min_interval_seconds)
+        self._lock = threading.Lock()
+        self._next_request_at = 0.0
+
+    def wait(self) -> None:
+        if self.min_interval_seconds <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            if now < self._next_request_at:
+                time.sleep(self._next_request_at - now)
+                now = time.monotonic()
+            self._next_request_at = now + self.min_interval_seconds
 
 
 class OpenAICompatibleClient:
@@ -297,6 +315,7 @@ def annotate_corpus(
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
     concurrency: int = 1,
+    request_interval_seconds: float = 0.0,
     on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
 ) -> tuple[dict[str, Any], int]:
     annotated = 0
@@ -327,9 +346,15 @@ def annotate_corpus(
 
     if targets:
         max_workers = max(1, concurrency)
+        rate_limiter = RequestRateLimiter(min_interval_seconds=request_interval_seconds)
+
+        def annotate_target(word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
+            rate_limiter.wait()
+            return client.annotate_example(word, example)
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(client.annotate_example, word, example): (word, example, cache_key)
+                executor.submit(annotate_target, word, example): (word, example, cache_key)
                 for word, example, cache_key in targets
             }
             for future in as_completed(futures):
@@ -371,6 +396,7 @@ def annotate_corpus_file(
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
     concurrency: int = 1,
+    request_interval_seconds: float = 0.0,
     on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
 ) -> int:
     payload = json.loads(input_path.read_text(encoding="utf-8"))
@@ -382,6 +408,7 @@ def annotate_corpus_file(
         cache_state=cache_state,
         cache_context=cache_context,
         concurrency=concurrency,
+        request_interval_seconds=request_interval_seconds,
         on_error=on_error,
     )
     ensure_parent(output_path)
