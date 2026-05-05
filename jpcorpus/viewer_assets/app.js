@@ -449,7 +449,7 @@ function renderWordRow(word) {
     "word-meta",
     `${word.reading || ""} · ${t("count")} ${formatNumber(displayCount(word))}`,
   );
-  const meaning = el("div", "word-meaning", displayMeaning(word));
+  const meaning = renderMeaningValue(word, "word-meaning");
   button.append(main, meta, meaning);
   return button;
 }
@@ -483,8 +483,8 @@ function renderDetailHeader(word) {
   titleRow.append(title, stats);
 
   const meanings = el("div", "meaning-block");
-  const mainMeaning = displayMeaning(word);
-  meanings.append(el("div", "meaning-main", mainMeaning || "—"));
+  const mainMeaning = displayMeaningRaw(word);
+  meanings.append(mainMeaning ? renderMeaningValue(word, "meaning-main") : el("div", "meaning-main", "—"));
   if (!mainMeaning) {
     meanings.append(el("div", "meaning-alt", t("missingMeaning")));
   }
@@ -750,11 +750,96 @@ function chooseInitialWord(words = app.words) {
   return words[0] || null;
 }
 
-function displayMeaning(word) {
+function displayMeaningRaw(word) {
   if (app.lang === "zh") {
     return word.meaning_zh || word.meaning || "";
   }
   return word.meaning || word.meaning_zh || "";
+}
+
+function renderMeaningValue(word, className) {
+  return renderParsedMeaning(parseMeaning(displayMeaningRaw(word)), className);
+}
+
+function renderParsedMeaning(meaning, className) {
+  const wrap = el("div", className);
+  if (!meaning.raw) {
+    return wrap;
+  }
+  if (meaning.accent) {
+    wrap.append(el("span", "meaning-chip meaning-accent", meaning.accent));
+  }
+  if (meaning.pos) {
+    wrap.append(el("span", "meaning-chip meaning-pos", meaning.pos));
+  }
+  wrap.append(el("span", "meaning-text", meaning.text || meaning.raw));
+  return wrap;
+}
+
+function parseMeaning(value) {
+  let textValue = String(value || "").trim();
+  const raw = textValue;
+  let accent = "";
+  let pos = "";
+  const accentMatch = textValue.match(/^([⓪①②③④⑤⑥⑦⑧⑨]+)\s*/u);
+  if (accentMatch) {
+    accent = accentMatch[1];
+    textValue = textValue.slice(accentMatch[0].length).trim();
+  }
+  const bracketPosMatch = textValue.match(/^【([^】]+)】\s*/u);
+  if (bracketPosMatch) {
+    pos = bracketPosMatch[1];
+    textValue = textValue.slice(bracketPosMatch[0].length).trim();
+  } else {
+    const prefix = meaningPosPrefix(textValue);
+    if (prefix) {
+      pos = normalizeMeaningPos(prefix);
+      textValue = textValue.slice(prefix.length).trim();
+    }
+  }
+  return { raw, accent, pos, text: textValue };
+}
+
+function meaningPosPrefix(value) {
+  const prefixes = [
+    "助动词",
+    "连体词",
+    "接续词",
+    "感叹词",
+    "形容词",
+    "自动1",
+    "自动2",
+    "自动3",
+    "他动1",
+    "他动2",
+    "他动3",
+    "名词",
+    "代词",
+    "副词",
+    "数词",
+    "助词",
+    "动1",
+    "动2",
+    "动3",
+    "イ形",
+    "ナ形",
+    "连体",
+    "名",
+    "代",
+    "副",
+    "数",
+  ];
+  return prefixes.find((prefix) => value.startsWith(`${prefix} `) || value.startsWith(`${prefix}　`)) || "";
+}
+
+function normalizeMeaningPos(value) {
+  const mapping = {
+    名词: "名",
+    代词: "代",
+    副词: "副",
+    数词: "数",
+  };
+  return mapping[value] || value;
 }
 
 function totalExampleCount() {

@@ -386,6 +386,29 @@ select {
   text-overflow: ellipsis;
 }
 
+.word-meaning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.meaning-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meaning-chip {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
 .detail-pane {
   min-width: 0;
   height: 100%;
@@ -476,8 +499,21 @@ select {
 }
 
 .meaning-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-size: 18px;
   font-weight: 680;
+}
+
+.meaning-main .meaning-chip {
+  font-size: 12px;
+}
+
+.meaning-main .meaning-text {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .meaning-alt {
