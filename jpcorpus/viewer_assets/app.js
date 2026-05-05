@@ -34,7 +34,7 @@ const text = {
     exampleColumns: "列数",
     exampleColumnsAuto: "自动",
     chineseMeaning: "日中",
-    fallbackMeaning: "英文释义",
+    missingMeaning: "暂无释义",
     noExamples: "这个词暂时没有例句",
     scene: "场景",
     translation: "翻译",
@@ -74,6 +74,7 @@ const text = {
     exampleColumns: "Columns",
     exampleColumnsAuto: "Auto",
     chineseMeaning: "ZH",
+    missingMeaning: "No meaning yet",
     noExamples: "No examples for this word yet",
     scene: "Scene",
     translation: "Translation",
@@ -251,8 +252,7 @@ function renderWordRow(word) {
   button.type = "button";
   button.classList.toggle("active", app.selectedWord?.word === word.word);
   button.addEventListener("click", () => {
-    app.selectedWord = word;
-    render();
+    selectWord(word, button);
   });
 
   const main = el("div", "word-main");
@@ -302,8 +302,8 @@ function renderDetailHeader(word) {
   const meanings = el("div", "meaning-block");
   const mainMeaning = displayMeaning(word);
   meanings.append(el("div", "meaning-main", mainMeaning || "—"));
-  if (app.lang === "zh" && word.meaning_zh && word.meaning && word.meaning_zh !== word.meaning) {
-    meanings.append(el("div", "meaning-alt", `${t("fallbackMeaning")}: ${word.meaning}`));
+  if (!mainMeaning) {
+    meanings.append(el("div", "meaning-alt", t("missingMeaning")));
   }
 
   header.append(titleRow, meanings, renderStatusActions(word));
@@ -324,6 +324,15 @@ function renderStatusActions(word) {
     wrap.append(button);
   });
   return wrap;
+}
+
+function selectWord(word, button) {
+  app.selectedWord = word;
+  refs.wordList.querySelectorAll(".word-row.active").forEach((row) => {
+    row.classList.remove("active");
+  });
+  button.classList.add("active");
+  renderDetail();
 }
 
 function renderExamples(word) {
