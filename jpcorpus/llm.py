@@ -14,9 +14,13 @@ from .paths import ensure_parent
 
 
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
+REQUIRED_ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh")
 ANNOTATION_CACHE_PURPOSE = "llm-annotation"
-ANNOTATION_CACHE_VERSION = 1
+ANNOTATION_CACHE_VERSION = 2
 APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
+DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
+DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+ANTHROPIC_VERSION = "2023-06-01"
 
 
 @dataclass(frozen=True)
@@ -26,10 +30,15 @@ class LLMConfig:
     api_key: str | None = None
     timeout: float = 60.0
     use_show_context: bool = False
+    transport: httpx.BaseTransport | None = None
 
     @property
     def chat_completions_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/chat/completions"
+
+    @property
+    def anthropic_messages_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}/messages"
 
 
 class AnnotationClient(Protocol):
@@ -66,11 +75,66 @@ class OpenAICompatibleClient:
         headers = {"Content-Type": "application/json"}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
-        with httpx.Client(timeout=self.config.timeout, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=self.config.timeout,
+            follow_redirects=True,
+            transport=self.config.transport,
+        ) as client:
             response = client.post(self.config.chat_completions_url, headers=headers, json=payload)
             response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
         return parse_annotation_response(content)
+
+
+class AnthropicClient:
+    def __init__(self, config: LLMConfig) -> None:
+        self.config = config
+
+    def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
+        if not self.config.api_key:
+            raise ValueError("Anthropic API key is required.")
+        payload = {
+            "model": self.config.model,
+            "max_tokens": 512,
+            "temperature": 0.2,
+            "system": (
+                "You annotate Japanese media examples for Chinese-speaking JLPT learners. "
+                "Return strict JSON only."
+            ),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": build_annotation_prompt(
+                        word,
+                        example,
+                        use_show_context=self.config.use_show_context,
+                    ),
+                }
+            ],
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.config.api_key,
+            "anthropic-version": ANTHROPIC_VERSION,
+        }
+        with httpx.Client(
+            timeout=self.config.timeout,
+            follow_redirects=True,
+            transport=self.config.transport,
+        ) as client:
+            response = client.post(self.config.anthropic_messages_url, headers=headers, json=payload)
+            if response.is_error:
+                detail = _truncate_text(response.text, limit=500)
+                raise RuntimeError(
+                    f"Anthropic request failed with HTTP {response.status_code}: {detail}"
+                )
+        content = response.json().get("content") or []
+        text_parts = [
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        return parse_annotation_response("\n".join(text_parts))
 
 
 class AppleFoundationModelsClient:
@@ -119,7 +183,7 @@ def build_annotation_prompt(
     show_context_block = ""
     if use_show_context and (show_summary or show_characters):
         show_context_block = (
-            "Show context for scene only; trust the subtitle text if there is any conflict:\n"
+            "Optional show context for understanding names or references only; trust the source text if there is any conflict:\n"
             f"Summary: {show_summary or '(none)'}\n"
             f"Characters: {show_characters or '(none)'}\n\n"
         )
@@ -138,9 +202,8 @@ def build_annotation_prompt(
         "Return JSON with exactly these string fields:\n"
         "- translation_zh: natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit.\n"
         "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this source block.\n"
-        "- scene_description: one short Chinese description based on the full provided subtitle context.\n"
-        "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts. "
-        "If the scene is unclear, say that it is unclear."
+        "- scene_description: an empty string.\n"
+        "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts."
     )
 
 
@@ -238,7 +301,7 @@ def annotate_corpus_file(
 
 
 def _has_annotations(example: dict[str, Any]) -> bool:
-    return all(example.get(field) for field in ANNOTATION_FIELDS)
+    return all(example.get(field) for field in REQUIRED_ANNOTATION_FIELDS)
 
 
 def annotation_cache_key(

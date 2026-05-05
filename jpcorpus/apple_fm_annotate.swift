@@ -26,7 +26,7 @@ let showSummary = truncated(request.show_context?.summary ?? "", limit: 280)
 let showCharacters = Array((request.show_context?.characters ?? []).prefix(12))
 let showContextBlock = (request.use_show_context == true && (!showSummary.isEmpty || !showCharacters.isEmpty))
     ? """
-Show context for scene only; trust the source text if there is any conflict:
+Optional show context for understanding names or references only; trust the source text if there is any conflict:
 Summary: \(showSummary.isEmpty ? "(none)" : showSummary)
 Characters: \(showCharacters.isEmpty ? "(none)" : showCharacters.joined(separator: ", "))
 
@@ -72,7 +72,7 @@ Return JSON:
 {
   "translation_zh": "natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit",
   "usage_note_zh": "one short Chinese note explaining the target word's meaning or grammar in this source block",
-  "scene_description": "one short Chinese description based on the full provided source context; say unclear if unclear"
+  "scene_description": ""
 }
 """
 

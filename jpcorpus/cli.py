@@ -16,7 +16,15 @@ from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .i18n import SUPPORTED_LANGUAGES
-from .llm import AppleFoundationModelsClient, LLMConfig, OpenAICompatibleClient, annotate_corpus_file
+from .llm import (
+    DEFAULT_ANTHROPIC_BASE_URL,
+    DEFAULT_ANTHROPIC_MODEL,
+    AnthropicClient,
+    AppleFoundationModelsClient,
+    LLMConfig,
+    OpenAICompatibleClient,
+    annotate_corpus_file,
+)
 from .lyrics import (
     LRCLIB_ALBUM_CACHE_PURPOSE,
     LRCLIB_ALBUM_CACHE_VERSION,
@@ -694,12 +702,17 @@ def annotate(
     provider: str = typer.Option(
         "openai-compatible",
         envvar="JPCORPUS_LLM_PROVIDER",
-        help="LLM provider: openai-compatible or apple.",
+        help="LLM provider: openai-compatible, anthropic, or apple.",
     ),
     base_url: str = typer.Option(
         "https://api.openai.com/v1",
         envvar="JPCORPUS_LLM_BASE_URL",
         help="OpenAI-compatible API base URL.",
+    ),
+    anthropic_base_url: str = typer.Option(
+        DEFAULT_ANTHROPIC_BASE_URL,
+        envvar="ANTHROPIC_BASE_URL",
+        help="Anthropic Messages API base URL.",
     ),
     api_key: str | None = typer.Option(
         None,
@@ -711,15 +724,33 @@ def annotate(
     use_show_context: bool = typer.Option(
         False,
         "--use-show-context",
-        help="Include cached Bangumi show summaries in the LLM prompt for scene descriptions.",
+        help="Include cached Bangumi show summaries in the LLM prompt for names and references.",
     ),
 ) -> None:
-    """Annotate corpus examples with translation, usage notes, and scene descriptions."""
+    """Annotate corpus examples with translation and usage notes."""
     if provider == "apple":
+        resolved_model = "apple"
+        resolved_base_url = ""
         client = AppleFoundationModelsClient(use_show_context=use_show_context)
+    elif provider == "anthropic":
+        resolved_model = model or DEFAULT_ANTHROPIC_MODEL
+        resolved_base_url = os.environ.get("JPCORPUS_ANTHROPIC_BASE_URL") or anthropic_base_url
+        resolved_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not resolved_api_key:
+            raise typer.BadParameter("Set ANTHROPIC_API_KEY or JPCORPUS_LLM_API_KEY for Anthropic.")
+        client = AnthropicClient(
+            LLMConfig(
+                model=resolved_model,
+                base_url=resolved_base_url,
+                api_key=resolved_api_key,
+                use_show_context=use_show_context,
+            )
+        )
     elif provider == "openai-compatible":
         if not model:
             raise typer.BadParameter("Set --model or JPCORPUS_LLM_MODEL.")
+        resolved_model = model
+        resolved_base_url = base_url
         if not api_key:
             api_key = os.environ.get("OPENAI_API_KEY")
         if "api.openai.com" in base_url and not api_key:
@@ -733,7 +764,7 @@ def annotate(
             )
         )
     else:
-        raise typer.BadParameter("Unsupported provider. Use 'openai-compatible' or 'apple'.")
+        raise typer.BadParameter("Unsupported provider. Use 'openai-compatible', 'anthropic', or 'apple'.")
     count = annotate_corpus_file(
         input,
         output,
@@ -743,8 +774,8 @@ def annotate(
         cache_state=State(state_db),
         cache_context={
             "provider": provider,
-            "model": model or "apple",
-            "base_url": base_url if provider == "openai-compatible" else "",
+            "model": resolved_model,
+            "base_url": resolved_base_url,
             "use_show_context": use_show_context,
         },
     )

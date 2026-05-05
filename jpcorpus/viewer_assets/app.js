@@ -343,9 +343,6 @@ function renderExamples(word) {
     if (example.usage_note_zh) {
       item.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
     }
-    if (example.scene_description) {
-      item.append(el("div", "annotation-line", `${t("scene")}: ${example.scene_description}`));
-    }
     section.append(item);
   });
   return section;
