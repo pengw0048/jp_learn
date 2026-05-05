@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .jlpt import JLPTWords
-from .models import SubtitleFile, WordEntry
+from .models import SubtitleFile, SubtitleLine, WordEntry
 from .subtitle import parse_subtitle
 from .tokenize import JapaneseTokenizer
 
@@ -55,6 +55,8 @@ class WordExample:
     end_ms: int | None = None
     context_before: list[str] = field(default_factory=list)
     context_after: list[str] = field(default_factory=list)
+    show_summary: str | None = None
+    show_characters: list[str] = field(default_factory=list)
     scene_description: str | None = None
 
 
@@ -142,6 +144,8 @@ def analyze_subtitles(
     jlpt_words: JLPTWords,
     max_examples_per_word: int = 3,
     context_lines: int = 2,
+    context_min_chars: int = 0,
+    context_max_lines: int | None = None,
 ) -> CorpusAnalysis:
     tokenizer = JapaneseTokenizer()
     word_stats: dict[str, WordStats] = {}
@@ -187,18 +191,24 @@ def analyze_subtitles(
                         episode=subtitle_file.episode,
                         start_ms=line.start_ms,
                         end_ms=line.end_ms,
-                        context_before=[
-                            context_line.text
-                            for context_line in subtitle_lines[
-                                max(0, line_index - context_lines) : line_index
-                            ]
-                        ],
-                        context_after=[
-                            context_line.text
-                            for context_line in subtitle_lines[
-                                line_index + 1 : line_index + 1 + context_lines
-                            ]
-                        ],
+                        context_before=collect_context(
+                            subtitle_lines,
+                            line_index=line_index,
+                            direction="before",
+                            preferred_lines=context_lines,
+                            min_chars=context_min_chars,
+                            max_lines=context_max_lines,
+                        ),
+                        context_after=collect_context(
+                            subtitle_lines,
+                            line_index=line_index,
+                            direction="after",
+                            preferred_lines=context_lines,
+                            min_chars=context_min_chars,
+                            max_lines=context_max_lines,
+                        ),
+                        show_summary=subtitle_file.show_summary,
+                        show_characters=subtitle_file.show_characters,
                     ),
                     limit=max_examples_per_word,
                 )
@@ -215,6 +225,42 @@ def analyze_subtitles(
         seen_by_level=dict(seen_by_level),
         jlpt_words=jlpt_words,
     )
+
+
+def collect_context(
+    subtitle_lines: list[SubtitleLine],
+    *,
+    line_index: int,
+    direction: str,
+    preferred_lines: int,
+    min_chars: int = 0,
+    max_lines: int | None = None,
+) -> list[str]:
+    if preferred_lines <= 0 and min_chars <= 0:
+        return []
+    if max_lines is None:
+        max_lines = max(preferred_lines, preferred_lines + 6)
+    selected = []
+    char_count = 0
+    if direction == "before":
+        indexes = range(line_index - 1, -1, -1)
+    elif direction == "after":
+        indexes = range(line_index + 1, len(subtitle_lines))
+    else:
+        raise ValueError(f"Unsupported context direction: {direction}")
+    for index in indexes:
+        text = subtitle_lines[index].text.strip()
+        if not text:
+            continue
+        selected.append(text)
+        char_count += len(text)
+        if len(selected) >= preferred_lines and char_count >= min_chars:
+            break
+        if len(selected) >= max_lines:
+            break
+    if direction == "before":
+        selected.reverse()
+    return selected
 
 
 def is_study_candidate(base: str, pos: str | None) -> bool:
@@ -243,6 +289,8 @@ def analyze_paths(
     title: str = "Local subtitles",
     max_examples_per_word: int = 3,
     context_lines: int = 2,
+    context_min_chars: int = 0,
+    context_max_lines: int | None = None,
 ) -> CorpusAnalysis:
     subtitle_files = [
         SubtitleFile(bangumi_id=index + 1, show_title=title, path=path, name=path.name)
@@ -254,4 +302,6 @@ def analyze_paths(
         jlpt_words=jlpt_words,
         max_examples_per_word=max_examples_per_word,
         context_lines=context_lines,
+        context_min_chars=context_min_chars,
+        context_max_lines=context_max_lines,
     )

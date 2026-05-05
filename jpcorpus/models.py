@@ -41,6 +41,8 @@ class SubtitleFile:
     name: str
     episode: int | None = None
     url: str | None = None
+    show_summary: str | None = None
+    show_characters: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

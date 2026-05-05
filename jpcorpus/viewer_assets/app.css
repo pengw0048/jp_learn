@@ -479,14 +479,30 @@ select {
   box-shadow: var(--shadow);
 }
 
-.example-text {
+.example-lines {
+  display: grid;
+  gap: 6px;
+}
+
+.example-current,
+.example-context {
   font-size: 18px;
   line-height: 1.75;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-.context {
+.example-current {
+  color: var(--text);
+  font-weight: 620;
+}
+
+.example-context {
   color: var(--muted);
+}
+
+.subtitle-cue {
+  min-width: 0;
 }
 
 mark {
@@ -500,7 +516,7 @@ mark {
 .reference {
   color: var(--accent-2);
   font-weight: 720;
-  white-space: nowrap;
+  font-size: 17px;
 }
 
 .annotation-line {

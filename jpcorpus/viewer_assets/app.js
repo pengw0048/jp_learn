@@ -310,13 +310,14 @@ function renderExamples(word) {
   }
   examples.forEach((example) => {
     const item = el("div", "example");
-    const paragraph = el("div", "example-text");
-    appendContext(paragraph, lastItems(example.context_before), "before");
-    appendHighlighted(paragraph, example.sentence || "", example.matched_text || word.word);
-    appendContext(paragraph, firstItems(example.context_after), "after");
-    paragraph.append(" ");
-    paragraph.append(el("span", "reference", `（${formatReference(example)}）`));
-    item.append(paragraph);
+    const lines = el("div", "example-lines");
+    appendContextBlock(lines, contextPreview(example.context_before, "before"), "before");
+    const current = el("div", "example-current");
+    appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
+    lines.append(current);
+    appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
+    lines.append(el("div", "reference", `（${formatReference(example)}）`));
+    item.append(lines);
     if (example.translation_zh) {
       item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
     }
@@ -331,13 +332,18 @@ function renderExamples(word) {
   return section;
 }
 
-function appendContext(parent, lines, position) {
-  const textValue = lines.filter(Boolean).join(" ");
-  if (!textValue) {
+function appendContextBlock(parent, lines, position) {
+  const visibleLines = lines.filter(Boolean);
+  if (visibleLines.length === 0) {
     return;
   }
-  const displayText = position === "before" ? `…${textValue}` : `${textValue}…`;
-  parent.append(el("span", "context", displayText), " ");
+  const block = el("div", `example-context ${position}`);
+  visibleLines.forEach((line, index) => {
+    const prefix = position === "before" && index === 0 ? "…" : "";
+    const suffix = position === "after" && index === visibleLines.length - 1 ? "…" : "";
+    block.append(el("div", "subtitle-cue", `${prefix}${line}${suffix}`));
+  });
+  parent.append(block);
 }
 
 function appendHighlighted(parent, value, match) {
@@ -345,13 +351,13 @@ function appendHighlighted(parent, value, match) {
     return;
   }
   if (!match || !value.includes(match)) {
-    parent.append(value, " ");
+    parent.append(value);
     return;
   }
   const index = value.indexOf(match);
   parent.append(value.slice(0, index));
   parent.append(el("mark", "", match));
-  parent.append(value.slice(index + match.length), " ");
+  parent.append(value.slice(index + match.length));
 }
 
 function filteredWords() {
@@ -538,10 +544,26 @@ function pad(value) {
   return String(value).padStart(2, "0");
 }
 
-function lastItems(value, count = 2) {
-  return Array.isArray(value) ? value.slice(-count) : [];
-}
-
-function firstItems(value, count = 2) {
-  return Array.isArray(value) ? value.slice(0, count) : [];
+function contextPreview(value, position, minChars = 40, maxLines = 3) {
+  const lines = Array.isArray(value) ? value.filter(Boolean) : [];
+  const selected = [];
+  let charCount = 0;
+  if (position === "before") {
+    for (let index = lines.length - 1; index >= 0 && selected.length < maxLines; index -= 1) {
+      selected.unshift(lines[index]);
+      charCount += lines[index].length;
+      if (charCount >= minChars) {
+        break;
+      }
+    }
+    return selected;
+  }
+  for (let index = 0; index < lines.length && selected.length < maxLines; index += 1) {
+    selected.push(lines[index]);
+    charCount += lines[index].length;
+    if (charCount >= minChars) {
+      break;
+    }
+  }
+  return selected;
 }

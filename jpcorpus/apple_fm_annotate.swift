@@ -11,10 +11,27 @@ struct AnnotationRequest: Decodable {
     let sentence: String
     let context_before: [String]
     let context_after: [String]
+    let show_context: ShowContext?
+    let use_show_context: Bool?
+}
+
+struct ShowContext: Decodable {
+    let summary: String?
+    let characters: [String]?
 }
 
 let data = FileHandle.standardInput.readDataToEndOfFile()
 let request = try JSONDecoder().decode(AnnotationRequest.self, from: data)
+let showSummary = truncated(request.show_context?.summary ?? "", limit: 280)
+let showCharacters = Array((request.show_context?.characters ?? []).prefix(12))
+let showContextBlock = (request.use_show_context == true && (!showSummary.isEmpty || !showCharacters.isEmpty))
+    ? """
+Show context for scene only; trust the subtitle text if there is any conflict:
+Summary: \(showSummary.isEmpty ? "(none)" : showSummary)
+Characters: \(showCharacters.isEmpty ? "(none)" : showCharacters.joined(separator: ", "))
+
+"""
+    : ""
 let model = SystemLanguageModel.default
 guard model.isAvailable else {
     throw NSError(
@@ -28,7 +45,7 @@ let instructions = """
 You annotate Japanese subtitle examples for Chinese-speaking JLPT learners.
 Return strict JSON only, with keys translation_zh, usage_note_zh, scene_description.
 Do not wrap the JSON in Markdown.
-Only use the provided subtitle lines. Do not invent setting, genre, speaker identity, or hidden episode facts.
+Only use the provided subtitle blocks. Do not invent setting, genre, speaker identity, or hidden episode facts.
 """
 
 let prompt = """
@@ -41,23 +58,31 @@ Chinese meaning: \(request.meaning_zh)
 English meaning: \(request.meaning)
 Matched text in sentence: \(request.matched_text)
 
-Previous subtitle lines:
+Previous subtitle blocks:
 \(request.context_before.isEmpty ? "(none)" : request.context_before.joined(separator: "\n"))
 
-Current line:
+Current subtitle block:
 \(request.sentence)
 
-Next subtitle lines:
+Next subtitle blocks:
 \(request.context_after.isEmpty ? "(none)" : request.context_after.joined(separator: "\n"))
 
+\(showContextBlock)
 Return JSON:
 {
-  "translation_zh": "natural Chinese translation of the current line only",
-  "usage_note_zh": "one short Chinese note explaining the target word's meaning or grammar in this line",
-  "scene_description": "one short Chinese description based only on the provided subtitle lines; say unclear if unclear"
+  "translation_zh": "natural Simplified Chinese translation of the full current subtitle block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit",
+  "usage_note_zh": "one short Chinese note explaining the target word's meaning or grammar in this subtitle block",
+  "scene_description": "one short Chinese description based on the full provided subtitle context; say unclear if unclear"
 }
 """
 
 let session = LanguageModelSession(instructions: instructions)
 let response = try await session.respond(to: prompt)
 print(response.content)
+
+func truncated(_ value: String, limit: Int) -> String {
+    if value.count <= limit {
+        return value
+    }
+    return String(value.prefix(limit)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+}

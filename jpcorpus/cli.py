@@ -60,6 +60,8 @@ def load_analysis(
     subtitles: list[Path] | None,
     max_examples_per_word: int = 3,
     context_lines: int = 2,
+    context_min_chars: int = 0,
+    context_max_lines: int | None = None,
 ):
     words = load_jlpt_words(jlpt_words)
     if subtitles:
@@ -68,6 +70,8 @@ def load_analysis(
             jlpt_words=words,
             max_examples_per_word=max_examples_per_word,
             context_lines=context_lines,
+            context_min_chars=context_min_chars,
+            context_max_lines=context_max_lines,
         )
     state = State(state_db)
     return analyze_subtitles(
@@ -76,6 +80,8 @@ def load_analysis(
         jlpt_words=words,
         max_examples_per_word=max_examples_per_word,
         context_lines=context_lines,
+        context_min_chars=context_min_chars,
+        context_max_lines=context_max_lines,
     )
 
 
@@ -285,8 +291,18 @@ def export_corpus_json(
     jlpt_words: Path = typer.Option(DEFAULT_JLPT_WORDS, help="JLPT word list JSON/CSV path."),
     level: int | None = typer.Option(None, min=1, max=5, help="Only export one JLPT level."),
     limit: int | None = typer.Option(None, help="Maximum words to export."),
-    examples_per_word: int = typer.Option(3, min=1, help="Examples to include per word."),
+    examples_per_word: int = typer.Option(5, min=1, help="Examples to include per word."),
     context_lines: int = typer.Option(2, min=0, help="Subtitle lines to keep before and after each example."),
+    context_min_chars: int = typer.Option(
+        40,
+        min=0,
+        help="Keep collecting nearby subtitle lines until each side has at least this many characters.",
+    ),
+    context_max_lines: int = typer.Option(
+        4,
+        min=1,
+        help="Maximum nearby subtitle lines to keep on each side.",
+    ),
     zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
     subtitles: list[Path] | None = typer.Option(
         None,
@@ -300,6 +316,8 @@ def export_corpus_json(
         subtitles=subtitles,
         max_examples_per_word=max(examples_per_word * 12, 24),
         context_lines=context_lines,
+        context_min_chars=context_min_chars,
+        context_max_lines=context_max_lines,
     )
     write_corpus_json(
         analysis,
@@ -349,10 +367,15 @@ def annotate(
     ),
     limit: int = typer.Option(20, min=1, help="Maximum examples to annotate this run."),
     overwrite: bool = typer.Option(False, help="Regenerate existing annotations."),
+    use_show_context: bool = typer.Option(
+        False,
+        "--use-show-context",
+        help="Include cached Bangumi show summaries in the LLM prompt for scene descriptions.",
+    ),
 ) -> None:
     """Annotate corpus examples with translation, usage notes, and scene descriptions."""
     if provider == "apple":
-        client = AppleFoundationModelsClient()
+        client = AppleFoundationModelsClient(use_show_context=use_show_context)
     elif provider == "openai-compatible":
         if not model:
             raise typer.BadParameter("Set --model or JPCORPUS_LLM_MODEL.")
@@ -361,7 +384,12 @@ def annotate(
         if "api.openai.com" in base_url and not api_key:
             raise typer.BadParameter("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY for OpenAI.")
         client = OpenAICompatibleClient(
-            LLMConfig(model=model, base_url=base_url, api_key=api_key)
+            LLMConfig(
+                model=model,
+                base_url=base_url,
+                api_key=api_key,
+                use_show_context=use_show_context,
+            )
         )
     else:
         raise typer.BadParameter("Unsupported provider. Use 'openai-compatible' or 'apple'.")

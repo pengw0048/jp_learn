@@ -35,7 +35,7 @@ uv run jpcorpus link bangumi
 uv run jpcorpus sync
 uv run jpcorpus report --level 3 --output report.md
 uv run jpcorpus report --language en --level 3 --output report.en.md
-uv run jpcorpus export corpus-json --examples-per-word 3 --context-lines 2 --output corpus.json
+uv run jpcorpus export corpus-json --output corpus.json
 uv run jpcorpus view --corpus corpus.json
 uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 ```
@@ -44,7 +44,7 @@ uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 
-The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced subtitles as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. `jpcorpus annotate` can call any OpenAI-compatible endpoint to add example-level `translation_zh`, `usage_note_zh`, and `scene_description` fields. That includes OpenAI, a LiteLLM proxy, Ollama/Open WebUI style local servers, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, examples, and browser-local study status.
+The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced subtitles as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle blocks for LLM scene annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future scene context; `jpcorpus annotate` keeps prompts subtitle-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can call any OpenAI-compatible endpoint to add example-level `translation_zh`, `usage_note_zh`, and `scene_description` fields. That includes OpenAI, a LiteLLM proxy, Ollama/Open WebUI style local servers, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, examples, and browser-local study status.
 
 Optional LLM annotation:
 

@@ -248,23 +248,27 @@ class State:
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT sf.*, ws.title_jp, ws.title_zh
+                SELECT sf.*, ws.title_jp, ws.title_zh, ws.subject_json
                 FROM subtitle_files sf
                 JOIN watched_shows ws ON ws.bangumi_id = sf.bangumi_id
                 ORDER BY ws.title_jp, sf.name
                 """
             ).fetchall()
-        return [
-            SubtitleFile(
-                bangumi_id=int(row["bangumi_id"]),
-                show_title=row["title_zh"] or row["title_jp"],
-                path=Path(row["local_path"]),
-                name=row["name"],
-                episode=row["episode"],
-                url=row["url"],
+        subtitle_files = []
+        for row in rows:
+            subject = json.loads(row["subject_json"])
+            subtitle_files.append(
+                SubtitleFile(
+                    bangumi_id=int(row["bangumi_id"]),
+                    show_title=row["title_zh"] or row["title_jp"],
+                    path=Path(row["local_path"]),
+                    name=row["name"],
+                    episode=row["episode"],
+                    url=row["url"],
+                    show_summary=clean_show_summary(subject),
+                )
             )
-            for row in rows
-        ]
+        return subtitle_files
 
     def _row_to_show(self, row: sqlite3.Row) -> WatchedShow:
         return WatchedShow(
@@ -282,3 +286,10 @@ class State:
             jimaku_entry_id=row["jimaku_entry_id"],
         )
 
+
+def clean_show_summary(subject: dict[str, Any]) -> str | None:
+    value = subject.get("summary") or subject.get("short_summary")
+    if not value:
+        return None
+    text = " ".join(str(value).split())
+    return text or None

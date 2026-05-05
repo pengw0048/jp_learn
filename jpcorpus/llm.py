@@ -22,6 +22,7 @@ class LLMConfig:
     base_url: str = "https://api.openai.com/v1"
     api_key: str | None = None
     timeout: float = 60.0
+    use_show_context: bool = False
 
     @property
     def chat_completions_url(self) -> str:
@@ -49,7 +50,14 @@ class OpenAICompatibleClient:
                         "Return strict JSON only."
                     ),
                 },
-                {"role": "user", "content": build_annotation_prompt(word, example)},
+                {
+                    "role": "user",
+                    "content": build_annotation_prompt(
+                        word,
+                        example,
+                        use_show_context=self.config.use_show_context,
+                    ),
+                },
             ],
         }
         headers = {"Content-Type": "application/json"}
@@ -63,8 +71,9 @@ class OpenAICompatibleClient:
 
 
 class AppleFoundationModelsClient:
-    def __init__(self, *, timeout: float = 120.0) -> None:
+    def __init__(self, *, timeout: float = 120.0, use_show_context: bool = False) -> None:
         self.timeout = timeout
+        self.use_show_context = use_show_context
 
     def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         payload = {
@@ -77,6 +86,8 @@ class AppleFoundationModelsClient:
             "sentence": example.get("sentence") or "",
             "context_before": example.get("context_before") or [],
             "context_after": example.get("context_after") or [],
+            "show_context": example.get("show_context") or {},
+            "use_show_context": self.use_show_context,
         }
         result = subprocess.run(
             ["xcrun", "swift", str(APPLE_FM_SCRIPT)],
@@ -91,9 +102,24 @@ class AppleFoundationModelsClient:
         return parse_annotation_response(result.stdout)
 
 
-def build_annotation_prompt(word: dict[str, Any], example: dict[str, Any]) -> str:
+def build_annotation_prompt(
+    word: dict[str, Any],
+    example: dict[str, Any],
+    *,
+    use_show_context: bool = False,
+) -> str:
     context_before = "\n".join(example.get("context_before") or [])
     context_after = "\n".join(example.get("context_after") or [])
+    show_context = example.get("show_context") or {}
+    show_summary = _truncate_text(show_context.get("summary"), limit=280)
+    show_characters = ", ".join(str(item) for item in (show_context.get("characters") or [])[:12])
+    show_context_block = ""
+    if use_show_context and (show_summary or show_characters):
+        show_context_block = (
+            "Show context for scene only; trust the subtitle text if there is any conflict:\n"
+            f"Summary: {show_summary or '(none)'}\n"
+            f"Characters: {show_characters or '(none)'}\n\n"
+        )
     return (
         "Annotate this Japanese subtitle example.\n\n"
         f"Word: {word.get('word')}\n"
@@ -102,13 +128,14 @@ def build_annotation_prompt(word: dict[str, Any], example: dict[str, Any]) -> st
         f"Chinese meaning: {word.get('meaning_zh') or ''}\n"
         f"English meaning: {word.get('meaning') or ''}\n"
         f"Matched text in sentence: {example.get('matched_text') or ''}\n\n"
-        f"Previous subtitle lines:\n{context_before or '(none)'}\n\n"
-        f"Current line:\n{example.get('sentence') or ''}\n\n"
-        f"Next subtitle lines:\n{context_after or '(none)'}\n\n"
+        f"Previous subtitle blocks:\n{context_before or '(none)'}\n\n"
+        f"Current subtitle block:\n{example.get('sentence') or ''}\n\n"
+        f"Next subtitle blocks:\n{context_after or '(none)'}\n\n"
+        f"{show_context_block}"
         "Return JSON with exactly these string fields:\n"
-        "- translation_zh: natural Chinese translation of the current line only.\n"
-        "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this line.\n"
-        "- scene_description: one short Chinese description based only on the provided subtitle lines.\n"
+        "- translation_zh: natural Simplified Chinese translation of the full current subtitle block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit.\n"
+        "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this subtitle block.\n"
+        "- scene_description: one short Chinese description based on the full provided subtitle context.\n"
         "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts. "
         "If the scene is unclear, say that it is unclear."
     )
@@ -119,7 +146,10 @@ def parse_annotation_response(content: str) -> dict[str, str]:
     if content.startswith("```"):
         content = re.sub(r"^```(?:json)?\s*", "", content)
         content = re.sub(r"\s*```$", "", content)
-    payload = json.loads(content)
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        payload = parse_loose_annotation_response(content)
     if not isinstance(payload, dict):
         raise ValueError("LLM annotation response must be a JSON object.")
     return {
@@ -149,7 +179,7 @@ def annotate_corpus(
             annotated += 1
         if annotated >= limit:
             break
-    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 4)
+    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 5)
     metadata = payload.setdefault("annotation", {})
     if isinstance(metadata, dict):
         metadata["fields"] = list(ANNOTATION_FIELDS)
@@ -180,7 +210,32 @@ def _has_annotations(example: dict[str, Any]) -> bool:
     return all(example.get(field) for field in ANNOTATION_FIELDS)
 
 
+def parse_loose_annotation_response(content: str) -> dict[str, str]:
+    payload = {}
+    for line in content.splitlines():
+        line = line.strip()
+        for field in ANNOTATION_FIELDS:
+            prefix = f'"{field}"'
+            if not line.startswith(prefix):
+                continue
+            _, value = line.split(":", 1)
+            value = value.strip().rstrip(",").strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            payload[field] = value.replace('\\"', '"').replace("\\n", " ")
+    if not payload:
+        raise ValueError("LLM annotation response must be JSON or JSON-like key/value lines.")
+    return payload
+
+
 def _clean_annotation_value(value: Any) -> str:
     if value is None:
         return ""
     return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _truncate_text(value: Any, *, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."

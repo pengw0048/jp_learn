@@ -10,7 +10,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def analysis_to_dict(
@@ -18,7 +18,7 @@ def analysis_to_dict(
     *,
     level: int | None = None,
     limit: int | None = None,
-    examples_per_word: int = 3,
+    examples_per_word: int = 5,
     zh_glossary: ChineseGlossary | None = None,
 ) -> dict[str, Any]:
     words = _export_words(analysis, level=level)
@@ -64,7 +64,7 @@ def write_corpus_json(
     *,
     level: int | None = None,
     limit: int | None = None,
-    examples_per_word: int = 3,
+    examples_per_word: int = 5,
     zh_glossary: ChineseGlossary | None = None,
 ) -> Path:
     ensure_parent(output)
@@ -172,6 +172,10 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "end_ms": example.end_ms,
         "context_before": example.context_before,
         "context_after": example.context_after,
+        "show_context": {
+            "summary": example.show_summary,
+            "characters": example.show_characters,
+        },
         "scene_description": example.scene_description,
         "translation_zh": None,
         "usage_note_zh": None,

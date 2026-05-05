@@ -1,12 +1,20 @@
 from pathlib import Path
 
-from jpcorpus.analysis import WordExample, WordStats, analyze_paths, is_study_candidate, to_hiragana
+from jpcorpus.analysis import (
+    WordExample,
+    WordStats,
+    analyze_paths,
+    collect_context,
+    is_study_candidate,
+    to_hiragana,
+)
 from jpcorpus.anki_export import export_anki_deck
 from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
-from jpcorpus.models import WordEntry
+from jpcorpus.models import SubtitleLine, WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
+from jpcorpus.subtitle import clean_subtitle_text
 from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
 
 
@@ -79,12 +87,16 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
     assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
     assert payload["words"][0]["examples"][0]["matched_text"] == "約束"
     assert payload["words"][0]["examples"][0]["context_before"] == []
+    assert payload["words"][0]["examples"][0]["show_context"] == {
+        "summary": None,
+        "characters": [],
+    }
     assert payload["words"][0]["examples"][0]["scene_description"] is None
     assert payload["words"][0]["examples"][0]["translation_zh"] is None
     assert payload["words"][0]["examples"][0]["usage_note_zh"] is None
@@ -117,6 +129,37 @@ def test_example_context_and_reference_format(tmp_path: Path):
     assert format_reference(example) == "《Local subtitles》 sample.srt 00:04"
     assert format_reference(example, brackets=False) == "Local subtitles sample.srt 00:04"
     assert format_timestamp(3_661_000) == "01:01:01"
+
+
+def test_context_collects_past_short_subtitle_fragments():
+    lines = [
+        SubtitleLine("これは十分長い前文です。"),
+        SubtitleLine("え？"),
+        SubtitleLine("現在の字幕です。"),
+        SubtitleLine("ん？"),
+        SubtitleLine("それから説明が続きます。"),
+    ]
+
+    assert collect_context(
+        lines,
+        line_index=2,
+        direction="before",
+        preferred_lines=1,
+        min_chars=10,
+        max_lines=3,
+    ) == ["これは十分長い前文です。", "え？"]
+    assert collect_context(
+        lines,
+        line_index=2,
+        direction="after",
+        preferred_lines=1,
+        min_chars=10,
+        max_lines=3,
+    ) == ["ん？", "それから説明が続きます。"]
+
+
+def test_clean_subtitle_text_preserves_cue_line_breaks():
+    assert clean_subtitle_text("一行目\n  二行目  \n") == "一行目\n二行目"
 
 
 def test_parse_jlpt_level_from_tags():

@@ -30,6 +30,21 @@ def test_parse_annotation_response_accepts_json_fence():
     assert payload["scene_description"] == "角色在说明计划。"
 
 
+def test_parse_annotation_response_accepts_json_like_lines():
+    payload = parse_annotation_response(
+        """
+        {
+          "translation_zh": "请问岡崎さん，有什么话要说吗？",
+          "usage_note_zh": "言う表示"说"。",
+          "scene_description": "角色在询问对方。"
+        }
+        """
+    )
+
+    assert payload["translation_zh"] == "请问岡崎さん，有什么话要说吗？"
+    assert payload["usage_note_zh"] == '言う表示"说"。'
+
+
 def test_annotate_corpus_adds_missing_example_annotations():
     corpus = {
         "schema_version": 3,
@@ -54,7 +69,7 @@ def test_annotate_corpus_adds_missing_example_annotations():
 
     assert count == 1
     assert client.calls == 1
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert payload["annotation"]["fields"] == [
         "translation_zh",
         "usage_note_zh",

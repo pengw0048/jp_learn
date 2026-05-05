@@ -45,7 +45,7 @@ def clean_subtitle_text(text: str) -> str:
         if not line:
             continue
         lines.append(line)
-    return " ".join(lines)
+    return "\n".join(lines)
 
 
 def contains_japanese(text: str) -> bool:
@@ -119,4 +119,3 @@ def iter_subtitle_lines(paths: Iterable[Path]) -> Iterable[tuple[Path, SubtitleL
     for path in paths:
         for line in parse_subtitle(path):
             yield path, line
-
