@@ -514,27 +514,40 @@ function sourceCount(word, sourceType) {
 }
 
 function formatReference(example) {
+  if (example.source_type === "lyrics") {
+    return formatLyricReference(example);
+  }
+
   const parts = [];
   if (example.source_title) {
     parts.push(example.source_title);
   }
-  if (example.source_type === "lyrics") {
-    if (example.source_artist) {
-      parts.push(example.source_artist);
-    }
-    if (example.source_album && example.source_album !== example.source_title) {
-      parts.push(example.source_album);
-    }
-  }
   if (Number.isInteger(example.episode)) {
     parts.push(`EP${String(example.episode).padStart(2, "0")}`);
-  } else if (example.source_type !== "lyrics" && example.subtitle_file) {
+  } else if (example.subtitle_file) {
     parts.push(example.subtitle_file);
   }
   if (Number.isInteger(example.start_ms)) {
     parts.push(formatTimestamp(example.start_ms));
   }
   return parts.join(" ");
+}
+
+function formatLyricReference(example) {
+  const parts = [];
+  if (example.source_title) {
+    parts.push(`♪ ${example.source_title}`);
+  }
+  if (example.source_artist) {
+    parts.push(example.source_artist);
+  }
+  if (example.source_album && example.source_album !== example.source_title) {
+    parts.push(`《${example.source_album}》`);
+  }
+  if (Number.isInteger(example.start_ms)) {
+    parts.push(formatTimestamp(example.start_ms));
+  }
+  return parts.join(" · ");
 }
 
 function formatTimestamp(milliseconds) {
