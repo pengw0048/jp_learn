@@ -14,9 +14,14 @@
   --learning: #b7791f;
   --ignored: #7a7f86;
   --shadow: 0 12px 28px rgba(24, 36, 44, 0.08);
-  font-family:
+  --font-ui:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Source Han Sans SC", "Heiti SC", sans-serif;
+  --font-ja:
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", YuGothic,
+    Meiryo, "Noto Sans CJK JP", "Source Han Sans JP", sans-serif;
+  font-family: var(--font-ui);
 }
 
 * {
@@ -38,6 +43,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.55;
 }
@@ -321,6 +327,7 @@ select {
 }
 
 .word-text {
+  font-family: var(--font-ja);
   font-size: 19px;
   line-height: 1.2;
   font-weight: 780;
@@ -430,6 +437,7 @@ select {
 }
 
 .detail-title h2 {
+  font-family: var(--font-ja);
   font-size: 36px;
   line-height: 1.1;
   font-weight: 820;
@@ -437,6 +445,7 @@ select {
 }
 
 .reading {
+  font-family: var(--font-ja);
   color: var(--muted);
   font-size: 18px;
 }
@@ -580,6 +589,7 @@ select {
 
 .example-current,
 .example-context {
+  font-family: var(--font-ja);
   font-size: 16px;
   line-height: 1.6;
   overflow-wrap: anywhere;
