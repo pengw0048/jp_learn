@@ -58,6 +58,7 @@ class ViewerJob:
     finished_at: str | None = None
     spec: dict[str, Any] = field(default_factory=dict)
     result: dict[str, Any] = field(default_factory=dict)
+    progress: dict[str, Any] = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
     error: str | None = None
 
@@ -70,6 +71,7 @@ class ViewerJob:
             "finished_at": self.finished_at,
             "spec": self.spec,
             "result": self.result,
+            "progress": self.progress,
             "log": self.log[-200:],
             "error": self.error,
         }
@@ -120,6 +122,43 @@ class ViewerJobRunner:
                 overwrite=spec["overwrite"],
             )
             self._log(job, f"Selected {selected_count} candidate examples.")
+            progress = {
+                "phase": "cache" if spec["cache_only"] else "annotate",
+                "selected": selected_count,
+                "total": min(selected_count, spec["limit"]),
+                "completed": 0,
+                "cached": 0,
+                "annotated": 0,
+                "failed": 0,
+                "api_targets": None,
+                "remaining": min(selected_count, spec["limit"]),
+                "percent": 0.0,
+            }
+
+            def publish_progress() -> None:
+                total = int(progress["total"] or 0)
+                completed = int(progress["completed"] or 0)
+                progress["remaining"] = max(total - completed, 0)
+                progress["percent"] = round((completed / total) * 100, 1) if total else 100.0
+                self._set_progress(job, progress)
+
+            def on_annotation_progress(event: str, _details: dict[str, Any]) -> None:
+                if event == "targets_ready":
+                    progress["api_targets"] = _details.get("api_targets")
+                    progress["cached"] = int(_details.get("cached") or progress["cached"])
+                    progress["completed"] = int(progress["cached"]) + int(progress["failed"])
+                elif event == "cache_hit":
+                    progress["cached"] = int(progress["cached"]) + 1
+                    progress["completed"] = int(progress["completed"]) + 1
+                elif event == "api_hit":
+                    progress["annotated"] = int(progress["annotated"]) + 1
+                    progress["completed"] = int(progress["completed"]) + 1
+                elif event == "failed":
+                    progress["failed"] = int(progress["failed"]) + 1
+                    progress["completed"] = int(progress["completed"]) + 1
+                publish_progress()
+
+            publish_progress()
             cache_context, client = resolve_annotation_runtime(spec)
             if spec["cache_only"]:
                 payload, annotated = apply_cached_annotations(
@@ -129,6 +168,7 @@ class ViewerJobRunner:
                     limit=spec["limit"],
                     overwrite=spec["overwrite"],
                     include_example=include_example,
+                    on_progress=on_annotation_progress,
                 )
                 self._log(job, f"Applied {annotated} cached annotations.")
             else:
@@ -151,6 +191,7 @@ class ViewerJobRunner:
                     concurrency=spec["concurrency"],
                     request_interval_seconds=(60.0 / spec["rpm"]) if spec.get("rpm") else 0.0,
                     on_error=on_error,
+                    on_progress=on_annotation_progress,
                 )
                 self._log(job, f"Annotated {annotated} examples with {len(errors)} failures.")
             write_corpus_atomic(self.corpus_path, payload)
@@ -186,7 +227,27 @@ class ViewerJobRunner:
         steps = composite_maintenance_steps(spec)
         completed_steps = []
         result: dict[str, Any] = {"steps": completed_steps, "reload_corpus": True}
+        self._set_progress(
+            job,
+            {
+                "phase": "steps",
+                "total": len(steps),
+                "completed": 0,
+                "current_step": None,
+                "percent": 0.0,
+            },
+        )
         for index, (label, step_spec) in enumerate(steps, start=1):
+            self._set_progress(
+                job,
+                {
+                    "phase": "steps",
+                    "total": len(steps),
+                    "completed": index - 1,
+                    "current_step": label,
+                    "percent": round(((index - 1) / len(steps)) * 100, 1),
+                },
+            )
             self._log(job, f"Step {index}/{len(steps)}: {label}")
             if step_spec["type"] == "export_corpus":
                 step_result = self._run_export_corpus(job)
@@ -199,14 +260,46 @@ class ViewerJobRunner:
                     "result": step_result,
                 }
             )
+            self._set_progress(
+                job,
+                {
+                    "phase": "steps",
+                    "total": len(steps),
+                    "completed": index,
+                    "current_step": label,
+                    "percent": round((index / len(steps)) * 100, 1),
+                },
+            )
         return result
 
     def _run_export_corpus(self, job: ViewerJob) -> dict[str, Any]:
+        if not job.progress:
+            self._set_progress(
+                job,
+                {
+                    "phase": "export",
+                    "total": 1,
+                    "completed": 0,
+                    "current_step": "Export corpus",
+                    "percent": 0.0,
+                },
+            )
         raw_path = Path("corpus.json")
         command = jpcorpus_command() + ["export", "corpus-json", "--output", str(raw_path)]
         self._run_command(job, command)
         served_path = self.corpus_path.resolve()
         if served_path == raw_path.resolve():
+            if job.kind == "export_corpus":
+                self._set_progress(
+                    job,
+                    {
+                        "phase": "export",
+                        "total": 1,
+                        "completed": 1,
+                        "current_step": "Export corpus",
+                        "percent": 100.0,
+                    },
+                )
             return {"output": str(raw_path), "reload_corpus": True}
 
         self._log(job, f"Applying cached annotations to served corpus: {served_path}")
@@ -227,6 +320,17 @@ class ViewerJobRunner:
             overwrite=False,
         )
         self._log(job, f"Applied {annotated} cached annotations.")
+        if job.kind == "export_corpus":
+            self._set_progress(
+                job,
+                {
+                    "phase": "export",
+                    "total": 1,
+                    "completed": 1,
+                    "current_step": "Export corpus",
+                    "percent": 100.0,
+                },
+            )
         return {
             "output": str(served_path),
             "raw_output": str(raw_path),
@@ -258,6 +362,10 @@ class ViewerJobRunner:
         timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
         with self._lock:
             job.log.append(f"{timestamp} {message}")
+
+    def _set_progress(self, job: ViewerJob, progress: dict[str, Any]) -> None:
+        with self._lock:
+            job.progress = dict(progress)
 
     def _finish(
         self,

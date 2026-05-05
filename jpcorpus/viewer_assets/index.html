@@ -128,6 +128,12 @@
           </label>
         </div>
         <div id="maintenance-estimate" class="maintenance-estimate"></div>
+        <div id="maintenance-progress" class="maintenance-progress" hidden>
+          <div class="maintenance-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+            <span id="maintenance-progress-fill"></span>
+          </div>
+          <div id="maintenance-progress-label" class="maintenance-progress-label"></div>
+        </div>
         <div class="maintenance-actions">
           <button id="maintenance-start" type="button" data-i18n="maintenanceStart">开始</button>
           <span id="maintenance-status" class="maintenance-status"></span>

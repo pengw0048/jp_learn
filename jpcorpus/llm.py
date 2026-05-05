@@ -52,6 +52,7 @@ class AnnotationClient(Protocol):
 
 
 ExamplePredicate = Callable[[dict[str, Any], dict[str, Any]], bool]
+ProgressCallback = Callable[[str, dict[str, Any]], None]
 
 
 class RequestRateLimiter:
@@ -327,6 +328,7 @@ def annotate_corpus(
     concurrency: int = 1,
     request_interval_seconds: float = 0.0,
     on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> tuple[dict[str, Any], int]:
     annotated = 0
     targets: list[tuple[dict[str, Any], dict[str, Any], str | None]] = []
@@ -351,10 +353,22 @@ def annotate_corpus(
                         if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
                             example[field] = value
                     annotated += 1
+                    if on_progress is not None:
+                        on_progress("cache_hit", {"word": word.get("word") or ""})
                     continue
             targets.append((word, example, cache_key))
         if annotated + len(targets) >= limit:
             break
+
+    if on_progress is not None:
+        on_progress(
+            "targets_ready",
+            {
+                "cached": annotated,
+                "api_targets": len(targets),
+                "total": annotated + len(targets),
+            },
+        )
 
     if targets:
         max_workers = max(1, concurrency)
@@ -377,6 +391,8 @@ def annotate_corpus(
                     if on_error is None:
                         raise
                     on_error(word, example, exc)
+                    if on_progress is not None:
+                        on_progress("failed", {"word": word.get("word") or ""})
                     continue
                 if cache_state is not None and cache_key is not None:
                     cache_state.save_cache_entry(
@@ -390,6 +406,8 @@ def annotate_corpus(
                     if overwrite or not example.get(field):
                         example[field] = value
                 annotated += 1
+                if on_progress is not None:
+                    on_progress("api_hit", {"word": word.get("word") or ""})
 
     payload["schema_version"] = max(int(payload.get("schema_version") or 0), 6)
     metadata = payload.setdefault("annotation", {})
@@ -406,6 +424,7 @@ def apply_cached_annotations(
     limit: int,
     overwrite: bool = False,
     include_example: ExamplePredicate | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> tuple[dict[str, Any], int]:
     annotated = 0
     for word in payload.get("words", []):
@@ -428,6 +447,8 @@ def apply_cached_annotations(
                 if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
                     example[field] = value
             annotated += 1
+            if on_progress is not None:
+                on_progress("cache_hit", {"word": word.get("word") or ""})
         if annotated >= limit:
             break
 

@@ -173,6 +173,33 @@ def test_annotate_corpus_adds_missing_example_annotations():
     assert payload["words"][0]["examples"][1]["translation_zh"] == "去学校。"
 
 
+def test_annotate_corpus_reports_progress_events():
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "examples": [{"sentence": "明日行く。"}],
+            }
+        ],
+    }
+    events = []
+
+    payload, count = annotate_corpus(
+        corpus,
+        client=FakeAnnotationClient(),
+        limit=10,
+        on_progress=lambda event, details: events.append((event, details)),
+    )
+
+    assert count == 1
+    assert payload["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
+    assert events[0] == ("targets_ready", {"cached": 0, "api_targets": 1, "total": 1})
+    assert events[-1][0] == "api_hit"
+
+
 def test_annotate_corpus_reuses_versioned_cache(tmp_path):
     corpus = {
         "schema_version": 6,

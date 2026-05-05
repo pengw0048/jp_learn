@@ -724,6 +724,34 @@ mark {
   margin-top: 10px;
 }
 
+.maintenance-progress {
+  margin-top: 10px;
+  display: grid;
+  gap: 5px;
+}
+
+.maintenance-progress-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+
+.maintenance-progress-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.maintenance-progress-label {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .maintenance-actions {
   margin-top: 10px;
   display: flex;

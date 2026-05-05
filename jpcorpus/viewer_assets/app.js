@@ -77,6 +77,9 @@ const text = {
     maintenanceRunningTask: "正在运行：{task}，开始于 {time}",
     maintenanceSucceededTask: "已完成：{task}{reload}，完成于 {time}",
     maintenanceFailedTask: "失败：{task}，结束于 {time}",
+    maintenanceProgressAnnotate: "已处理 {completed}/{total}；缓存 {cached}，新标注 {annotated}，失败 {failed}",
+    maintenanceProgressSteps: "步骤 {completed}/{total}：{step}",
+    maintenanceProgressGeneric: "已处理 {completed}/{total}",
   },
   en: {
     appTitle: "Personal Japanese Corpus",
@@ -151,6 +154,9 @@ const text = {
     maintenanceRunningTask: "Running: {task}, started {time}",
     maintenanceSucceededTask: "Done: {task}{reload}, finished {time}",
     maintenanceFailedTask: "Failed: {task}, ended {time}",
+    maintenanceProgressAnnotate: "Processed {completed}/{total}; cache {cached}, new {annotated}, failed {failed}",
+    maintenanceProgressSteps: "Step {completed}/{total}: {step}",
+    maintenanceProgressGeneric: "Processed {completed}/{total}",
   },
 };
 
@@ -210,6 +216,9 @@ const refs = {
   maintenanceShowContext: $("#maintenance-show-context"),
   maintenanceStart: $("#maintenance-start"),
   maintenanceEstimate: $("#maintenance-estimate"),
+  maintenanceProgress: $("#maintenance-progress"),
+  maintenanceProgressFill: $("#maintenance-progress-fill"),
+  maintenanceProgressLabel: $("#maintenance-progress-label"),
   maintenanceStatus: $("#maintenance-status"),
   maintenanceLog: $("#maintenance-log"),
 };
@@ -386,6 +395,7 @@ function renderMaintenance() {
     !app.maintenance.enabled || job?.status === "running" || (isAnnotation && estimate.planned <= 0);
   refs.maintenanceStart.textContent = maintenanceStartLabel(task);
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
+  renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
 }
 
@@ -888,6 +898,52 @@ function maintenanceStatusLabel(job) {
     return t("maintenanceFailedTask", { task, time });
   }
   return t("maintenanceIdle");
+}
+
+function renderMaintenanceProgress(job) {
+  const progress = job?.progress || null;
+  if (!progress || !refs.maintenanceProgress) {
+    refs.maintenanceProgress.hidden = true;
+    return;
+  }
+  const total = Number(progress.total || 0);
+  const completed = Number(progress.completed || 0);
+  const percent = Number.isFinite(Number(progress.percent))
+    ? Number(progress.percent)
+    : total > 0
+      ? (completed / total) * 100
+      : 0;
+  const boundedPercent = Math.max(0, Math.min(100, percent));
+  refs.maintenanceProgress.hidden = false;
+  refs.maintenanceProgressFill.style.width = `${boundedPercent}%`;
+  refs.maintenanceProgress.querySelector("[role='progressbar']").setAttribute(
+    "aria-valuenow",
+    String(Math.round(boundedPercent)),
+  );
+  refs.maintenanceProgressLabel.textContent = maintenanceProgressLabel(progress);
+}
+
+function maintenanceProgressLabel(progress) {
+  const phase = progress.phase || "";
+  const completed = formatNumber(progress.completed || 0);
+  const total = formatNumber(progress.total || 0);
+  if (phase === "annotate" || phase === "cache") {
+    return t("maintenanceProgressAnnotate", {
+      completed,
+      total,
+      cached: formatNumber(progress.cached || 0),
+      annotated: formatNumber(progress.annotated || 0),
+      failed: formatNumber(progress.failed || 0),
+    });
+  }
+  if (phase === "steps" || phase === "export") {
+    return t("maintenanceProgressSteps", {
+      completed,
+      total,
+      step: progress.current_step || maintenanceTaskLabel(maintenanceTask()),
+    });
+  }
+  return t("maintenanceProgressGeneric", { completed, total });
 }
 
 function formatJobTime(value) {
