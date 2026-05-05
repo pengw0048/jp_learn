@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -13,6 +14,8 @@ from .paths import ensure_parent
 
 
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
+ANNOTATION_CACHE_PURPOSE = "llm-annotation"
+ANNOTATION_CACHE_VERSION = 1
 APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
 
 
@@ -164,6 +167,8 @@ def annotate_corpus(
     client: AnnotationClient,
     limit: int,
     overwrite: bool = False,
+    cache_state: Any | None = None,
+    cache_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     annotated = 0
     for word in payload.get("words", []):
@@ -172,7 +177,29 @@ def annotate_corpus(
                 break
             if not overwrite and _has_annotations(example):
                 continue
+            cache_key = None
+            if cache_state is not None:
+                cache_key = annotation_cache_key(word, example, cache_context or {})
+                cached = cache_state.get_cache_entry(
+                    purpose=ANNOTATION_CACHE_PURPOSE,
+                    cache_key=cache_key,
+                    version=ANNOTATION_CACHE_VERSION,
+                )
+                if cached and cached["status"] == "hit":
+                    for field, value in cached["value"].items():
+                        if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
+                            example[field] = value
+                    annotated += 1
+                    continue
             annotations = client.annotate_example(word, example)
+            if cache_state is not None and cache_key is not None:
+                cache_state.save_cache_entry(
+                    purpose=ANNOTATION_CACHE_PURPOSE,
+                    cache_key=cache_key,
+                    version=ANNOTATION_CACHE_VERSION,
+                    status="hit",
+                    value=annotations,
+                )
             for field, value in annotations.items():
                 if overwrite or not example.get(field):
                     example[field] = value
@@ -193,6 +220,8 @@ def annotate_corpus_file(
     client: AnnotationClient,
     limit: int,
     overwrite: bool = False,
+    cache_state: Any | None = None,
+    cache_context: dict[str, Any] | None = None,
 ) -> int:
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     payload, annotated = annotate_corpus(
@@ -200,6 +229,8 @@ def annotate_corpus_file(
         client=client,
         limit=limit,
         overwrite=overwrite,
+        cache_state=cache_state,
+        cache_context=cache_context,
     )
     ensure_parent(output_path)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -208,6 +239,34 @@ def annotate_corpus_file(
 
 def _has_annotations(example: dict[str, Any]) -> bool:
     return all(example.get(field) for field in ANNOTATION_FIELDS)
+
+
+def annotation_cache_key(
+    word: dict[str, Any],
+    example: dict[str, Any],
+    context: dict[str, Any],
+) -> str:
+    payload = {
+        "context": context,
+        "word": {
+            "word": word.get("word") or "",
+            "reading": word.get("reading") or "",
+            "level": word.get("level") or "",
+            "meaning_zh": word.get("meaning_zh") or "",
+            "meaning": word.get("meaning") or "",
+        },
+        "example": {
+            "source_type": example.get("source_type") or "",
+            "matched_text": example.get("matched_text") or "",
+            "sentence": example.get("sentence") or "",
+            "context_before": example.get("context_before") or [],
+            "context_after": example.get("context_after") or [],
+            "show_context": example.get("show_context") or {},
+        },
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def parse_loose_annotation_response(content: str) -> dict[str, str]:

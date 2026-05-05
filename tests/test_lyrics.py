@@ -2,7 +2,9 @@ from pathlib import Path
 
 from jpcorpus.bangumi import collection_to_music_tracks
 from jpcorpus.lyrics import (
+    artist_candidates,
     is_probably_instrumental_title,
+    lyric_album_search_params,
     parse_lrc_text,
     score_lrclib_result,
     write_lrclib_lyric,
@@ -44,6 +46,142 @@ def test_lrclib_scoring_prefers_synced_japanese_exact_title():
     )
 
     assert score > 15
+
+
+def test_artist_candidates_split_bangumi_album_artists():
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="メグメル",
+        album_title="CLANNAD",
+        artist="eufonius、茶太、riya",
+    )
+
+    assert artist_candidates(track)[:3] == ["eufonius", "茶太", "riya"]
+
+
+def test_album_search_params_start_specific_then_fallback():
+    params = lyric_album_search_params("only my railgun", ["fripSide"])
+
+    assert params == [
+        {
+            "q": "only my railgun",
+            "album_name": "only my railgun",
+            "artist_name": "fripSide",
+        },
+        {"q": "only my railgun", "album_name": "only my railgun"},
+        {"q": "only my railgun"},
+    ]
+
+
+def test_lrclib_scoring_rejects_short_title_without_artist_or_album_match():
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="渚",
+        album_title="CLANNAD Original SoundTrack",
+        artist="riya",
+    )
+
+    score = score_lrclib_result(
+        track,
+        {
+            "trackName": "渚",
+            "artistName": "SPITZ",
+            "albumName": "インディゴ地平線",
+            "syncedLyrics": "[00:01.00]ささやく冗談でいつも\n",
+        },
+    )
+
+    assert score == 0
+
+
+def test_lrclib_scoring_rejects_non_japanese_lyrics():
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="幻想",
+        album_title="CLANNAD Original SoundTrack",
+        artist="riya",
+    )
+
+    score = score_lrclib_result(
+        track,
+        {
+            "trackName": "幻想",
+            "artistName": "張學友",
+            "albumName": "這個冬天不太冷",
+            "syncedLyrics": "[00:01.00]一生一火花\n",
+        },
+    )
+
+    assert score == 0
+
+
+def test_lrclib_scoring_rejects_result_off_vocal():
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="secret base ~君がくれたもの~ (Memento mori Ver.)",
+        album_title="secret base ～君がくれたもの～",
+        artist="茅野愛衣",
+    )
+
+    score = score_lrclib_result(
+        track,
+        {
+            "trackName": "secret base ～君がくれたもの～ (Memento mori Ver.) (Off Vocal Version)",
+            "artistName": "Meiko Honma (CV:Ai Kayano)",
+            "albumName": "secret base ～君がくれたもの～",
+            "plainLyrics": "君と夏の終わり\n",
+        },
+    )
+
+    assert score == 0
+
+
+def test_lrclib_scoring_allows_cover_when_title_is_exact():
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="FLY ME TO THE MOON",
+        album_title="残酷な天使のテーゼ / FLY ME TO THE MOON",
+        artist="高橋洋子 / CLAIRE",
+    )
+
+    score = score_lrclib_result(
+        track,
+        {
+            "trackName": "Fly Me to the Moon",
+            "artistName": "春奈るな",
+            "albumName": "LUNARIUM",
+            "syncedLyrics": "[00:01.00]私を月に連れてって\n",
+        },
+    )
+
+    assert score > 10
+
+
+def test_lrclib_scoring_allows_remix_when_title_is_partial():
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="願いが叶う場所",
+        album_title="CLANNAD Original SoundTrack",
+        artist="Lia / riya",
+    )
+
+    score = score_lrclib_result(
+        track,
+        {
+            "trackName": "願いが叶う場所(JAKAZiD's Nu Hardcore Breaks Mix)",
+            "artistName": "Lia",
+            "albumName": "enigmatic LIA4",
+            "plainLyrics": "願いが叶う場所へ\n",
+        },
+    )
+
+    assert score > 0
 
 
 def test_write_lrclib_lyric_uses_local_cache(tmp_path: Path):

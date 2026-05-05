@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import time
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +17,19 @@ from .subtitle import contains_japanese, read_text
 
 
 LRCLIB_BASE = "https://lrclib.net"
+LRCLIB_CACHE_PURPOSE = "lrclib-match"
+LRCLIB_CACHE_VERSION = 4
+LRCLIB_ALBUM_CACHE_PURPOSE = "lrclib-album-search"
+LRCLIB_ALBUM_CACHE_VERSION = 1
+MIN_LRCLIB_SCORE = 10.0
+SHORT_TITLE_MAX_LENGTH = 3
 LRC_TIME_RE = re.compile(r"\[(?P<minute>\d{1,3}):(?P<second>\d{2})(?:[.:](?P<fraction>\d{1,3}))?\]")
 INSTRUMENTAL_TITLE_RE = re.compile(
     r"(\binstrumental\b|\binst\.?\b|off\s*vocal|karaoke|カラオケ|オフボーカル)",
     re.IGNORECASE,
 )
+KANA_RE = re.compile(r"[\u3040-\u30ff]")
+ARTIST_SPLIT_RE = re.compile(r"\s*(?:、|,|/|／|;|；|&|＆| feat\.? | ft\.? )\s*", re.IGNORECASE)
 
 
 class LrcLibClient:
@@ -26,19 +38,28 @@ class LrcLibClient:
         *,
         user_agent: str,
         timeout: float = 30.0,
+        retries: int = 2,
     ) -> None:
         self.user_agent = user_agent
         self.timeout = timeout
+        self.retries = retries
 
     def search(
         self,
         *,
-        track_name: str,
+        q: str | None = None,
+        track_name: str | None = None,
         artist_name: str | None = None,
         album_name: str | None = None,
         duration_ms: int | None = None,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"track_name": track_name}
+        if not q and not track_name:
+            raise ValueError("LRCLIB search needs either q or track_name.")
+        params: dict[str, Any] = {}
+        if q:
+            params["q"] = q
+        if track_name:
+            params["track_name"] = track_name
         if artist_name:
             params["artist_name"] = artist_name
         if album_name:
@@ -46,21 +67,33 @@ class LrcLibClient:
         if duration_ms is not None:
             params["duration"] = round(duration_ms / 1000)
         with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
-            response = client.get(
-                f"{LRCLIB_BASE}/api/search",
-                headers={"User-Agent": self.user_agent},
-                params=params,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            for attempt in range(self.retries + 1):
+                response = client.get(
+                    f"{LRCLIB_BASE}/api/search",
+                    headers={"User-Agent": self.user_agent},
+                    params=params,
+                )
+                if response.status_code not in {429, 500, 502, 503, 504} or attempt >= self.retries:
+                    response.raise_for_status()
+                    payload = response.json()
+                    break
+                time.sleep(0.5 * (attempt + 1))
         if not isinstance(payload, list):
             return []
         return [item for item in payload if isinstance(item, dict)]
 
-    def best_match(self, track: MusicTrack) -> dict[str, Any] | None:
+    def best_match(
+        self,
+        track: MusicTrack,
+        *,
+        extra_results: Iterable[dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
         if is_probably_instrumental_title(track.title):
             return None
         candidates: dict[str, dict[str, Any]] = {}
+        for result in extra_results or []:
+            source_id = str(result.get("id") or result.get("trackId") or repr(result))
+            candidates[source_id] = result
         for params in lyric_search_params(track):
             for result in self.search(**params):
                 source_id = str(result.get("id") or result.get("trackId") or repr(result))
@@ -70,7 +103,7 @@ class LrcLibClient:
             for result in candidates.values()
             if lyric_text(result) and not result.get("instrumental")
         ]
-        scored = [(score, result) for score, result in scored if score > 0]
+        scored = [(score, result) for score, result in scored if score >= MIN_LRCLIB_SCORE]
         if not scored:
             return None
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -93,12 +126,51 @@ def lyric_search_params(track: MusicTrack) -> list[dict[str, Any]]:
             "track_name": title,
             "duration_ms": track.duration_ms,
         }
-        if track.artist:
-            params.append({**base, "artist_name": track.artist, "album_name": track.album_title})
-            params.append({**base, "artist_name": track.artist})
+        for artist in artist_candidates(track):
+            params.append({**base, "artist_name": artist, "album_name": track.album_title})
+            params.append({**base, "artist_name": artist})
         params.append({**base, "album_name": track.album_title})
         params.append(base)
-    return params
+    deduped = []
+    seen = set()
+    for item in params:
+        key = tuple(sorted((name, value) for name, value in item.items() if value))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def lyric_album_search_params(album_title: str, artists: Iterable[str] = ()) -> list[dict[str, Any]]:
+    album_title = album_title.strip()
+    if not album_title:
+        return []
+    params: list[dict[str, Any]] = []
+    for artist in artists:
+        artist = artist.strip()
+        if artist:
+            params.append({"q": album_title, "album_name": album_title, "artist_name": artist})
+    params.append({"q": album_title, "album_name": album_title})
+    params.append({"q": album_title})
+    deduped = []
+    seen = set()
+    for item in params:
+        key = tuple(sorted((name, value) for name, value in item.items() if value))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def lyric_album_artists(tracks: Iterable[MusicTrack]) -> list[str]:
+    candidates = []
+    for track in tracks:
+        for artist in artist_candidates(track):
+            if artist not in candidates:
+                candidates.append(artist)
+    return candidates[:16]
 
 
 def is_probably_instrumental_title(value: str) -> bool:
@@ -107,32 +179,83 @@ def is_probably_instrumental_title(value: str) -> bool:
 
 def score_lrclib_result(track: MusicTrack, result: dict[str, Any]) -> float:
     text = lyric_text(result)
-    if not text or not contains_japanese(text):
+    if not text or not contains_kana(text):
         return 0.0
+    result_title_raw = str(result.get("trackName") or "")
+    if is_probably_instrumental_title(result_title_raw) and not is_probably_instrumental_title(track.title):
+        return 0.0
+    title_score, title_match = title_match_score(track.title, result_title_raw)
+    if title_score == 0.0:
+        return 0.0
+    artist_match = result_artist_matches(track, result)
+    album_match = result_album_matches(track, result)
+    if is_short_match_title(track.title) and not (artist_match or album_match):
+        return 0.0
+
     score = 1.0
     if result.get("syncedLyrics"):
         score += 5.0
     if result.get("plainLyrics"):
         score += 2.0
-    track_title = normalize_match_text(track.title)
-    result_title = normalize_match_text(str(result.get("trackName") or ""))
-    if track_title and result_title:
-        if track_title == result_title:
-            score += 8.0
-        elif track_title in result_title or result_title in track_title:
-            score += 3.0
-    if track.artist:
-        track_artist = normalize_match_text(track.artist)
-        result_artist = normalize_match_text(str(result.get("artistName") or ""))
-        if track_artist and result_artist:
-            if track_artist == result_artist:
-                score += 3.0
-            elif track_artist in result_artist or result_artist in track_artist:
-                score += 1.0
+    score += title_score
+    if artist_match:
+        score += 5.0
+    if album_match:
+        score += 3.0
     if track.duration_ms and result.get("duration"):
         delta = abs(round(track.duration_ms / 1000) - int(float(result["duration"])))
         score += max(0.0, 2.0 - delta / 8.0)
     return score
+
+
+def title_match_score(track_title: str, result_title: str) -> tuple[float, str]:
+    track_key = normalize_match_text(track_title)
+    result_key = normalize_match_text(result_title)
+    if not track_key or not result_key:
+        return 0.0, "none"
+    if track_key == result_key:
+        return 8.0, "exact"
+    if track_key in result_key or result_key in track_key:
+        return 3.0, "partial"
+    return 0.0, "none"
+
+
+def artist_candidates(track: MusicTrack) -> list[str]:
+    if not track.artist:
+        return []
+    candidates = []
+    for value in ARTIST_SPLIT_RE.split(track.artist):
+        value = value.strip()
+        if value and value not in candidates:
+            candidates.append(value)
+    if track.artist not in candidates:
+        candidates.append(track.artist)
+    return candidates[:12]
+
+
+def result_artist_matches(track: MusicTrack, result: dict[str, Any]) -> bool:
+    result_artist = normalize_match_text(str(result.get("artistName") or ""))
+    if not result_artist:
+        return False
+    for artist in artist_candidates(track):
+        artist_key = normalize_match_text(artist)
+        if artist_key and (artist_key == result_artist or artist_key in result_artist or result_artist in artist_key):
+            return True
+    return False
+
+
+def result_album_matches(track: MusicTrack, result: dict[str, Any]) -> bool:
+    track_album = normalize_match_text(track.album_title)
+    result_album = normalize_match_text(str(result.get("albumName") or ""))
+    return bool(track_album and result_album and (track_album == result_album or track_album in result_album or result_album in track_album))
+
+
+def is_short_match_title(value: str) -> bool:
+    return len(normalize_match_text(value)) <= SHORT_TITLE_MAX_LENGTH
+
+
+def contains_kana(text: str) -> bool:
+    return bool(KANA_RE.search(text))
 
 
 def write_lrclib_lyric(
@@ -205,9 +328,36 @@ def lyric_text(result: dict[str, Any]) -> str:
     return str(result.get("syncedLyrics") or result.get("plainLyrics") or "").strip()
 
 
+def lyric_cache_key(track: MusicTrack) -> str:
+    payload = {
+        "title": normalize_cache_text(track.title),
+        "title_zh": normalize_cache_text(track.title_zh or ""),
+        "artist": [normalize_cache_text(value) for value in artist_candidates(track)],
+        "album": normalize_cache_text(track.album_title),
+        "duration_ms": track.duration_ms,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def lyric_album_cache_key(album_title: str, artists: Iterable[str] = ()) -> str:
+    payload = {
+        "album": normalize_cache_text(album_title),
+        "artists": [normalize_cache_text(artist) for artist in artists],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
 def normalize_match_text(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).casefold()
     return re.sub(r"[\s\W_]+", "", value, flags=re.UNICODE)
+
+
+def normalize_cache_text(value: str) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value).casefold()).strip()
 
 
 def safe_filename(value: str) -> str:

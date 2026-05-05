@@ -1,4 +1,5 @@
 from jpcorpus.llm import annotate_corpus, parse_annotation_response
+from jpcorpus.state import State
 
 
 class FakeAnnotationClient:
@@ -77,3 +78,42 @@ def test_annotate_corpus_adds_missing_example_annotations():
     ]
     assert payload["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
     assert payload["words"][0]["examples"][1]["translation_zh"] == "去学校。"
+
+
+def test_annotate_corpus_reuses_versioned_cache(tmp_path):
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "examples": [{"sentence": "明日行く。"}],
+            }
+        ],
+    }
+    state = State(tmp_path / "state.db")
+    first_client = FakeAnnotationClient()
+    second_client = FakeAnnotationClient()
+
+    annotate_corpus(
+        corpus,
+        client=first_client,
+        limit=10,
+        cache_state=state,
+        cache_context={"provider": "test", "model": "fake"},
+    )
+    corpus["words"][0]["examples"][0]["translation_zh"] = None
+    corpus["words"][0]["examples"][0]["usage_note_zh"] = None
+    corpus["words"][0]["examples"][0]["scene_description"] = None
+    annotate_corpus(
+        corpus,
+        client=second_client,
+        limit=10,
+        cache_state=state,
+        cache_context={"provider": "test", "model": "fake"},
+    )
+
+    assert first_client.calls == 1
+    assert second_client.calls == 0
+    assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"

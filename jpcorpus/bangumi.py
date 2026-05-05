@@ -18,6 +18,24 @@ OAUTH_BASE = "https://bgm.tv"
 SUBJECT_ANIME = 2
 SUBJECT_MUSIC = 3
 COLLECTION_DONE = 2
+ARTIST_INFOBOX_KEYS = {
+    "artist",
+    "artists",
+    "アーティスト",
+    "歌手",
+    "演唱",
+    "演唱者",
+    "艺术家",
+    "藝人",
+    "声乐",
+    "聲樂",
+    "vocal",
+    "vocals",
+    "作词",
+    "作詞",
+    "作曲",
+}
+ARTIST_INFOBOX_KEYS_CASEFOLD = {key.casefold() for key in ARTIST_INFOBOX_KEYS}
 
 
 @dataclass(frozen=True)
@@ -120,6 +138,15 @@ class BangumiClient:
                 offset += len(batch)
                 if isinstance(total, int) and offset >= total:
                     return items
+
+    def subject(self, subject_id: int) -> dict[str, Any]:
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(
+                f"{API_BASE}/v0/subjects/{subject_id}",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            return response.json()
 
     def token_from_code(
         self,
@@ -225,23 +252,11 @@ def collection_to_music_tracks(
 
 
 def extract_artist(subject: dict[str, Any]) -> str | None:
-    keys = {
-        "artist",
-        "artists",
-        "アーティスト",
-        "歌手",
-        "演唱",
-        "艺术家",
-        "藝人",
-        "作词",
-        "作詞",
-        "作曲",
-    }
     for item in subject.get("infobox") or []:
         if not isinstance(item, dict):
             continue
         key = str(item.get("key") or "").strip().casefold()
-        if key not in {candidate.casefold() for candidate in keys}:
+        if key not in ARTIST_INFOBOX_KEYS_CASEFOLD:
             continue
         value = normalize_infobox_value(item.get("value"))
         if value:

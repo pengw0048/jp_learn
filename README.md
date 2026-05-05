@@ -48,7 +48,7 @@ Reports currently support `zh` and `en` through `--language`. User-facing string
 
 The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle or lyric blocks for LLM scene annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future scene context; `jpcorpus annotate` keeps prompts source-text-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can call any OpenAI-compatible endpoint to add example-level `translation_zh`, `usage_note_zh`, and `scene_description` fields. That includes OpenAI, a LiteLLM proxy, Ollama/Open WebUI style local servers, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, source filters, examples, and browser-local study status.
 
-Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` reads Bangumi music collections and splits album subjects into track rows through Bangumi episodes. `jpcorpus lyrics fetch` searches LRCLIB and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. LRCLIB misses are cached in the local state database too, so repeated fetches skip BGM/OST misses by default; use `jpcorpus lyrics fetch --force` after matching logic changes or when you want to retry old misses. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
+Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` reads Bangumi music collections and splits album subjects into track rows through Bangumi episodes. `jpcorpus lyrics fetch` searches LRCLIB and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated fetches skip BGM/OST misses by default; use `jpcorpus lyrics fetch --force` after matching logic changes or when you want to retry old misses. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 
 Optional LLM annotation:
 
@@ -60,7 +60,7 @@ uv run jpcorpus annotate --provider apple \
 uv run jpcorpus view --corpus corpus.annotated.json
 ```
 
-Use `--provider openai-compatible --model your-model` instead for OpenAI, LiteLLM, Ollama/Open WebUI, or any compatible local server.
+Use `--provider openai-compatible --model your-model` instead for OpenAI, LiteLLM, Ollama/Open WebUI, or any compatible local server. LLM annotations use the same versioned state-database cache, keyed by source text and provider context, so repeated annotation runs reuse existing results until the annotation cache version changes.
 
 ## Local Smoke Test Without API Keys
 
@@ -95,7 +95,7 @@ data/
   jlpt-words.json              # local JLPT vocabulary list
   jimaku-cache/                # downloaded .srt/.ass files
   lyrics-cache/                # downloaded .lrc/.txt lyric files
-~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index
+~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index, versioned caches
 ```
 
 `jpcorpus` accepts JLPT JSON as either a list of objects or a dictionary grouped by level. Each word object can use common keys such as `word`, `surface`, `reading`, `level`, `meaning`, or `translation`.

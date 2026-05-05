@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -15,7 +17,19 @@ from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .i18n import SUPPORTED_LANGUAGES
 from .llm import AppleFoundationModelsClient, LLMConfig, OpenAICompatibleClient, annotate_corpus_file
-from .lyrics import LrcLibClient, is_probably_instrumental_title, write_lrclib_lyric
+from .lyrics import (
+    LRCLIB_ALBUM_CACHE_PURPOSE,
+    LRCLIB_ALBUM_CACHE_VERSION,
+    LRCLIB_CACHE_PURPOSE,
+    LRCLIB_CACHE_VERSION,
+    LrcLibClient,
+    is_probably_instrumental_title,
+    lyric_album_artists,
+    lyric_album_cache_key,
+    lyric_album_search_params,
+    lyric_cache_key,
+    write_lrclib_lyric,
+)
 from .paths import (
     DEFAULT_ANIME_DB,
     DEFAULT_JIMAKU_CACHE,
@@ -250,6 +264,12 @@ def sync_lyrics(
         if subject_id is None:
             continue
         try:
+            full_subject = client.subject(int(subject_id))
+            item = {**item, "subject": full_subject}
+            subject = full_subject
+        except Exception as exc:
+            typer.echo(f"Bangumi subject miss for {subject.get('name') or subject_id}: {exc}")
+        try:
             episodes = client.episodes(int(subject_id))
         except Exception as exc:
             typer.echo(f"Bangumi track miss for {subject.get('name') or subject_id}: {exc}")
@@ -269,8 +289,9 @@ def fetch_lyrics(
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
     cache_dir: Path = typer.Option(DEFAULT_LYRICS_CACHE, help="LRCLIB lyric cache directory."),
     limit: int | None = typer.Option(None, help="Maximum tracks to try this run."),
-    overwrite: bool = typer.Option(False, help="Refetch tracks that already have cached lyrics."),
-    force: bool = typer.Option(False, "--force", help="Retry tracks recorded as previous LRCLIB misses."),
+    overwrite: bool = typer.Option(False, help="Rewrite cached lyric files from the versioned cache."),
+    force: bool = typer.Option(False, "--force", help="Ignore versioned cache entries and query LRCLIB again."),
+    concurrency: int = typer.Option(4, min=1, max=16, help="Parallel LRCLIB requests."),
 ) -> None:
     """Fetch cached lyrics from LRCLIB for synced Bangumi music tracks."""
     state = State(state_db)
@@ -284,23 +305,65 @@ def fetch_lyrics(
         for lyric_file in state.list_lyric_files()
         if lyric_file.provider == "lrclib"
     }
-    misses = state.list_lyric_miss_keys(provider="lrclib")
-    client = LrcLibClient(user_agent=user_agent())
+    cached_paths = {
+        lyric_file.track_key: lyric_file.path
+        for lyric_file in state.list_lyric_files()
+        if lyric_file.provider == "lrclib"
+    }
+    ua = user_agent()
     attempted = 0
     matched = 0
+    cache_hits = 0
     skipped_cached = 0
     skipped_missed = 0
     skipped_instrumental = 0
+    pending = []
     for track in tracks:
         if limit is not None and attempted >= limit:
             break
         if not overwrite and track.track_key in cached:
             skipped_cached += 1
             continue
-        if not force and track.track_key in misses:
-            skipped_missed += 1
-            continue
+        cache_key = lyric_cache_key(track)
+        if not force:
+            cache_entry = state.get_cache_entry(
+                purpose=LRCLIB_CACHE_PURPOSE,
+                cache_key=cache_key,
+                version=LRCLIB_CACHE_VERSION,
+            )
+            if cache_entry and cache_entry["status"] == "hit":
+                result = cache_entry["value"]
+                lyric_file = write_lrclib_lyric(track, result, cache_dir=cache_dir)
+                state.save_lyric_file(lyric_file, raw_payload=result)
+                stale_path = cached_paths.get(track.track_key)
+                if stale_path and stale_path != lyric_file.path:
+                    stale_path.unlink(missing_ok=True)
+                cache_hits += 1
+                matched += 1
+                continue
+            if cache_entry and cache_entry["status"] == "miss":
+                value = cache_entry["value"]
+                reason = str(value.get("reason") or "not_found")
+                if overwrite:
+                    remove_cached_lyric(state, cached_paths, track.track_key)
+                state.save_lyric_miss(
+                    track_key=track.track_key,
+                    provider="lrclib",
+                    reason=reason,
+                    detail=value.get("detail"),
+                )
+                skipped_missed += 1
+                continue
         if is_probably_instrumental_title(track.title):
+            if overwrite:
+                remove_cached_lyric(state, cached_paths, track.track_key)
+            state.save_cache_entry(
+                purpose=LRCLIB_CACHE_PURPOSE,
+                cache_key=cache_key,
+                version=LRCLIB_CACHE_VERSION,
+                status="miss",
+                value={"reason": "instrumental", "detail": track.title},
+            )
             state.save_lyric_miss(
                 track_key=track.track_key,
                 provider="lrclib",
@@ -311,35 +374,184 @@ def fetch_lyrics(
             typer.echo(f"Skipping instrumental track: {track.title}")
             continue
         attempted += 1
-        try:
-            result = client.best_match(track)
-        except Exception as exc:
-            state.save_lyric_miss(
-                track_key=track.track_key,
-                provider="lrclib",
-                reason="error",
-                detail=str(exc),
+        pending.append((track, cache_key))
+
+    album_results = load_lrclib_album_candidates(
+        state=state,
+        tracks=[track for track, _cache_key in pending],
+        user_agent_value=ua,
+        force=force,
+        concurrency=concurrency,
+    )
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {
+            executor.submit(
+                fetch_lrclib_track,
+                track,
+                ua,
+                album_results.get(track.album_title, []),
+            ): (track, cache_key)
+            for track, cache_key in pending
+        }
+        for future in as_completed(futures):
+            track, cache_key = futures[future]
+            result, error = future.result()
+            if error:
+                state.save_lyric_miss(
+                    track_key=track.track_key,
+                    provider="lrclib",
+                    reason="error",
+                    detail=error,
+                )
+                typer.echo(f"LRCLIB miss for {track.title}: {error}")
+                continue
+            if result is None:
+                if overwrite:
+                    remove_cached_lyric(state, cached_paths, track.track_key)
+                state.save_cache_entry(
+                    purpose=LRCLIB_CACHE_PURPOSE,
+                    cache_key=cache_key,
+                    version=LRCLIB_CACHE_VERSION,
+                    status="miss",
+                    value={"reason": "not_found"},
+                )
+                state.save_lyric_miss(
+                    track_key=track.track_key,
+                    provider="lrclib",
+                    reason="not_found",
+                )
+                typer.echo(f"LRCLIB miss for {track.title}")
+                continue
+            state.save_cache_entry(
+                purpose=LRCLIB_CACHE_PURPOSE,
+                cache_key=cache_key,
+                version=LRCLIB_CACHE_VERSION,
+                status="hit",
+                value=result,
             )
-            typer.echo(f"LRCLIB miss for {track.title}: {exc}")
-            continue
-        if result is None:
-            state.save_lyric_miss(
-                track_key=track.track_key,
-                provider="lrclib",
-                reason="not_found",
-            )
-            typer.echo(f"LRCLIB miss for {track.title}")
-            continue
-        lyric_file = write_lrclib_lyric(track, result, cache_dir=cache_dir)
-        state.save_lyric_file(lyric_file, raw_payload=result)
-        matched += 1
-        typer.echo(f"Cached lyrics: {track.title}")
+            lyric_file = write_lrclib_lyric(track, result, cache_dir=cache_dir)
+            state.save_lyric_file(lyric_file, raw_payload=result)
+            stale_path = cached_paths.get(track.track_key)
+            if stale_path and stale_path != lyric_file.path:
+                stale_path.unlink(missing_ok=True)
+            matched += 1
+            typer.echo(f"Cached lyrics: {track.title}")
     typer.echo(
         "LRCLIB matched "
-        f"{matched} of {attempted} tried tracks "
-        f"({skipped_cached} cached, {skipped_missed} previous misses, "
+        f"{matched} tracks "
+        f"({attempted} queried, "
+        f"{skipped_cached} cached, {cache_hits} cache hits, "
+        f"{skipped_missed} cached misses, "
         f"{skipped_instrumental} instrumental skipped)."
     )
+
+
+def load_lrclib_album_candidates(
+    *,
+    state: State,
+    tracks: list[Any],
+    user_agent_value: str,
+    force: bool,
+    concurrency: int,
+) -> dict[str, list[dict[str, Any]]]:
+    album_tracks: dict[str, list[Any]] = {}
+    for track in tracks:
+        album_tracks.setdefault(track.album_title, []).append(track)
+
+    results: dict[str, list[dict[str, Any]]] = {}
+    pending = []
+    for album_title, tracks_for_album in album_tracks.items():
+        artists = lyric_album_artists(tracks_for_album)
+        cache_key = lyric_album_cache_key(album_title, artists)
+        if not force:
+            cache_entry = state.get_cache_entry(
+                purpose=LRCLIB_ALBUM_CACHE_PURPOSE,
+                cache_key=cache_key,
+                version=LRCLIB_ALBUM_CACHE_VERSION,
+            )
+            if cache_entry and cache_entry["status"] == "hit":
+                value = cache_entry["value"]
+                results[album_title] = value if isinstance(value, list) else []
+                continue
+            if cache_entry and cache_entry["status"] == "miss":
+                results[album_title] = []
+                continue
+        pending.append((album_title, artists, cache_key))
+
+    if pending:
+        typer.echo(f"Searching LRCLIB album candidates for {len(pending)} albums...")
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {
+            executor.submit(fetch_lrclib_album, album_title, artists, user_agent_value): (
+                album_title,
+                cache_key,
+            )
+            for album_title, artists, cache_key in pending
+        }
+        for future in as_completed(futures):
+            album_title, cache_key = futures[future]
+            album_results, error = future.result()
+            if error:
+                typer.echo(f"LRCLIB album search miss for {album_title}: {error}")
+                results[album_title] = []
+                continue
+            if album_results:
+                state.save_cache_entry(
+                    purpose=LRCLIB_ALBUM_CACHE_PURPOSE,
+                    cache_key=cache_key,
+                    version=LRCLIB_ALBUM_CACHE_VERSION,
+                    status="hit",
+                    value=album_results,
+                )
+                typer.echo(f"Cached LRCLIB album candidates: {album_title} ({len(album_results)})")
+            else:
+                state.save_cache_entry(
+                    purpose=LRCLIB_ALBUM_CACHE_PURPOSE,
+                    cache_key=cache_key,
+                    version=LRCLIB_ALBUM_CACHE_VERSION,
+                    status="miss",
+                    value={"reason": "not_found"},
+                )
+            results[album_title] = album_results
+    return results
+
+
+def fetch_lrclib_album(
+    album_title: str,
+    artists: list[str],
+    user_agent_value: str,
+) -> tuple[list[dict[str, Any]], str | None]:
+    client = LrcLibClient(user_agent=user_agent_value)
+    candidates: dict[str, dict[str, Any]] = {}
+    try:
+        for params in lyric_album_search_params(album_title, artists):
+            for result in client.search(**params):
+                source_id = str(result.get("id") or result.get("trackId") or repr(result))
+                candidates[source_id] = result
+    except Exception as exc:
+        return [], str(exc)
+    return list(candidates.values()), None
+
+
+def fetch_lrclib_track(
+    track,
+    user_agent_value: str,
+    extra_results: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    client = LrcLibClient(user_agent=user_agent_value)
+    try:
+        return client.best_match(track, extra_results=extra_results), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def remove_cached_lyric(state: State, cached_paths: dict[str, Path], track_key: str) -> None:
+    state.delete_lyric_file(track_key=track_key, provider="lrclib")
+    path = cached_paths.get(track_key)
+    if path:
+        path.unlink(missing_ok=True)
 
 
 @app.command()
@@ -473,6 +685,7 @@ def view(
 def annotate(
     input: Path = typer.Option(Path("corpus.json"), help="Input corpus JSON path."),
     output: Path = typer.Option(Path("corpus.annotated.json"), help="Annotated corpus JSON output path."),
+    state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database for annotation cache."),
     model: str | None = typer.Option(
         None,
         envvar="JPCORPUS_LLM_MODEL",
@@ -527,6 +740,13 @@ def annotate(
         client=client,
         limit=limit,
         overwrite=overwrite,
+        cache_state=State(state_db),
+        cache_context={
+            "provider": provider,
+            "model": model or "apple",
+            "base_url": base_url if provider == "openai-compatible" else "",
+            "use_show_context": use_show_context,
+        },
     )
     typer.echo(f"Annotated {count} examples: {output}")
 

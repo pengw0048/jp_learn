@@ -117,6 +117,16 @@ class State:
                   PRIMARY KEY (track_key, provider),
                   FOREIGN KEY (track_key) REFERENCES music_tracks(track_key)
                 );
+
+                CREATE TABLE IF NOT EXISTS cache_entries (
+                  purpose TEXT NOT NULL,
+                  cache_key TEXT NOT NULL,
+                  version INTEGER NOT NULL,
+                  status TEXT NOT NULL,
+                  value_json TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  PRIMARY KEY (purpose, cache_key, version)
+                );
                 """
             )
 
@@ -445,6 +455,13 @@ class State:
             for row in rows
         ]
 
+    def delete_lyric_file(self, *, track_key: str, provider: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM lyric_files WHERE track_key = ? AND provider = ?",
+                (track_key, provider),
+            )
+
     def save_lyric_miss(
         self,
         *,
@@ -483,6 +500,59 @@ class State:
             params = (provider,)
         with self.connect() as conn:
             return int(conn.execute(sql, params).fetchone()[0])
+
+    def get_cache_entry(
+        self,
+        *,
+        purpose: str,
+        cache_key: str,
+        version: int,
+    ) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT status, value_json
+                FROM cache_entries
+                WHERE purpose = ? AND cache_key = ? AND version = ?
+                """,
+                (purpose, cache_key, version),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "status": row["status"],
+            "value": json.loads(row["value_json"]),
+        }
+
+    def save_cache_entry(
+        self,
+        *,
+        purpose: str,
+        cache_key: str,
+        version: int,
+        status: str,
+        value: dict[str, Any] | list[Any] | str | int | float | bool | None,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO cache_entries
+                  (purpose, cache_key, version, status, value_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(purpose, cache_key, version) DO UPDATE SET
+                  status=excluded.status,
+                  value_json=excluded.value_json,
+                  updated_at=excluded.updated_at
+                """,
+                (
+                    purpose,
+                    cache_key,
+                    version,
+                    status,
+                    json.dumps(value, ensure_ascii=False),
+                    utc_now(),
+                ),
+            )
 
     def _row_to_show(self, row: sqlite3.Row) -> WatchedShow:
         return WatchedShow(
