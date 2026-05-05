@@ -59,12 +59,12 @@ const text = {
     lexicalSpellings: "写法",
     lexicalReadings: "异读",
     lexicalPos: "语法",
-    lexicalUsage: "提示",
+    lexicalSenses: "义项",
     lexicalKanji: "汉字",
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
-    reannotateExample: "重标",
+    reannotateExample: "刷新标注",
     reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
     studyMode: "学习",
     browseMode: "浏览",
@@ -163,12 +163,12 @@ const text = {
     lexicalSpellings: "Spellings",
     lexicalReadings: "Alt. reading",
     lexicalPos: "Grammar",
-    lexicalUsage: "Notes",
+    lexicalSenses: "Senses",
     lexicalKanji: "Kanji",
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
-    reannotateExample: "Refresh",
+    reannotateExample: "Refresh annotation",
     reannotateExampleTitle: "Regenerate this example translation and usage note",
     studyMode: "Study",
     browseMode: "Browse",
@@ -930,14 +930,12 @@ function renderExamples(word, options = {}) {
     appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
     lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
     item.append(lines);
-    if (allowActions) {
-      item.append(renderExampleActions(word, example));
-    }
-    if (revealAnnotations && example.translation_zh) {
-      item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
-    }
-    if (revealAnnotations && example.usage_note_zh) {
-      item.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
+    const annotationBlock = renderExampleAnnotationBlock(word, example, {
+      revealAnnotations,
+      allowActions,
+    });
+    if (annotationBlock) {
+      item.append(annotationBlock);
     }
     grid.append(item);
   });
@@ -947,13 +945,37 @@ function renderExamples(word, options = {}) {
 
 function renderExampleActions(word, example) {
   const wrap = el("div", "example-actions");
-  const button = el("button", "example-action-button", t("reannotateExample"));
+  const button = el("button", "example-action-button", "↻");
   button.type = "button";
   button.title = t("reannotateExampleTitle");
+  button.setAttribute("aria-label", t("reannotateExample"));
   button.disabled = !app.maintenance.enabled || app.maintenance.job?.status === "running";
   button.addEventListener("click", () => startExampleAnnotationJob(word, example, button));
   wrap.append(button);
   return wrap;
+}
+
+function renderExampleAnnotationBlock(word, example, options = {}) {
+  const revealAnnotations = options.revealAnnotations ?? true;
+  const allowActions = options.allowActions ?? true;
+  const hasTranslation = revealAnnotations && example.translation_zh;
+  const hasUsageNote = revealAnnotations && example.usage_note_zh;
+  if (!hasTranslation && !hasUsageNote && !allowActions) {
+    return null;
+  }
+  const block = el("div", `annotation-block ${hasTranslation || hasUsageNote ? "" : "empty"}`.trim());
+  const lines = el("div", "annotation-lines");
+  if (hasTranslation) {
+    lines.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
+  }
+  if (hasUsageNote) {
+    lines.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
+  }
+  block.append(lines);
+  if (allowActions) {
+    block.append(renderExampleActions(word, example));
+  }
+  return block;
 }
 
 function renderExampleColumnControl() {
@@ -1159,7 +1181,7 @@ function renderLexicalNotes(word) {
     lexicalUsefulForms(notes.readings, word.reading),
   ));
   appendLexicalRow(body, t("lexicalPos"), lexicalTextNodes(notes.parts_of_speech));
-  appendLexicalRow(body, t("lexicalUsage"), lexicalTextNodes(notes.usage_tags));
+  appendLexicalRow(body, t("lexicalSenses"), lexicalSenseNodes(notes.senses), "lexical-note-values sense-values");
   appendLexicalRow(body, t("lexicalKanji"), lexicalKanjiNodes(notes.kanji));
   if (!body.childElementCount) {
     return document.createDocumentFragment();
@@ -1168,13 +1190,13 @@ function renderLexicalNotes(word) {
   return section;
 }
 
-function appendLexicalRow(parent, label, nodes) {
+function appendLexicalRow(parent, label, nodes, valueClassName = "lexical-note-values") {
   if (!nodes.length) {
     return;
   }
   const row = el("div", "lexical-note-row");
   row.append(el("span", "lexical-note-label", label));
-  const values = el("div", "lexical-note-values");
+  const values = el("div", valueClassName);
   nodes.forEach((node) => values.append(node));
   row.append(values);
   parent.append(row);
@@ -1205,6 +1227,23 @@ function lexicalTextNodes(values, className = "lexical-chip") {
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .map((value) => el("span", className, value));
+}
+
+function lexicalSenseNodes(values) {
+  return asArray(values).map((sense, index) => {
+    const item = el("div", "lexical-sense");
+    item.append(el("span", "lexical-sense-index", `${index + 1}.`));
+    const textValue = asArray(sense.glosses)
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join("; ");
+    item.append(el("span", "lexical-sense-text", textValue));
+    const tags = asArray(sense.tags).filter(Boolean);
+    if (tags.length) {
+      item.append(el("span", "lexical-sense-tags", tags.join(" / ")));
+    }
+    return item;
+  }).filter((node) => node.textContent.trim());
 }
 
 function lexicalKanjiNodes(values) {

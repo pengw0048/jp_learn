@@ -597,6 +597,35 @@ select {
   min-width: 0;
 }
 
+.sense-values {
+  display: grid;
+  gap: 4px;
+}
+
+.lexical-sense {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 7px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.lexical-sense-index {
+  color: var(--accent);
+  font-weight: 760;
+}
+
+.lexical-sense-text {
+  color: var(--text);
+}
+
+.lexical-sense-tags {
+  grid-column: 2;
+  color: var(--muted);
+}
+
 .lexical-chip,
 .lexical-form-chip,
 .lexical-kanji-chip {
@@ -839,21 +868,40 @@ mark {
   color: var(--lyrics);
 }
 
-.example-actions {
+.annotation-block {
   margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.annotation-block.empty {
+  justify-content: end;
+}
+
+.annotation-lines {
+  min-width: 0;
+}
+
+.example-actions {
   display: flex;
   justify-content: flex-end;
 }
 
 .example-action-button {
-  min-height: 26px;
-  padding: 2px 8px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfc;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 720;
+  line-height: 1;
 }
 
 .example-action-button:hover:not(:disabled) {
@@ -867,10 +915,13 @@ mark {
 }
 
 .annotation-line {
-  margin-top: 6px;
   font-size: 14px;
   line-height: 1.45;
   color: var(--muted);
+}
+
+.annotation-line + .annotation-line {
+  margin-top: 5px;
 }
 
 .translation-line {

@@ -88,7 +88,7 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 8
+    assert payload["schema_version"] == 10
     assert payload["summary"]["lyric_file_count"] == 0
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
@@ -167,7 +167,9 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
     assert [form["text"] for form in notes["spellings"]] == ["約束"]
     assert notes["readings"][0]["text"] == "やくそく"
     assert notes["parts_of_speech"] == ["名词"]
-    assert notes["usage_tags"] == ["通常假名书写"]
+    assert "usage_tags" not in notes
+    assert notes["senses"][0]["glosses"] == ["promise"]
+    assert notes["senses"][0]["parts_of_speech"] == ["名词"]
     assert notes["kanji"][0]["literal"] == "約"
     assert notes["kanji"][0]["on_readings"] == ["ヤク"]
     assert notes["kanji"][0]["meanings"] == ["promise"]

@@ -17,7 +17,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 
 def analysis_to_dict(
@@ -149,7 +149,11 @@ def _word_to_dict(
         ],
     }
     if lexical_index:
-        notes = lexical_index.notes_for(word.entry.surface, word.display_reading)
+        notes = lexical_index.notes_for(
+            word.entry.surface,
+            word.display_reading,
+            meaning_hint=word.entry.meaning,
+        )
         if notes:
             payload["lexical_notes"] = notes
     return payload

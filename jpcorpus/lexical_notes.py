@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,15 +20,36 @@ MAX_JMDICT_ENTRIES_PER_WORD = 1
 MAX_FORMS_PER_WORD = 4
 MAX_TAGS_PER_WORD = 4
 MAX_KANJI_PER_WORD = 8
+MAX_SENSES_PER_WORD = 3
+MAX_GLOSSES_PER_SENSE = 3
 
 HIDDEN_FORM_TAGS = {
     "rarely used kanji form",
     "search-only kanji form",
 }
 
+SENSE_TAG_LABELS = {
+    "archaism": "古语",
+    "obsolete term": "废语",
+    "rare term": "少见",
+    "slang": "俚语",
+    "colloquialism": "口语",
+    "honorific or respectful (sonkeigo) language": "尊敬语",
+    "humble (kenjougo) language": "谦让语",
+    "polite (teineigo) language": "礼貌语",
+    "male term or language": "男性用语",
+    "female term or language": "女性用语",
+    "manga slang": "漫画用语",
+    "children's language": "儿童语",
+    "onomatopoeic or mimetic word": "拟声拟态",
+    "vulgar expression or word": "粗俗语",
+    "dated term": "旧语",
+}
+
 
 POS_LABELS = {
     "noun (common) (futsuumeishi)": "名词",
+    "noun, used as a suffix": "名词・接尾",
     "pronoun": "代词",
     "adverb (fukushi)": "副词",
     "adjective (keiyoushi)": "い形容词",
@@ -42,6 +64,8 @@ POS_LABELS = {
     "prefix": "接头词",
     "suffix": "接尾词",
     "Ichidan verb": "一段动词",
+    "Ichidan verb - kureru special class": "一段・くれる",
+    "Godan verb - Iku/Yuku special class": "五段・行く",
     "Godan verb with 'u' ending": "五段・う",
     "Godan verb with `u' ending": "五段・う",
     "Godan verb with 'ku' ending": "五段・く",
@@ -84,33 +108,6 @@ POS_LABELS = {
     "vi": "自动",
 }
 
-TAG_LABELS = {
-    "word usually written using kana alone": "通常假名书写",
-    "uk": "通常假名书写",
-    "usually written using kana alone": "通常假名书写",
-    "word containing irregular kanji usage": "汉字用法不规则",
-    "word containing irregular kana usage": "假名用法不规则",
-    "irregular okurigana usage": "送假名不规则",
-    "ateji (phonetic) reading": "当字",
-    "archaism": "古语",
-    "obsolete term": "废语",
-    "rare term": "少见",
-    "slang": "俚语",
-    "colloquialism": "口语",
-    "honorific or respectful (sonkeigo) language": "尊敬语",
-    "humble (kenjougo) language": "谦让语",
-    "polite (teineigo) language": "礼貌语",
-    "male term or language": "男性用语",
-    "female term or language": "女性用语",
-    "manga slang": "漫画用语",
-    "children's language": "儿童语",
-    "onomatopoeic or mimetic word": "拟声拟态",
-    "sensitive": "敏感词",
-    "vulgar expression or word": "粗俗语",
-    "dated term": "旧语",
-}
-
-
 @dataclass(frozen=True)
 class JMDictForm:
     text: str
@@ -131,7 +128,22 @@ class JMDictEntry:
     spellings: tuple[JMDictForm, ...]
     readings: tuple[JMDictForm, ...]
     parts_of_speech: tuple[str, ...] = ()
-    usage_tags: tuple[str, ...] = ()
+    senses: tuple["JMDictSense", ...] = ()
+
+
+@dataclass(frozen=True)
+class JMDictSense:
+    glosses: tuple[str, ...]
+    parts_of_speech: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {"glosses": list(self.glosses)}
+        if self.parts_of_speech:
+            payload["parts_of_speech"] = list(self.parts_of_speech)
+        if self.tags:
+            payload["tags"] = list(self.tags)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -191,8 +203,14 @@ class LexicalResourceIndex:
         )
         return cls(jmdict_by_key=jmdict, kanji_by_literal=kanji)
 
-    def notes_for(self, surface: str, reading: str | None = None) -> dict[str, object] | None:
-        jmdict_entries = self._jmdict_entries(surface, reading)
+    def notes_for(
+        self,
+        surface: str,
+        reading: str | None = None,
+        *,
+        meaning_hint: str | None = None,
+    ) -> dict[str, object] | None:
+        jmdict_entries = self._jmdict_entries(surface, reading, meaning_hint=meaning_hint)
         kanji_notes = [
             note
             for char in surface
@@ -211,14 +229,8 @@ class LexicalResourceIndex:
                 unique_forms(form for entry in jmdict_entries for form in entry.readings),
                 preferred_text=reading,
             )
-            parts_of_speech = unique_strings(
+            parts_of_speech = compact_pos_labels(
                 label_pos(pos) for entry in jmdict_entries for pos in entry.parts_of_speech
-            )
-            usage_tags = unique_strings(
-                label
-                for entry in jmdict_entries
-                for tag in entry.usage_tags
-                if (label := label_tag(tag))
             )
             if spellings:
                 payload["spellings"] = [form.to_dict() for form in spellings[:MAX_FORMS_PER_WORD]]
@@ -226,15 +238,35 @@ class LexicalResourceIndex:
                 payload["readings"] = [form.to_dict() for form in readings[:MAX_FORMS_PER_WORD]]
             if parts_of_speech:
                 payload["parts_of_speech"] = parts_of_speech[:MAX_TAGS_PER_WORD]
-            if usage_tags:
-                payload["usage_tags"] = usage_tags[:MAX_TAGS_PER_WORD]
+            senses = unique_senses(
+                sense for entry in jmdict_entries for sense in entry.senses
+            )
+            if senses:
+                payload["senses"] = [
+                    sense.to_dict()
+                    for sense in senses[:MAX_SENSES_PER_WORD]
+                ]
         if kanji_notes:
             payload["kanji"] = [note.to_dict() for note in kanji_notes]
         return payload
 
-    def _jmdict_entries(self, surface: str, reading: str | None) -> list[JMDictEntry]:
+    def _jmdict_entries(
+        self,
+        surface: str,
+        reading: str | None,
+        *,
+        meaning_hint: str | None,
+    ) -> list[JMDictEntry]:
         seen: set[tuple[tuple[str, ...], tuple[str, ...]]] = set()
-        entries = self._dedupe_jmdict_entries(self.jmdict_by_key.get(surface, []), seen)
+        entries = self._dedupe_jmdict_entries(
+            sorted_jmdict_candidates(
+                self.jmdict_by_key.get(surface, []),
+                surface,
+                reading,
+                meaning_hint,
+            ),
+            seen,
+        )
         if entries:
             return entries[:MAX_JMDICT_ENTRIES_PER_WORD]
         if reading:
@@ -348,18 +380,29 @@ def jmdict_entry_from_xml(element: ET.Element) -> JMDictEntry:
         for sense in element.findall("sense")
         for text in child_texts(sense, "pos")
     )
-    usage_tags = unique_strings(
-        text
-        for sense in element.findall("sense")
-        for tag_name in ("misc", "field", "dial")
-        for text in child_texts(sense, tag_name)
-    )
+    senses = tuple(jmdict_sense_from_xml(sense) for sense in element.findall("sense"))
     return JMDictEntry(
         spellings=spellings,
         readings=readings,
         parts_of_speech=tuple(parts_of_speech),
-        usage_tags=tuple(usage_tags),
+        senses=tuple(sense for sense in senses if sense.glosses),
     )
+
+
+def jmdict_sense_from_xml(element: ET.Element) -> JMDictSense:
+    glosses = tuple(child_texts(element, "gloss")[:MAX_GLOSSES_PER_SENSE])
+    parts_of_speech = tuple(
+        compact_pos_labels(label_pos(text) for text in child_texts(element, "pos"))
+    )
+    tags = tuple(
+        unique_strings(
+            label
+            for tag_name in ("misc", "field", "dial")
+            for tag in child_texts(element, tag_name)
+            if (label := label_sense_tag(tag))
+        )
+    )
+    return JMDictSense(glosses=glosses, parts_of_speech=parts_of_speech, tags=tags)
 
 
 def kanji_note_from_xml(element: ET.Element) -> KanjiNote:
@@ -488,12 +531,122 @@ def unique_strings(values: Iterable[str]) -> list[str]:
     return results
 
 
+def unique_senses(values: Iterable[JMDictSense]) -> list[JMDictSense]:
+    seen: set[tuple[str, ...]] = set()
+    results: list[JMDictSense] = []
+    for sense in values:
+        if not sense.glosses or sense.glosses in seen:
+            continue
+        seen.add(sense.glosses)
+        results.append(sense)
+    return results
+
+
+def sorted_jmdict_candidates(
+    candidates: Iterable[JMDictEntry],
+    surface: str,
+    reading: str | None,
+    meaning_hint: str | None,
+) -> list[JMDictEntry]:
+    reading_keys = split_reading_keys(reading)
+    hint_tokens = meaning_tokens(meaning_hint)
+    return sorted(
+        candidates,
+        key=lambda entry: (
+            -jmdict_meaning_score(entry, hint_tokens),
+            jmdict_surface_rank(entry, surface),
+            not jmdict_entry_matches_reading(entry, reading_keys),
+            not any(form.common for form in entry.spellings),
+            not any(form.common for form in entry.readings),
+        ),
+    )
+
+
+def jmdict_meaning_score(entry: JMDictEntry, hint_tokens: set[str]) -> int:
+    if not hint_tokens:
+        return 0
+    gloss_tokens = {
+        token
+        for sense in entry.senses
+        for gloss in sense.glosses
+        for token in meaning_tokens(gloss)
+    }
+    return len(hint_tokens & gloss_tokens)
+
+
+def jmdict_surface_rank(entry: JMDictEntry, surface: str) -> int:
+    if any(form.text == surface for form in entry.spellings):
+        return 0
+    if not entry.spellings:
+        return 1
+    if is_kana_text(surface):
+        return 2
+    return 1
+
+
+def jmdict_entry_matches_reading(entry: JMDictEntry, reading_keys: set[str]) -> bool:
+    if not reading_keys:
+        return True
+    return any(form.text in reading_keys for form in entry.readings)
+
+
+def split_reading_keys(reading: str | None) -> set[str]:
+    if not reading:
+        return set()
+    return {
+        part.strip()
+        for part in reading.replace("；", ";").replace("、", ";").replace(",", ";").split(";")
+        if part.strip()
+    }
+
+
+def is_kana_text(value: str) -> bool:
+    return bool(value) and all(
+        "\u3040" <= char <= "\u30ff" or char in {"ー", "・"}
+        for char in value
+    )
+
+
+def meaning_tokens(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    stop_words = {
+        "a",
+        "an",
+        "and",
+        "for",
+        "in",
+        "of",
+        "one",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z]+", value.casefold())
+        if len(token) > 1 and token not in stop_words
+    }
+
+
+def compact_pos_labels(values: Iterable[str]) -> list[str]:
+    labels = unique_strings(values)
+    if len(labels) > 1:
+        labels = [
+            label
+            for label in labels
+            if label not in {"助动词", "辅助形容词"}
+        ]
+    return labels
+
+
 def label_pos(value: str) -> str:
     return POS_LABELS.get(value, value)
 
 
-def label_tag(value: str) -> str:
-    return TAG_LABELS.get(value, "")
+def label_sense_tag(value: str) -> str:
+    return SENSE_TAG_LABELS.get(value, "")
 
 
 @contextmanager
