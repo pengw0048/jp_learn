@@ -342,6 +342,37 @@ def test_select_examples_uses_stable_hash_tiebreaker():
     ]
 
 
+def test_select_examples_deduplicates_whitespace_variant_lyrics():
+    examples = [
+        WordExample(
+            sentence="本当は とても とても 嬉しかったよ",
+            source_title="secret base ~君がくれたもの~ (Memento mori Ver.)",
+            subtitle_file="memento.lrc",
+            matched_text="本当",
+            source_type="lyrics",
+        ),
+        WordExample(
+            sentence="本当は とても とても嬉しかったよ",
+            source_title="secret base ~君がくれたもの~ (10 years after Ver.)",
+            subtitle_file="10years.lrc",
+            matched_text="本当",
+            source_type="lyrics",
+        ),
+        WordExample(
+            sentence="明日また本当の話をする。",
+            source_title="Show B",
+            subtitle_file="b.srt",
+            matched_text="本当",
+            source_type="subtitle",
+        ),
+    ]
+
+    selected = _select_examples(examples, limit=3)
+
+    assert len(selected) == 2
+    assert len([example for example in selected if "secret base" in example.source_title]) == 1
+
+
 def test_word_examples_keep_source_diversity_when_candidate_pool_is_full():
     stats = WordStats(entry=WordEntry(surface="見る", reading="みる", level=5))
 

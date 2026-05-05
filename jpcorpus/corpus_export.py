@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -128,18 +129,35 @@ def _select_examples(examples: list[WordExample], *, limit: int) -> list[WordExa
     remaining = list(examples)
     selected: list[WordExample] = []
     selected_sources: set[tuple[str, str]] = set()
+    selected_sentences: set[str] = set()
     while remaining and len(selected) < limit:
         diverse_pool = [
             example
             for example in remaining
             if (example.source_type, example.source_title) not in selected_sources
+            and _example_duplicate_key(example) not in selected_sentences
         ]
-        pool = diverse_pool or remaining
+        unique_pool = [
+            example
+            for example in remaining
+            if _example_duplicate_key(example) not in selected_sentences
+        ]
+        pool = diverse_pool or unique_pool or remaining
         best = max(pool, key=_example_selection_key)
         selected.append(best)
         selected_sources.add((best.source_type, best.source_title))
-        remaining.remove(best)
+        best_key = _example_duplicate_key(best)
+        selected_sentences.add(best_key)
+        remaining = [
+            example
+            for example in remaining
+            if example is not best and _example_duplicate_key(example) != best_key
+        ]
     return selected
+
+
+def _example_duplicate_key(example: WordExample) -> str:
+    return re.sub(r"\s+", "", example.sentence.strip())
 
 
 def _example_selection_key(example: WordExample) -> tuple[float, int]:
