@@ -1521,9 +1521,9 @@ function renderLexicalNotes(word) {
   const body = el("div", "lexical-note-grid");
   const spellingNodes = lexicalFormNodes(lexicalUsefulForms(notes.spellings, word.word));
   const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, word.reading));
-  const posNodes = lexicalTextNodes(notes.parts_of_speech);
+  const posNodes = lexicalPosNodes(notes.parts_of_speech);
   const senseNodes = app.lang === "zh" ? [] : lexicalSenseNodes(notes.senses);
-  const kanjiNodes = lexicalKanjiNodes(notes.kanji, word);
+  const kanjiNodes = app.lang === "zh" ? [] : lexicalKanjiNodes(notes.kanji, word);
   const dictionaryExampleNodes = lexicalDictionaryExampleNodes(notes.dictionary_examples);
   const hasUsefulNotes =
     spellingNodes.length > 0
@@ -1589,6 +1589,16 @@ function lexicalTextNodes(values, className = "lexical-chip") {
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .map((value) => el("span", className, value));
+}
+
+function lexicalPosNodes(values) {
+  const labels = asArray(values)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const visibleLabels = app.lang === "zh"
+    ? labels.filter((label) => label !== "名词")
+    : labels;
+  return lexicalTextNodes(visibleLabels);
 }
 
 function lexicalSenseNodes(values) {
