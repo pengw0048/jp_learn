@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import select
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +13,7 @@ from typing import Any, Callable, Protocol
 
 import httpx
 
-from .paths import ensure_parent
+from .paths import APP_DIR, ensure_parent
 
 
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
@@ -22,6 +24,7 @@ APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 ANTHROPIC_VERSION = "2023-06-01"
+APPLE_FM_BINARY = APP_DIR / "apple_fm_annotate"
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,21 @@ class AppleFoundationModelsClient:
     def __init__(self, *, timeout: float = 120.0, use_show_context: bool = False) -> None:
         self.timeout = timeout
         self.use_show_context = use_show_context
+        self._process: subprocess.Popen[str] | None = None
+        self._lock = threading.Lock()
+
+    def close(self) -> None:
+        process = self._process
+        self._process = None
+        if process is None:
+            return
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
 
     def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         payload = {
@@ -157,17 +175,62 @@ class AppleFoundationModelsClient:
             "show_context": example.get("show_context") or {},
             "use_show_context": self.use_show_context,
         }
-        result = subprocess.run(
-            ["xcrun", "swift", str(APPLE_FM_SCRIPT)],
-            input=json.dumps(payload, ensure_ascii=False),
+        with self._lock:
+            return self._annotate_with_worker(payload)
+
+    def _annotate_with_worker(self, payload: dict[str, Any]) -> dict[str, str]:
+        process = self._worker_process()
+        if process.stdin is None or process.stdout is None:
+            raise RuntimeError("Apple Foundation Models worker pipes are not available.")
+        process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        process.stdin.flush()
+        ready, _, _ = select.select([process.stdout], [], [], self.timeout)
+        if not ready:
+            self.close()
+            raise TimeoutError("Apple Foundation Models worker timed out.")
+        line = process.stdout.readline()
+        if not line:
+            self.close()
+            raise RuntimeError("Apple Foundation Models worker exited without a response.")
+        response = json.loads(line)
+        if not response.get("ok"):
+            raise RuntimeError(str(response.get("error") or "Apple Foundation Models request failed."))
+        return parse_annotation_response(str(response.get("content") or ""))
+
+    def _worker_process(self) -> subprocess.Popen[str]:
+        if self._process is not None and self._process.poll() is None:
+            return self._process
+        binary = ensure_apple_fm_binary()
+        self._process = subprocess.Popen(
+            [str(binary), "--jsonl-server"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
-            capture_output=True,
-            timeout=self.timeout,
-            check=False,
+            bufsize=1,
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or "Apple Foundation Models request failed.")
-        return parse_annotation_response(result.stdout)
+        return self._process
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def ensure_apple_fm_binary() -> Path:
+    ensure_parent(APPLE_FM_BINARY)
+    if (
+        APPLE_FM_BINARY.exists()
+        and APPLE_FM_BINARY.stat().st_mtime >= APPLE_FM_SCRIPT.stat().st_mtime
+    ):
+        return APPLE_FM_BINARY
+    result = subprocess.run(
+        ["xcrun", "swiftc", str(APPLE_FM_SCRIPT), "-o", str(APPLE_FM_BINARY)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "Failed to compile Apple Foundation Models worker.")
+    return APPLE_FM_BINARY
 
 
 def build_annotation_prompt(

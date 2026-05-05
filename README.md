@@ -62,6 +62,8 @@ uv run jpcorpus view --corpus corpus.annotated.json
 
 Use `--provider anthropic` to try Claude Haiku through `ANTHROPIC_API_KEY`; it defaults to `claude-haiku-4-5-20251001` when `--model` is omitted and uses `ANTHROPIC_BASE_URL` for custom Anthropic-compatible gateways. Add `--concurrency 4` for parallel remote annotation requests; successful annotations are written to the versioned state-database cache as each request completes, and failed requests are reported without stopping the batch. Use `--provider openai-compatible --model your-model` instead for OpenAI, LiteLLM, Ollama/Open WebUI, or any compatible local server. LLM annotations are keyed by source text and provider context, so repeated annotation runs reuse existing results until the annotation cache version changes.
 
+The Apple provider compiles `jpcorpus/apple_fm_annotate.swift` into `~/.jpcorpus/apple_fm_annotate` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout during the annotation run.
+
 ## Local Smoke Test Without API Keys
 
 ```bash

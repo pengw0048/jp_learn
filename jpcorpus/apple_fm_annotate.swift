@@ -20,18 +20,12 @@ struct ShowContext: Decodable {
     let characters: [String]?
 }
 
-let data = FileHandle.standardInput.readDataToEndOfFile()
-let request = try JSONDecoder().decode(AnnotationRequest.self, from: data)
-let showSummary = truncated(request.show_context?.summary ?? "", limit: 280)
-let showCharacters = Array((request.show_context?.characters ?? []).prefix(12))
-let showContextBlock = (request.use_show_context == true && (!showSummary.isEmpty || !showCharacters.isEmpty))
-    ? """
-Optional show context for understanding names or references only; trust the source text if there is any conflict:
-Summary: \(showSummary.isEmpty ? "(none)" : showSummary)
-Characters: \(showCharacters.isEmpty ? "(none)" : showCharacters.joined(separator: ", "))
+struct WorkerResponse: Encodable {
+    let ok: Bool
+    let content: String?
+    let error: String?
+}
 
-"""
-    : ""
 let model = SystemLanguageModel.default
 guard model.isAvailable else {
     throw NSError(
@@ -48,7 +42,50 @@ Do not wrap the JSON in Markdown.
 Only use the provided source blocks. Do not invent setting, genre, speaker identity, or hidden episode facts.
 """
 
-let prompt = """
+if CommandLine.arguments.contains("--jsonl-server") {
+    try await runJsonlServer()
+} else {
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    let request = try JSONDecoder().decode(AnnotationRequest.self, from: data)
+    let content = try await annotate(request)
+    print(content)
+}
+
+func runJsonlServer() async throws {
+    while let line = readLine() {
+        if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            continue
+        }
+        do {
+            let data = Data(line.utf8)
+            let request = try JSONDecoder().decode(AnnotationRequest.self, from: data)
+            let content = try await annotate(request)
+            emit(WorkerResponse(ok: true, content: content, error: nil))
+        } catch {
+            emit(WorkerResponse(ok: false, content: nil, error: String(describing: error)))
+        }
+    }
+}
+
+func annotate(_ request: AnnotationRequest) async throws -> String {
+    let prompt = buildPrompt(request)
+    let session = LanguageModelSession(instructions: instructions)
+    let response = try await session.respond(to: prompt)
+    return response.content
+}
+
+func buildPrompt(_ request: AnnotationRequest) -> String {
+    let showSummary = truncated(request.show_context?.summary ?? "", limit: 280)
+    let showCharacters = Array((request.show_context?.characters ?? []).prefix(12))
+    let showContextBlock = (request.use_show_context == true && (!showSummary.isEmpty || !showCharacters.isEmpty))
+        ? """
+Optional show context for understanding names or references only; trust the source text if there is any conflict:
+Summary: \(showSummary.isEmpty ? "(none)" : showSummary)
+Characters: \(showCharacters.isEmpty ? "(none)" : showCharacters.joined(separator: ", "))
+
+"""
+        : ""
+    return """
 Annotate this Japanese media example.
 
 Word: \(request.word)
@@ -75,10 +112,19 @@ Return JSON:
   "scene_description": ""
 }
 """
+}
 
-let session = LanguageModelSession(instructions: instructions)
-let response = try await session.respond(to: prompt)
-print(response.content)
+func emit(_ response: WorkerResponse) {
+    let encoder = JSONEncoder()
+    do {
+        let data = try encoder.encode(response)
+        FileHandle.standardOutput.write(data)
+        FileHandle.standardOutput.write(Data("\n".utf8))
+    } catch {
+        let fallback = #"{"ok":false,"content":null,"error":"failed to encode worker response"}"#
+        FileHandle.standardOutput.write(Data((fallback + "\n").utf8))
+    }
+}
 
 func truncated(_ value: String, limit: Int) -> String {
     if value.count <= limit {

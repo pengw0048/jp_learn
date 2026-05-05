@@ -773,22 +773,28 @@ def annotate(
         label = word.get("word") or example.get("matched_text") or example.get("sentence") or "example"
         typer.echo(f"Annotation failed for {label}: {exc}", err=True)
 
-    count = annotate_corpus_file(
-        input,
-        output,
-        client=client,
-        limit=limit,
-        overwrite=overwrite,
-        cache_state=State(state_db),
-        cache_context={
-            "provider": provider,
-            "model": resolved_model,
-            "base_url": resolved_base_url,
-            "use_show_context": use_show_context,
-        },
-        concurrency=concurrency,
-        on_error=on_annotation_error,
-    )
+    count = 0
+    try:
+        count = annotate_corpus_file(
+            input,
+            output,
+            client=client,
+            limit=limit,
+            overwrite=overwrite,
+            cache_state=State(state_db),
+            cache_context={
+                "provider": provider,
+                "model": resolved_model,
+                "base_url": resolved_base_url,
+                "use_show_context": use_show_context,
+            },
+            concurrency=concurrency,
+            on_error=on_annotation_error,
+        )
+    finally:
+        close_client = getattr(client, "close", None)
+        if callable(close_client):
+            close_client()
     if errors:
         typer.echo(f"Annotated {count} examples with {len(errors)} failures: {output}")
     else:
