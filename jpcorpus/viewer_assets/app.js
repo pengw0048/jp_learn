@@ -55,12 +55,13 @@ const text = {
     chineseMeaning: "日中",
     missingMeaning: "暂无释义",
     noExamples: "这个词暂时没有例句",
-    lexicalNotes: "词语小注",
+    lexicalNotes: "词语知识",
     lexicalSpellings: "写法",
     lexicalReadings: "异读",
     lexicalPos: "语法",
     lexicalSenses: "义项",
     lexicalKanji: "字音",
+    lexicalExamples: "词典例句",
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
@@ -159,12 +160,13 @@ const text = {
     chineseMeaning: "ZH",
     missingMeaning: "No meaning yet",
     noExamples: "No examples for this word yet",
-    lexicalNotes: "Word notes",
+    lexicalNotes: "Word knowledge",
     lexicalSpellings: "Spellings",
     lexicalReadings: "Alt. reading",
     lexicalPos: "Grammar",
     lexicalSenses: "Senses",
     lexicalKanji: "Kanji readings",
+    lexicalExamples: "Dictionary examples",
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
@@ -1179,11 +1181,13 @@ function renderLexicalNotes(word) {
   const posNodes = lexicalTextNodes(notes.parts_of_speech);
   const senseNodes = app.lang === "zh" ? [] : lexicalSenseNodes(notes.senses);
   const kanjiNodes = lexicalKanjiNodes(notes.kanji, word);
+  const dictionaryExampleNodes = lexicalDictionaryExampleNodes(notes.dictionary_examples);
   const hasUsefulNotes =
     spellingNodes.length > 0
     || readingNodes.length > 0
     || senseNodes.length > 0
-    || kanjiNodes.length > 0;
+    || kanjiNodes.length > 0
+    || dictionaryExampleNodes.length > 0;
   if (!hasUsefulNotes) {
     return document.createDocumentFragment();
   }
@@ -1192,6 +1196,12 @@ function renderLexicalNotes(word) {
   appendLexicalRow(body, t("lexicalPos"), posNodes);
   appendLexicalRow(body, t("lexicalSenses"), senseNodes, "lexical-note-values sense-values");
   appendLexicalRow(body, t("lexicalKanji"), kanjiNodes);
+  appendLexicalRow(
+    body,
+    t("lexicalExamples"),
+    dictionaryExampleNodes,
+    "lexical-note-values lexical-example-values",
+  );
   if (!body.childElementCount) {
     return document.createDocumentFragment();
   }
@@ -1271,6 +1281,44 @@ function lexicalKanjiNodes(values, word) {
     }
     return chip;
   }).filter((node) => node.textContent.trim());
+}
+
+function lexicalDictionaryExampleNodes(values) {
+  return asArray(values).map((example) => {
+    const japanese = String(example.japanese || example.sentence || "").trim();
+    if (!japanese) {
+      return null;
+    }
+    const item = el("div", "lexical-dictionary-example");
+    item.append(el("div", "lexical-dictionary-example-ja", japanese));
+    const translation = lexicalExampleTranslation(example);
+    if (translation) {
+      item.append(el("div", "lexical-dictionary-example-translation", translation));
+    }
+    return item;
+  }).filter(Boolean);
+}
+
+function lexicalExampleTranslation(example) {
+  const translations = example.translations || {};
+  if (typeof translations === "string") {
+    return translations.trim();
+  }
+  if (!translations || typeof translations !== "object") {
+    return "";
+  }
+  const preferred = app.lang === "zh"
+    ? ["cmn", "zh", "zho", "chi", "eng", "en"]
+    : ["eng", "en", "cmn", "zh", "zho", "chi"];
+  for (const lang of preferred) {
+    const value = String(translations[lang] || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  return Object.values(translations)
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
 }
 
 function isSingleKanjiWord(value) {

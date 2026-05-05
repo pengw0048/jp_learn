@@ -22,6 +22,7 @@ MAX_TAGS_PER_WORD = 4
 MAX_KANJI_PER_WORD = 8
 MAX_SENSES_PER_WORD = 3
 MAX_GLOSSES_PER_SENSE = 3
+MAX_DICTIONARY_EXAMPLES_PER_WORD = 2
 
 HIDDEN_FORM_TAGS = {
     "rarely used kanji form",
@@ -132,10 +133,39 @@ class JMDictEntry:
 
 
 @dataclass(frozen=True)
+class JMDictExample:
+    japanese: str
+    text: str | None = None
+    translations: tuple[tuple[str, str], ...] = ()
+    source_id: str | None = None
+    source_type: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {"japanese": self.japanese}
+        if self.text:
+            payload["text"] = self.text
+        if self.translations:
+            payload["translations"] = {
+                lang: text for lang, text in self.translations if lang and text
+            }
+        if self.source_id or self.source_type:
+            payload["source"] = {
+                key: value
+                for key, value in {
+                    "id": self.source_id,
+                    "type": self.source_type,
+                }.items()
+                if value
+            }
+        return payload
+
+
+@dataclass(frozen=True)
 class JMDictSense:
     glosses: tuple[str, ...]
     parts_of_speech: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
+    examples: tuple[JMDictExample, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {"glosses": list(self.glosses)}
@@ -143,6 +173,8 @@ class JMDictSense:
             payload["parts_of_speech"] = list(self.parts_of_speech)
         if self.tags:
             payload["tags"] = list(self.tags)
+        if self.examples:
+            payload["examples"] = [example.to_dict() for example in self.examples]
         return payload
 
 
@@ -245,6 +277,14 @@ class LexicalResourceIndex:
                 payload["senses"] = [
                     sense.to_dict()
                     for sense in senses[:MAX_SENSES_PER_WORD]
+                ]
+            examples = unique_examples(
+                example for sense in senses for example in sense.examples
+            )
+            if examples:
+                payload["dictionary_examples"] = [
+                    example.to_dict()
+                    for example in examples[:MAX_DICTIONARY_EXAMPLES_PER_WORD]
                 ]
         if kanji_notes:
             payload["kanji"] = [note.to_dict() for note in kanji_notes]
@@ -402,7 +442,41 @@ def jmdict_sense_from_xml(element: ET.Element) -> JMDictSense:
             if (label := label_sense_tag(tag))
         )
     )
-    return JMDictSense(glosses=glosses, parts_of_speech=parts_of_speech, tags=tags)
+    examples = tuple(
+        example
+        for example_element in element.findall("example")
+        if (example := jmdict_example_from_xml(example_element)) is not None
+    )
+    return JMDictSense(
+        glosses=glosses,
+        parts_of_speech=parts_of_speech,
+        tags=tags,
+        examples=examples,
+    )
+
+
+def jmdict_example_from_xml(element: ET.Element) -> JMDictExample | None:
+    japanese = None
+    translations: list[tuple[str, str]] = []
+    for sentence in element.findall("ex_sent"):
+        text = (sentence.text or "").strip()
+        if not text:
+            continue
+        lang = xml_lang(sentence)
+        if lang == "jpn":
+            japanese = text
+        elif lang:
+            translations.append((lang, text))
+    if not japanese:
+        return None
+    source = element.find("ex_srce")
+    return JMDictExample(
+        japanese=japanese,
+        text=child_text(element, "ex_text"),
+        translations=tuple(translations),
+        source_id=(source.text.strip() if source is not None and source.text else None),
+        source_type=source.attrib.get("exsrc_type") if source is not None else None,
+    )
 
 
 def kanji_note_from_xml(element: ET.Element) -> KanjiNote:
@@ -476,6 +550,15 @@ def child_texts(element: ET.Element, path: str) -> list[str]:
     ]
 
 
+def xml_lang(element: ET.Element) -> str:
+    return (
+        element.attrib.get("{http://www.w3.org/XML/1998/namespace}lang")
+        or element.attrib.get("xml:lang")
+        or element.attrib.get("lang")
+        or ""
+    ).strip()
+
+
 def unique_forms(forms: Iterable[JMDictForm]) -> list[JMDictForm]:
     seen: set[str] = set()
     results: list[JMDictForm] = []
@@ -539,6 +622,18 @@ def unique_senses(values: Iterable[JMDictSense]) -> list[JMDictSense]:
             continue
         seen.add(sense.glosses)
         results.append(sense)
+    return results
+
+
+def unique_examples(values: Iterable[JMDictExample]) -> list[JMDictExample]:
+    seen: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
+    results: list[JMDictExample] = []
+    for example in values:
+        identity = (example.japanese, example.translations)
+        if not example.japanese or identity in seen:
+            continue
+        seen.add(identity)
+        results.append(example)
     return results
 
 

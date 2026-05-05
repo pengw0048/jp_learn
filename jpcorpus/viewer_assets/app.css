@@ -9,6 +9,9 @@
   --accent: #14746f;
   --accent-2: #b85c38;
   --accent-soft: #e2f0ee;
+  --knowledge: #777326;
+  --knowledge-soft: #f1f2df;
+  --knowledge-line: #d9d7a6;
   --lyrics: #2f6f8f;
   --known: #2f6f3e;
   --learning: #b7791f;
@@ -568,6 +571,14 @@ select {
 .lexical-notes {
   display: grid;
   gap: 8px;
+  padding: 9px 11px;
+  border-left: 3px solid var(--knowledge);
+  border-radius: 0 8px 8px 0;
+  background: var(--knowledge-soft);
+}
+
+.lexical-notes .section-title {
+  color: var(--knowledge);
 }
 
 .lexical-note-grid {
@@ -583,7 +594,7 @@ select {
 }
 
 .lexical-note-label {
-  color: var(--muted);
+  color: var(--knowledge);
   font-size: 12px;
   font-weight: 760;
   line-height: 1.8;
@@ -639,7 +650,7 @@ select {
 
 .lexical-form-chip {
   padding: 1px 7px;
-  background: var(--panel-2);
+  background: rgba(255, 255, 255, 0.58);
   font-family: var(--font-ja);
   color: var(--text);
 }
@@ -659,6 +670,30 @@ select {
 .lexical-kanji-reading,
 .lexical-kanji-meaning {
   color: var(--muted);
+}
+
+.lexical-example-values {
+  display: grid;
+  gap: 6px;
+}
+
+.lexical-dictionary-example {
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--knowledge-line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lexical-dictionary-example-ja {
+  font-family: var(--font-ja);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.lexical-dictionary-example-translation {
+  overflow-wrap: anywhere;
 }
 
 .study-card {

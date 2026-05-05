@@ -131,6 +131,12 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
         "<misc>word usually written using kana alone</misc>"
         "<s_inf>English sense notes should not appear in the compact UI.</s_inf>"
         "<gloss>promise</gloss>"
+        "<example>"
+        '<ex_srce exsrc_type="tat">162365</ex_srce>'
+        "<ex_text>約束</ex_text>"
+        '<ex_sent xml:lang="jpn">その約束を覚えている。</ex_sent>'
+        '<ex_sent xml:lang="eng">I remember that promise.</ex_sent>'
+        "</example>"
         "</sense>"
         "</entry>"
         "</JMdict>",
@@ -170,6 +176,11 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
     assert "usage_tags" not in notes
     assert notes["senses"][0]["glosses"] == ["promise"]
     assert notes["senses"][0]["parts_of_speech"] == ["名词"]
+    assert notes["dictionary_examples"][0]["japanese"] == "その約束を覚えている。"
+    assert notes["dictionary_examples"][0]["translations"] == {
+        "eng": "I remember that promise."
+    }
+    assert notes["dictionary_examples"][0]["source"] == {"id": "162365", "type": "tat"}
     assert notes["kanji"][0]["literal"] == "約"
     assert notes["kanji"][0]["on_readings"] == ["ヤク"]
     assert notes["kanji"][0]["meanings"] == ["promise"]
