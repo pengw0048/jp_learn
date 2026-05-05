@@ -300,10 +300,14 @@ def parse_annotation_response(content: str) -> dict[str, str]:
         payload = parse_loose_annotation_response(content)
     if not isinstance(payload, dict):
         raise ValueError("LLM annotation response must be a JSON object.")
-    return {
+    annotations = {
         field: _clean_annotation_value(payload.get(field))
         for field in ANNOTATION_FIELDS
     }
+    missing = [field for field in REQUIRED_ANNOTATION_FIELDS if not annotations[field]]
+    if missing:
+        raise ValueError(f"LLM annotation response is missing required fields: {', '.join(missing)}")
+    return annotations
 
 
 def annotate_corpus(
@@ -334,7 +338,7 @@ def annotate_corpus(
                     cache_key=cache_key,
                     version=ANNOTATION_CACHE_VERSION,
                 )
-                if cached and cached["status"] == "hit":
+                if cached and cached["status"] == "hit" and _has_required_annotations(cached.get("value")):
                     for field, value in cached["value"].items():
                         if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
                             example[field] = value
@@ -418,6 +422,13 @@ def annotate_corpus_file(
 
 def _has_annotations(example: dict[str, Any]) -> bool:
     return all(example.get(field) for field in REQUIRED_ANNOTATION_FIELDS)
+
+
+def _has_required_annotations(value: Any) -> bool:
+    return isinstance(value, dict) and all(
+        bool(_clean_annotation_value(value.get(field)))
+        for field in REQUIRED_ANNOTATION_FIELDS
+    )
 
 
 def annotation_cache_key(

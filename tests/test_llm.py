@@ -3,11 +3,14 @@ import json
 import httpx
 
 from jpcorpus.llm import (
+    ANNOTATION_CACHE_PURPOSE,
+    ANNOTATION_CACHE_VERSION,
     DEFAULT_ANTHROPIC_BASE_URL,
     DEFAULT_ANTHROPIC_MODEL,
     AnthropicClient,
     LLMConfig,
     annotate_corpus,
+    annotation_cache_key,
     build_annotation_prompt,
     parse_annotation_response,
 )
@@ -67,6 +70,15 @@ def test_parse_annotation_response_accepts_json_like_lines():
 
     assert payload["translation_zh"] == "请问岡崎さん，有什么话要说吗？"
     assert payload["usage_note_zh"] == '言う表示"说"。'
+
+
+def test_parse_annotation_response_rejects_empty_required_fields():
+    try:
+        parse_annotation_response('{"translation_zh": "", "usage_note_zh": "", "scene_description": ""}')
+    except ValueError as exc:
+        assert "missing required fields" in str(exc)
+    else:
+        raise AssertionError("empty required annotation fields should be rejected")
 
 
 def test_build_annotation_prompt_keeps_scene_empty():
@@ -194,6 +206,41 @@ def test_annotate_corpus_reuses_versioned_cache(tmp_path):
 
     assert first_client.calls == 1
     assert second_client.calls == 0
+    assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
+
+
+def test_annotate_corpus_ignores_empty_cached_annotations(tmp_path):
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "examples": [{"sentence": "明日行く。"}],
+            }
+        ],
+    }
+    state = State(tmp_path / "state.db")
+    context = {"provider": "test", "model": "fake"}
+    state.save_cache_entry(
+        purpose=ANNOTATION_CACHE_PURPOSE,
+        cache_key=annotation_cache_key(corpus["words"][0], corpus["words"][0]["examples"][0], context),
+        version=ANNOTATION_CACHE_VERSION,
+        status="hit",
+        value={"translation_zh": "", "usage_note_zh": "", "scene_description": ""},
+    )
+    client = FakeAnnotationClient()
+
+    annotate_corpus(
+        corpus,
+        client=client,
+        limit=10,
+        cache_state=state,
+        cache_context=context,
+    )
+
+    assert client.calls == 1
     assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
 
 
