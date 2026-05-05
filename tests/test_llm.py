@@ -316,3 +316,33 @@ def test_annotate_corpus_concurrency_continues_after_failures():
     assert examples[0]["translation_zh"] == "翻译: 明日行く。"
     assert "translation_zh" not in examples[1]
     assert examples[2]["translation_zh"] == "翻译: 学校へ行く。"
+
+
+def test_annotate_corpus_can_scope_examples_with_predicate():
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "examples": [{"sentence": "明日行く。", "source_type": "subtitle"}],
+            },
+            {
+                "word": "見る",
+                "examples": [{"sentence": "映画を見る。", "source_type": "lyrics"}],
+            },
+        ],
+    }
+    client = FakeAnnotationClient()
+
+    payload, count = annotate_corpus(
+        corpus,
+        client=client,
+        limit=10,
+        include_example=lambda word, example: word["word"] == "見る"
+        and example["source_type"] == "lyrics",
+    )
+
+    assert count == 1
+    assert client.calls == 1
+    assert "translation_zh" not in payload["words"][0]["examples"][0]
+    assert payload["words"][1]["examples"][0]["translation_zh"] == "翻译: 映画を見る。"

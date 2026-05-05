@@ -51,6 +51,9 @@ class AnnotationClient(Protocol):
         ...
 
 
+ExamplePredicate = Callable[[dict[str, Any], dict[str, Any]], bool]
+
+
 class RequestRateLimiter:
     def __init__(self, *, min_interval_seconds: float) -> None:
         self.min_interval_seconds = max(0.0, min_interval_seconds)
@@ -320,6 +323,7 @@ def annotate_corpus(
     overwrite: bool = False,
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
+    include_example: ExamplePredicate | None = None,
     concurrency: int = 1,
     request_interval_seconds: float = 0.0,
     on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
@@ -330,6 +334,8 @@ def annotate_corpus(
         for example in word.get("examples", []):
             if annotated + len(targets) >= limit:
                 break
+            if include_example is not None and not include_example(word, example):
+                continue
             if not overwrite and _has_annotations(example):
                 continue
             cache_key = None
@@ -399,12 +405,15 @@ def apply_cached_annotations(
     cache_context: dict[str, Any] | None = None,
     limit: int,
     overwrite: bool = False,
+    include_example: ExamplePredicate | None = None,
 ) -> tuple[dict[str, Any], int]:
     annotated = 0
     for word in payload.get("words", []):
         for example in word.get("examples", []):
             if annotated >= limit:
                 break
+            if include_example is not None and not include_example(word, example):
+                continue
             if not overwrite and _has_annotations(example):
                 continue
             cache_key = annotation_cache_key(word, example, cache_context or {})
@@ -438,6 +447,7 @@ def annotate_corpus_file(
     overwrite: bool = False,
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
+    include_example: ExamplePredicate | None = None,
     concurrency: int = 1,
     request_interval_seconds: float = 0.0,
     on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
@@ -450,6 +460,7 @@ def annotate_corpus_file(
         overwrite=overwrite,
         cache_state=cache_state,
         cache_context=cache_context,
+        include_example=include_example,
         concurrency=concurrency,
         request_interval_seconds=request_interval_seconds,
         on_error=on_error,
@@ -467,6 +478,7 @@ def apply_cached_annotations_file(
     cache_context: dict[str, Any] | None = None,
     limit: int,
     overwrite: bool = False,
+    include_example: ExamplePredicate | None = None,
 ) -> int:
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     payload, annotated = apply_cached_annotations(
@@ -475,6 +487,7 @@ def apply_cached_annotations_file(
         cache_context=cache_context,
         limit=limit,
         overwrite=overwrite,
+        include_example=include_example,
     )
     ensure_parent(output_path)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

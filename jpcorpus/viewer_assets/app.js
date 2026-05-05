@@ -43,6 +43,26 @@ const text = {
     subtitles: "字幕",
     lyrics: "歌词",
     studyWords: "单词",
+    maintenance: "维护",
+    maintenanceTitle: "维护",
+    maintenanceScope: "范围",
+    maintenanceProvider: "Provider",
+    maintenanceLimit: "上限",
+    maintenanceConcurrency: "并发",
+    maintenanceRpm: "RPM",
+    maintenanceCacheOnly: "只应用缓存",
+    maintenanceOverwrite: "覆盖已有标注",
+    maintenanceShowContext: "使用作品简介",
+    maintenanceStart: "开始",
+    scopeCurrentWord: "当前词",
+    scopeFilteredWords: "当前筛选结果",
+    scopeFirstUnannotated: "前 N 条缺失例句",
+    maintenanceEstimate: "将处理约 {count} 条例句；当前来源 {source}，等级 {level}",
+    maintenanceDisabled: "维护 API 未启用",
+    maintenanceIdle: "空闲",
+    maintenanceRunning: "运行中",
+    maintenanceSucceeded: "完成",
+    maintenanceFailed: "失败",
   },
   en: {
     appTitle: "Personal Japanese Corpus",
@@ -83,6 +103,26 @@ const text = {
     subtitles: "Subtitles",
     lyrics: "Lyrics",
     studyWords: "Study words",
+    maintenance: "Maintain",
+    maintenanceTitle: "Maintenance",
+    maintenanceScope: "Scope",
+    maintenanceProvider: "Provider",
+    maintenanceLimit: "Limit",
+    maintenanceConcurrency: "Concurrency",
+    maintenanceRpm: "RPM",
+    maintenanceCacheOnly: "Cache only",
+    maintenanceOverwrite: "Overwrite annotations",
+    maintenanceShowContext: "Use show context",
+    maintenanceStart: "Start",
+    scopeCurrentWord: "Current word",
+    scopeFilteredWords: "Current filtered words",
+    scopeFirstUnannotated: "First N missing examples",
+    maintenanceEstimate: "About {count} examples; source {source}, level {level}",
+    maintenanceDisabled: "Maintenance API disabled",
+    maintenanceIdle: "Idle",
+    maintenanceRunning: "Running",
+    maintenanceSucceeded: "Done",
+    maintenanceFailed: "Failed",
   },
 };
 
@@ -105,6 +145,12 @@ const app = {
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
   statuses: readStatuses(),
+  maintenance: {
+    enabled: false,
+    job: null,
+    pollTimer: null,
+    reloadedJobId: null,
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -121,6 +167,21 @@ const refs = {
   wordList: $("#word-list"),
   emptyState: $("#empty-state"),
   wordDetail: $("#word-detail"),
+  maintenanceToggle: $("#maintenance-toggle"),
+  maintenancePanel: $("#maintenance-panel"),
+  maintenanceClose: $("#maintenance-close"),
+  maintenanceScope: $("#maintenance-scope"),
+  maintenanceProvider: $("#maintenance-provider"),
+  maintenanceLimit: $("#maintenance-limit"),
+  maintenanceConcurrency: $("#maintenance-concurrency"),
+  maintenanceRpm: $("#maintenance-rpm"),
+  maintenanceCacheOnly: $("#maintenance-cache-only"),
+  maintenanceOverwrite: $("#maintenance-overwrite"),
+  maintenanceShowContext: $("#maintenance-show-context"),
+  maintenanceStart: $("#maintenance-start"),
+  maintenanceEstimate: $("#maintenance-estimate"),
+  maintenanceStatus: $("#maintenance-status"),
+  maintenanceLog: $("#maintenance-log"),
 };
 
 init();
@@ -128,6 +189,7 @@ init();
 async function init() {
   bindControls();
   applyLanguage();
+  loadMaintenanceStatus();
   try {
     const response = await fetch("/corpus.json", { cache: "no-store" });
     if (!response.ok) {
@@ -170,6 +232,29 @@ function bindControls() {
       render();
     });
   });
+  refs.maintenanceToggle.addEventListener("click", () => {
+    refs.maintenancePanel.hidden = !refs.maintenancePanel.hidden;
+    refs.maintenanceToggle.classList.toggle("active", !refs.maintenancePanel.hidden);
+    renderMaintenance();
+  });
+  refs.maintenanceClose.addEventListener("click", () => {
+    refs.maintenancePanel.hidden = true;
+    refs.maintenanceToggle.classList.remove("active");
+  });
+  [
+    refs.maintenanceScope,
+    refs.maintenanceProvider,
+    refs.maintenanceLimit,
+    refs.maintenanceConcurrency,
+    refs.maintenanceRpm,
+    refs.maintenanceCacheOnly,
+    refs.maintenanceOverwrite,
+    refs.maintenanceShowContext,
+  ].forEach((control) => {
+    control.addEventListener("input", renderMaintenance);
+    control.addEventListener("change", renderMaintenance);
+  });
+  refs.maintenanceStart.addEventListener("click", startAnnotationJob);
 }
 
 function applyLanguage() {
@@ -193,6 +278,7 @@ function render() {
   renderLevelFilter();
   renderWordList();
   renderDetail();
+  renderMaintenance();
 }
 
 function renderHeader() {
@@ -214,6 +300,49 @@ function renderHeader() {
       return pill;
     }),
   );
+}
+
+async function loadMaintenanceStatus() {
+  try {
+    const response = await fetch("/api/maintenance", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    app.maintenance.enabled = Boolean(payload.enabled);
+    app.maintenance.job = payload.job || null;
+    if (payload.llm?.provider && refs.maintenanceProvider) {
+      refs.maintenanceProvider.value = payload.llm.provider;
+    }
+    renderMaintenance();
+    if (app.maintenance.job?.status === "running") {
+      pollMaintenanceJob();
+    }
+  } catch {
+    app.maintenance.enabled = false;
+    renderMaintenance();
+  }
+}
+
+function renderMaintenance() {
+  if (!refs.maintenancePanel) {
+    return;
+  }
+  const spec = annotationJobSpec();
+  const estimate = estimateAnnotationJob(spec);
+  const job = app.maintenance.job;
+  refs.maintenanceToggle.disabled = !app.maintenance.enabled;
+  refs.maintenanceEstimate.textContent = app.maintenance.enabled
+    ? t("maintenanceEstimate", {
+        count: formatNumber(estimate.planned),
+        source: sourceLabel(spec.source),
+        level: spec.level,
+      })
+    : t("maintenanceDisabled");
+  refs.maintenanceStart.disabled =
+    !app.maintenance.enabled || job?.status === "running" || estimate.planned <= 0;
+  refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job.status) : t("maintenanceIdle");
+  refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
 }
 
 function renderLevelFilter() {
@@ -333,6 +462,83 @@ function selectWord(word, button) {
   });
   button.classList.add("active");
   renderDetail();
+  renderMaintenance();
+}
+
+async function startAnnotationJob() {
+  const spec = annotationJobSpec();
+  refs.maintenanceStart.disabled = true;
+  try {
+    const response = await fetch("/api/jobs/annotate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spec),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    app.maintenance.job = payload.job;
+    app.maintenance.reloadedJobId = null;
+    renderMaintenance();
+    pollMaintenanceJob();
+  } catch (error) {
+    app.maintenance.job = {
+      status: "failed",
+      log: [String(error.message || error)],
+    };
+    renderMaintenance();
+  }
+}
+
+function pollMaintenanceJob() {
+  if (app.maintenance.pollTimer) {
+    clearInterval(app.maintenance.pollTimer);
+  }
+  refreshMaintenanceJob();
+  app.maintenance.pollTimer = setInterval(refreshMaintenanceJob, 1500);
+}
+
+async function refreshMaintenanceJob() {
+  try {
+    const response = await fetch("/api/jobs/current", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    app.maintenance.job = payload.job || null;
+    renderMaintenance();
+    const job = app.maintenance.job;
+    if (!job || job.status === "running") {
+      return;
+    }
+    if (app.maintenance.pollTimer) {
+      clearInterval(app.maintenance.pollTimer);
+      app.maintenance.pollTimer = null;
+    }
+    if (job.status === "succeeded" && app.maintenance.reloadedJobId !== job.id) {
+      app.maintenance.reloadedJobId = job.id;
+      await reloadCorpus();
+    }
+  } catch (error) {
+    app.maintenance.job = {
+      status: "failed",
+      log: [String(error.message || error)],
+    };
+    renderMaintenance();
+  }
+}
+
+async function reloadCorpus() {
+  const selectedWord = app.selectedWord?.word || "";
+  const response = await fetch("/corpus.json", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  app.corpus = await response.json();
+  app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
+  app.selectedWord = app.words.find((word) => word.word === selectedWord) || chooseInitialWord();
+  render();
 }
 
 function renderExamples(word) {
@@ -510,11 +716,88 @@ function examplesForWord(word) {
   return examples.filter((example) => example.source_type === app.source);
 }
 
+function annotationJobSpec() {
+  const scope = refs.maintenanceScope.value;
+  let words = [];
+  if (scope === "current_word" && app.selectedWord?.word) {
+    words = [app.selectedWord.word];
+  } else if (scope === "filtered_words") {
+    words = filteredWords().map((word) => word.word).filter(Boolean);
+  }
+  return {
+    scope,
+    provider: refs.maintenanceProvider.value,
+    words,
+    source: app.source,
+    level: app.level,
+    limit: numberValue(refs.maintenanceLimit, 20),
+    concurrency: numberValue(refs.maintenanceConcurrency, 1),
+    rpm: numberValue(refs.maintenanceRpm, 0) || null,
+    cache_only: refs.maintenanceCacheOnly.checked,
+    overwrite: refs.maintenanceOverwrite.checked,
+    use_show_context: refs.maintenanceShowContext.checked,
+  };
+}
+
+function estimateAnnotationJob(spec) {
+  const wordSet = spec.scope === "first_unannotated" ? null : new Set(spec.words);
+  let selected = 0;
+  app.words.forEach((word) => {
+    if (wordSet && !wordSet.has(word.word)) {
+      return;
+    }
+    if (spec.level !== "all" && word.level !== spec.level) {
+      return;
+    }
+    (word.examples || []).forEach((example) => {
+      if (spec.source !== "all" && example.source_type !== spec.source) {
+        return;
+      }
+      if (!spec.overwrite && example.translation_zh && example.usage_note_zh) {
+        return;
+      }
+      selected += 1;
+    });
+  });
+  return {
+    selected,
+    planned: Math.min(selected, spec.limit),
+  };
+}
+
 function displayCount(word) {
   if (app.source === "all") {
     return word.count || 0;
   }
   return sourceCount(word, app.source);
+}
+
+function sourceLabel(source) {
+  if (source === "subtitle") {
+    return t("sourceSubtitles");
+  }
+  if (source === "lyrics") {
+    return t("sourceLyrics");
+  }
+  return t("sourceAll");
+}
+
+function maintenanceStatusLabel(status) {
+  if (status === "running") {
+    return t("maintenanceRunning");
+  }
+  if (status === "succeeded") {
+    return t("maintenanceSucceeded");
+  }
+  if (status === "failed") {
+    return t("maintenanceFailed");
+  }
+  return t("maintenanceIdle");
+}
+
+function numberValue(input, fallback) {
+  const value = Number.parseInt(input.value, 10);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function sourceCount(word, sourceType) {
