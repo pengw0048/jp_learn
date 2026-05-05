@@ -20,7 +20,7 @@ from .paths import APP_DIR, ensure_parent
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
 REQUIRED_ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh")
 ANNOTATION_CACHE_PURPOSE = "llm-annotation"
-ANNOTATION_CACHE_VERSION = 3
+ANNOTATION_CACHE_VERSION = 6
 APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
@@ -80,8 +80,9 @@ class OpenAICompatibleClient:
                 {
                     "role": "system",
                     "content": (
-                        "You annotate Japanese media examples for Chinese-speaking JLPT learners. "
-                        "Return strict JSON only."
+                        "你为中文母语的日语学习者标注日语例句。"
+                        "只返回严格 JSON。除原文中复制的日语或英语外，所有字段值都必须使用自然的简体中文，"
+                        "不要写英文解释。"
                     ),
                 },
                 {
@@ -270,22 +271,23 @@ def build_annotation_prompt(
             f"Characters: {show_characters or '(none)'}\n\n"
         )
     return (
-        "Annotate this Japanese media example.\n\n"
-        f"Word: {word.get('word')}\n"
-        f"Reading: {word.get('reading')}\n"
-        f"JLPT level: {word.get('level')}\n"
-        f"Chinese meaning: {word.get('meaning_zh') or ''}\n"
-        f"English meaning: {word.get('meaning') or ''}\n"
-        f"Matched text in sentence: {example.get('matched_text') or ''}\n\n"
-        f"Previous source blocks:\n{context_before or '(none)'}\n\n"
-        f"Current source block:\n{example.get('sentence') or ''}\n\n"
-        f"Next source blocks:\n{context_after or '(none)'}\n\n"
+        "请标注下面这个日语媒体例句，面向中文母语的日语学习者。\n\n"
+        f"目标词: {word.get('word')}\n"
+        f"读音: {word.get('reading')}\n"
+        f"JLPT 等级: {word.get('level')}\n"
+        f"中文释义: {word.get('meaning_zh') or ''}\n"
+        f"英文释义，仅用于消歧，禁止照抄到输出中: {word.get('meaning') or ''}\n"
+        f"当前句中匹配到的词形: {example.get('matched_text') or ''}\n\n"
+        f"前文 source blocks，只能辅助理解，禁止翻译到 translation_zh 中:\n{context_before or '(none)'}\n\n"
+        f"当前 source block，只翻译这一段:\n{example.get('sentence') or ''}\n\n"
+        f"后文 source blocks，只能辅助理解，禁止翻译到 translation_zh 中:\n{context_after or '(none)'}\n\n"
         f"{show_context_block}"
-        "Return JSON with exactly these string fields:\n"
-        "- translation_zh: natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit.\n"
-        "- usage_note_zh: one short Simplified Chinese note explaining the target word's meaning or grammar in this source block; when quoting Japanese expressions, copy the Japanese text exactly and do not simplify Japanese kanji.\n"
-        "- scene_description: an empty string.\n"
-        "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts."
+        "只返回一个 JSON object，必须且只能包含下面三个字符串字段:\n"
+        "- translation_zh: 用自然简体中文翻译完整的当前 source block。不要翻译前文或后文。保留人名和疑问语气，不要漏译。除非原文明确性别或身份，不要把 さん 翻成 小姐 或 先生。\n"
+        "- usage_note_zh: 用一句简短自然的简体中文说明目标词在当前 source block 里的词义或语法。引用日语表达时，必须原样复制日语，不要把日语汉字改写成中文。\n"
+        "- scene_description: 空字符串。\n"
+        "要求: 字段内容要简洁；不要编造场景、作品类型、说话人身份或隐藏剧情；"
+        "translation_zh 和 usage_note_zh 不要出现英文单词或英文语法，除非原文里本来就有英语。"
     )
 
 

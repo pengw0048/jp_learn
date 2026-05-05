@@ -88,7 +88,9 @@ def test_build_annotation_prompt_keeps_scene_empty():
         {"sentence": "明日行く。", "matched_text": "行く"},
     )
 
-    assert "- scene_description: an empty string." in prompt
+    assert "- scene_description: 空字符串。" in prompt
+    assert "不要出现英文单词或英文语法" in prompt
+    assert "禁止照抄到输出中" in prompt
 
 
 def test_anthropic_client_uses_messages_api():
