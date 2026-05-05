@@ -588,7 +588,7 @@ select {
 
 .lexical-note-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: minmax(56px, max-content) minmax(0, 1fr);
   gap: 8px;
   align-items: start;
 }
@@ -598,6 +598,7 @@ select {
   font-size: 12px;
   font-weight: 760;
   line-height: 1.8;
+  white-space: nowrap;
 }
 
 .lexical-note-values {
