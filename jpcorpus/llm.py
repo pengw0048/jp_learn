@@ -390,6 +390,43 @@ def annotate_corpus(
     return payload, annotated
 
 
+def apply_cached_annotations(
+    payload: dict[str, Any],
+    *,
+    cache_state: Any,
+    cache_context: dict[str, Any] | None = None,
+    limit: int,
+    overwrite: bool = False,
+) -> tuple[dict[str, Any], int]:
+    annotated = 0
+    for word in payload.get("words", []):
+        for example in word.get("examples", []):
+            if annotated >= limit:
+                break
+            if not overwrite and _has_annotations(example):
+                continue
+            cache_key = annotation_cache_key(word, example, cache_context or {})
+            cached = cache_state.get_cache_entry(
+                purpose=ANNOTATION_CACHE_PURPOSE,
+                cache_key=cache_key,
+                version=ANNOTATION_CACHE_VERSION,
+            )
+            if not (cached and cached["status"] == "hit" and _has_required_annotations(cached.get("value"))):
+                continue
+            for field, value in cached["value"].items():
+                if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
+                    example[field] = value
+            annotated += 1
+        if annotated >= limit:
+            break
+
+    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 6)
+    metadata = payload.setdefault("annotation", {})
+    if isinstance(metadata, dict):
+        metadata["fields"] = list(ANNOTATION_FIELDS)
+    return payload, annotated
+
+
 def annotate_corpus_file(
     input_path: Path,
     output_path: Path,
@@ -414,6 +451,28 @@ def annotate_corpus_file(
         concurrency=concurrency,
         request_interval_seconds=request_interval_seconds,
         on_error=on_error,
+    )
+    ensure_parent(output_path)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return annotated
+
+
+def apply_cached_annotations_file(
+    input_path: Path,
+    output_path: Path,
+    *,
+    cache_state: Any,
+    cache_context: dict[str, Any] | None = None,
+    limit: int,
+    overwrite: bool = False,
+) -> int:
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    payload, annotated = apply_cached_annotations(
+        payload,
+        cache_state=cache_state,
+        cache_context=cache_context,
+        limit=limit,
+        overwrite=overwrite,
     )
     ensure_parent(output_path)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

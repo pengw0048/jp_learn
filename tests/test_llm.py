@@ -11,6 +11,7 @@ from jpcorpus.llm import (
     LLMConfig,
     annotate_corpus,
     annotation_cache_key,
+    apply_cached_annotations,
     build_annotation_prompt,
     parse_annotation_response,
 )
@@ -242,6 +243,45 @@ def test_annotate_corpus_ignores_empty_cached_annotations(tmp_path):
 
     assert client.calls == 1
     assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
+
+
+def test_apply_cached_annotations_materializes_partial_cache(tmp_path):
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "examples": [{"sentence": "明日行く。"}, {"sentence": "学校へ行く。"}],
+            }
+        ],
+    }
+    state = State(tmp_path / "state.db")
+    context = {"provider": "test", "model": "fake"}
+    state.save_cache_entry(
+        purpose=ANNOTATION_CACHE_PURPOSE,
+        cache_key=annotation_cache_key(corpus["words"][0], corpus["words"][0]["examples"][0], context),
+        version=ANNOTATION_CACHE_VERSION,
+        status="hit",
+        value={
+            "translation_zh": "我明天去。",
+            "usage_note_zh": "行く表示移动。",
+            "scene_description": "",
+        },
+    )
+
+    payload, count = apply_cached_annotations(
+        corpus,
+        cache_state=state,
+        cache_context=context,
+        limit=10,
+    )
+
+    examples = payload["words"][0]["examples"]
+    assert count == 1
+    assert examples[0]["translation_zh"] == "我明天去。"
+    assert "translation_zh" not in examples[1]
 
 
 def test_annotate_corpus_concurrency_continues_after_failures():

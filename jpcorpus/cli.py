@@ -23,6 +23,7 @@ from .llm import (
     AppleFoundationModelsClient,
     LLMConfig,
     OpenAICompatibleClient,
+    apply_cached_annotations_file,
     annotate_corpus_file,
 )
 from .lyrics import (
@@ -696,7 +697,6 @@ def annotate(
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database for annotation cache."),
     model: str | None = typer.Option(
         None,
-        envvar="JPCORPUS_LLM_MODEL",
         help="LLM model name for the configured provider.",
     ),
     provider: str = typer.Option(
@@ -716,8 +716,7 @@ def annotate(
     ),
     api_key: str | None = typer.Option(
         None,
-        envvar="JPCORPUS_LLM_API_KEY",
-        help="API key. Local OpenAI-compatible servers may not require one.",
+        help="API key override. Local OpenAI-compatible servers may not require one.",
     ),
     limit: int = typer.Option(20, min=1, help="Maximum examples to annotate this run."),
     concurrency: int = typer.Option(1, min=1, max=16, help="Parallel LLM annotation requests."),
@@ -727,6 +726,11 @@ def annotate(
         help="Maximum uncached LLM requests per minute. Cache hits do not count.",
     ),
     overwrite: bool = typer.Option(False, help="Regenerate existing annotations."),
+    cache_only: bool = typer.Option(
+        False,
+        "--cache-only",
+        help="Only apply existing cached annotations; do not call an LLM.",
+    ),
     use_show_context: bool = typer.Option(
         False,
         "--use-show-context",
@@ -737,40 +741,62 @@ def annotate(
     if provider == "apple":
         resolved_model = "apple"
         resolved_base_url = ""
-        client = AppleFoundationModelsClient(use_show_context=use_show_context)
+        client = None if cache_only else AppleFoundationModelsClient(use_show_context=use_show_context)
     elif provider == "anthropic":
-        resolved_model = model or DEFAULT_ANTHROPIC_MODEL
+        resolved_model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_ANTHROPIC_MODEL
         resolved_base_url = os.environ.get("JPCORPUS_ANTHROPIC_BASE_URL") or anthropic_base_url
-        resolved_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not resolved_api_key:
-            raise typer.BadParameter("Set ANTHROPIC_API_KEY or JPCORPUS_LLM_API_KEY for Anthropic.")
-        client = AnthropicClient(
-            LLMConfig(
-                model=resolved_model,
-                base_url=resolved_base_url,
-                api_key=resolved_api_key,
-                use_show_context=use_show_context,
+        client = None
+        if not cache_only:
+            resolved_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+            if not resolved_api_key:
+                raise typer.BadParameter("Set ANTHROPIC_API_KEY or pass --api-key for Anthropic.")
+            client = AnthropicClient(
+                LLMConfig(
+                    model=resolved_model,
+                    base_url=resolved_base_url,
+                    api_key=resolved_api_key,
+                    use_show_context=use_show_context,
+                )
             )
-        )
     elif provider == "openai-compatible":
-        if not model:
+        resolved_model = model or os.environ.get("JPCORPUS_LLM_MODEL")
+        if not resolved_model:
             raise typer.BadParameter("Set --model or JPCORPUS_LLM_MODEL.")
-        resolved_model = model
         resolved_base_url = base_url
-        if not api_key:
-            api_key = os.environ.get("OPENAI_API_KEY")
-        if "api.openai.com" in base_url and not api_key:
-            raise typer.BadParameter("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY for OpenAI.")
-        client = OpenAICompatibleClient(
-            LLMConfig(
-                model=model,
-                base_url=base_url,
-                api_key=api_key,
-                use_show_context=use_show_context,
+        client = None
+        if not cache_only:
+            if not api_key:
+                api_key = os.environ.get("JPCORPUS_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+            if "api.openai.com" in base_url and not api_key:
+                raise typer.BadParameter("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY for OpenAI.")
+            client = OpenAICompatibleClient(
+                LLMConfig(
+                    model=resolved_model,
+                    base_url=base_url,
+                    api_key=api_key,
+                    use_show_context=use_show_context,
+                )
             )
-        )
     else:
         raise typer.BadParameter("Unsupported provider. Use 'openai-compatible', 'anthropic', or 'apple'.")
+    cache_context = {
+        "provider": provider,
+        "model": resolved_model,
+        "base_url": resolved_base_url,
+        "use_show_context": use_show_context,
+    }
+    if cache_only:
+        count = apply_cached_annotations_file(
+            input,
+            output,
+            cache_state=State(state_db),
+            cache_context=cache_context,
+            limit=limit,
+            overwrite=overwrite,
+        )
+        typer.echo(f"Applied {count} cached annotations: {output}")
+        return
+
     errors = []
 
     def on_annotation_error(word: dict[str, Any], example: dict[str, Any], exc: Exception) -> None:
@@ -788,12 +814,7 @@ def annotate(
             limit=limit,
             overwrite=overwrite,
             cache_state=State(state_db),
-            cache_context={
-                "provider": provider,
-                "model": resolved_model,
-                "base_url": resolved_base_url,
-                "use_show_context": use_show_context,
-            },
+            cache_context=cache_context,
             concurrency=concurrency,
             request_interval_seconds=request_interval_seconds,
             on_error=on_annotation_error,
