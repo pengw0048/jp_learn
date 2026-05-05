@@ -21,7 +21,7 @@ def analysis_to_dict(
     examples_per_word: int = 3,
     zh_glossary: ChineseGlossary | None = None,
 ) -> dict[str, Any]:
-    words = analysis.top_words(level=level, limit=len(analysis.word_stats))
+    words = _export_words(analysis, level=level)
     if limit is not None:
         words = words[:limit]
     return {
@@ -79,6 +79,19 @@ def write_corpus_json(
     return output
 
 
+def _export_words(analysis: CorpusAnalysis, *, level: int | None) -> list[WordStats]:
+    words_by_surface = dict(analysis.word_stats)
+    for entry in analysis.jlpt_words.by_surface.values():
+        if level is not None and entry.level != level:
+            continue
+        words_by_surface.setdefault(entry.surface, WordStats(entry=entry))
+    words = list(words_by_surface.values())
+    if level is not None:
+        words = [word for word in words if word.entry.level == level]
+    words.sort(key=lambda item: (-item.count, item.entry.level, item.entry.surface))
+    return words
+
+
 def _word_to_dict(
     word: WordStats,
     *,
@@ -99,9 +112,45 @@ def _word_to_dict(
         ],
         "examples": [
             _example_to_dict(example)
-            for example in word.examples[:examples_per_word]
+            for example in _select_examples(word.examples, limit=examples_per_word)
         ],
     }
+
+
+def _select_examples(examples: list[WordExample], *, limit: int) -> list[WordExample]:
+    remaining = list(examples)
+    selected: list[WordExample] = []
+    selected_sources: set[str] = set()
+    while remaining and len(selected) < limit:
+        diverse_pool = [
+            example for example in remaining if example.source_title not in selected_sources
+        ]
+        pool = diverse_pool or remaining
+        best = max(pool, key=_example_quality_score)
+        selected.append(best)
+        selected_sources.add(best.source_title)
+        remaining.remove(best)
+    return selected
+
+
+def _example_quality_score(example: WordExample) -> float:
+    sentence = example.sentence.strip()
+    length = len(sentence)
+    score = 0.0
+    if example.matched_text and example.matched_text in sentence:
+        score += 4
+    if 8 <= length <= 80:
+        score += 6
+    elif 4 <= length <= 120:
+        score += 3
+    score -= abs(length - 32) / 24
+    score += min(len(example.context_before), 2) * 0.75
+    score += min(len(example.context_after), 2) * 0.75
+    if example.start_ms is not None:
+        score += 0.5
+    if sentence.endswith(("。", "！", "？", "!", "?")):
+        score += 0.5
+    return score
 
 
 def _meaning_zh(word: WordStats, zh_glossary: ChineseGlossary | None) -> str | None:

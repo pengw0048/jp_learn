@@ -83,11 +83,21 @@ class WordStats:
         return self.examples[0].source_title if self.examples else None
 
     def add_example(self, example: WordExample, *, limit: int) -> None:
-        if len(self.examples) >= limit:
+        if limit <= 0:
             return
         if any(existing.sentence == example.sentence for existing in self.examples):
             return
-        self.examples.append(example)
+        if len(self.examples) < limit:
+            self.examples.append(example)
+            return
+        sources = Counter(existing.source_title for existing in self.examples)
+        if example.source_title in sources:
+            return
+        crowded_source = sources.most_common(1)[0][0]
+        for index in range(len(self.examples) - 1, -1, -1):
+            if self.examples[index].source_title == crowded_source:
+                self.examples[index] = example
+                return
 
 
 @dataclass

@@ -297,7 +297,7 @@ def export_corpus_json(
         state_db=state_db,
         jlpt_words=jlpt_words,
         subtitles=subtitles,
-        max_examples_per_word=examples_per_word,
+        max_examples_per_word=max(examples_per_word * 12, 24),
         context_lines=context_lines,
     )
     write_corpus_json(

@@ -44,7 +44,7 @@ uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 
-The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, examples, source distribution, and browser-local study status. Example records include source title, episode when detected, subtitle timing, nearby context lines, and a nullable `scene_description` field reserved for later LLM annotation.
+The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced subtitles as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, examples, and browser-local study status. Example records include source title, episode when detected, subtitle timing, nearby context lines, and a nullable `scene_description` field reserved for later LLM annotation.
 
 ## Local Smoke Test Without API Keys
 

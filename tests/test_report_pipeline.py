@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from jpcorpus.analysis import analyze_paths, is_study_candidate, to_hiragana
+from jpcorpus.analysis import WordExample, WordStats, analyze_paths, is_study_candidate, to_hiragana
 from jpcorpus.anki_export import export_anki_deck
-from jpcorpus.corpus_export import analysis_to_dict, write_corpus_json
+from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.models import WordEntry
 from jpcorpus.report import build_markdown_report
@@ -86,6 +86,9 @@ def test_export_corpus_json(tmp_path: Path):
     assert payload["words"][0]["examples"][0]["matched_text"] == "約束"
     assert payload["words"][0]["examples"][0]["context_before"] == []
     assert payload["words"][0]["examples"][0]["scene_description"] is None
+    assert payload["words"][1]["word"] == "気持ち"
+    assert payload["words"][1]["count"] == 0
+    assert payload["words"][1]["examples"] == []
     assert output.exists()
 
 
@@ -148,6 +151,57 @@ def test_jlpt_duplicate_surface_prefers_basic_level_reading():
 def test_clean_chinese_gloss_removes_leading_reading():
     assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
     assert clean_gloss("(いま1) 现在") == "现在"
+
+
+def test_select_examples_prefers_quality_and_source_diversity():
+    examples = [
+        WordExample(
+            sentence="見る",
+            source_title="Show A",
+            subtitle_file="a.srt",
+            matched_text="見る",
+        ),
+        WordExample(
+            sentence="これは見る価値がある作品です。",
+            source_title="Show A",
+            subtitle_file="a.srt",
+            matched_text="見る",
+            context_before=["前の台詞"],
+            context_after=["次の台詞"],
+        ),
+        WordExample(
+            sentence="明日また見ることにした。",
+            source_title="Show B",
+            subtitle_file="b.srt",
+            matched_text="見る",
+            context_before=["前の台詞"],
+            context_after=["次の台詞"],
+        ),
+    ]
+
+    selected = _select_examples(examples, limit=2)
+
+    assert {example.source_title for example in selected} == {"Show A", "Show B"}
+    assert all(example.sentence != "見る" for example in selected)
+
+
+def test_word_examples_keep_source_diversity_when_candidate_pool_is_full():
+    stats = WordStats(entry=WordEntry(surface="見る", reading="みる", level=5))
+
+    stats.add_example(
+        WordExample("見る 1", "Show A", "a.srt", "見る"),
+        limit=2,
+    )
+    stats.add_example(
+        WordExample("見る 2", "Show A", "a.srt", "見る"),
+        limit=2,
+    )
+    stats.add_example(
+        WordExample("見る 3", "Show B", "b.srt", "見る"),
+        limit=2,
+    )
+
+    assert {example.source_title for example in stats.examples} == {"Show A", "Show B"}
 
 
 def load_jlpt_words_from_entries(entries):

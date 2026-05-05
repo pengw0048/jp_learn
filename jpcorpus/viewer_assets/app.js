@@ -25,14 +25,12 @@ const text = {
     noWords: "没有匹配的词",
     count: "频次",
     examples: "例句",
-    sources: "作品分布",
-    sourceCount: "{count} 次",
     chineseMeaning: "日中",
     fallbackMeaning: "英文释义",
     noExamples: "这个词暂时没有例句",
     shows: "作品",
     subtitles: "字幕",
-    studyWords: "可学词",
+    studyWords: "单词",
   },
   en: {
     appTitle: "Personal Japanese Corpus",
@@ -57,8 +55,6 @@ const text = {
     noWords: "No matching words",
     count: "Count",
     examples: "Examples",
-    sources: "Sources",
-    sourceCount: "{count} hits",
     chineseMeaning: "ZH",
     fallbackMeaning: "Source meaning",
     noExamples: "No examples for this word yet",
@@ -256,7 +252,7 @@ function renderDetail() {
   }
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
-  refs.wordDetail.replaceChildren(renderDetailHeader(word), renderSources(word), renderExamples(word));
+  refs.wordDetail.replaceChildren(renderDetailHeader(word), renderExamples(word));
 }
 
 function renderDetailHeader(word) {
@@ -297,26 +293,6 @@ function renderStatusActions(word) {
     wrap.append(button);
   });
   return wrap;
-}
-
-function renderSources(word) {
-  const section = el("section", "sources");
-  section.append(el("h3", "section-title", t("sources")));
-  const sources = Array.isArray(word.sources) ? word.sources.slice(0, 8) : [];
-  const max = Math.max(...sources.map((source) => source.count || 0), 1);
-  sources.forEach((source) => {
-    const row = el("div", "source-row");
-    const label = el("div", "source-label");
-    label.append(el("div", "source-title", source.title || ""));
-    const bar = el("div", "source-bar");
-    const fill = el("div", "source-fill");
-    fill.style.width = `${Math.max(4, ((source.count || 0) / max) * 100)}%`;
-    bar.append(fill);
-    label.append(bar);
-    row.append(label, el("div", "source-count", t("sourceCount", { count: formatNumber(source.count || 0) })));
-    section.append(row);
-  });
-  return section;
 }
 
 function renderExamples(word) {
