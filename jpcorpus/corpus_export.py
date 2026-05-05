@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -134,11 +135,15 @@ def _select_examples(examples: list[WordExample], *, limit: int) -> list[WordExa
             if (example.source_type, example.source_title) not in selected_sources
         ]
         pool = diverse_pool or remaining
-        best = max(pool, key=_example_quality_score)
+        best = max(pool, key=_example_selection_key)
         selected.append(best)
         selected_sources.add((best.source_type, best.source_title))
         remaining.remove(best)
     return selected
+
+
+def _example_selection_key(example: WordExample) -> tuple[float, int]:
+    return (_example_quality_score(example), _stable_example_rank(example))
 
 
 def _example_quality_score(example: WordExample) -> float:
@@ -159,6 +164,23 @@ def _example_quality_score(example: WordExample) -> float:
     if sentence.endswith(("。", "！", "？", "!", "?")):
         score += 0.5
     return score
+
+
+def _stable_example_rank(example: WordExample) -> int:
+    payload = {
+        "source_type": example.source_type,
+        "source_title": example.source_title,
+        "source_file": example.subtitle_file,
+        "episode": example.episode,
+        "start_ms": example.start_ms,
+        "matched_text": example.matched_text,
+        "sentence": example.sentence,
+    }
+    digest = hashlib.blake2s(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"),
+        digest_size=8,
+    ).digest()
+    return int.from_bytes(digest, byteorder="big")
 
 
 def _meaning_zh(word: WordStats, zh_glossary: ChineseGlossary | None) -> str | None:

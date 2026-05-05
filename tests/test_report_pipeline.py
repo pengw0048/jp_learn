@@ -294,6 +294,36 @@ def test_select_examples_prefers_quality_and_source_diversity():
     assert all(example.sentence != "見る" for example in selected)
 
 
+def test_select_examples_uses_stable_hash_tiebreaker():
+    examples = [
+        WordExample(
+            sentence="今日は見ることにした。",
+            source_title="Show A",
+            subtitle_file="a.srt",
+            matched_text="見る",
+        ),
+        WordExample(
+            sentence="明日も見ることにした。",
+            source_title="Show B",
+            subtitle_file="b.srt",
+            matched_text="見る",
+        ),
+        WordExample(
+            sentence="今夜は見ることにした。",
+            source_title="Show C",
+            subtitle_file="c.srt",
+            matched_text="見る",
+        ),
+    ]
+
+    selected = _select_examples(examples, limit=1)
+    selected_reversed = _select_examples(list(reversed(examples)), limit=1)
+
+    assert [example.sentence for example in selected] == [
+        example.sentence for example in selected_reversed
+    ]
+
+
 def test_word_examples_keep_source_diversity_when_candidate_pool_is_full():
     stats = WordStats(entry=WordEntry(surface="見る", reading="みる", level=5))
 

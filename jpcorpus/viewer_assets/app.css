@@ -163,20 +163,24 @@ h1 {
 
 .workspace {
   width: 100%;
+  height: calc(100vh - 76px);
   min-height: 0;
   flex: 1;
   display: grid;
   grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .sidebar {
-  min-height: calc(100vh - 76px);
+  height: 100%;
+  min-height: 0;
   padding: 18px;
   background: var(--panel);
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
 }
 
 .search-wrap input {
@@ -346,6 +350,8 @@ select {
 
 .detail-pane {
   min-width: 0;
+  height: 100%;
+  min-height: 0;
   padding: 24px;
   overflow: auto;
 }
@@ -552,11 +558,15 @@ mark {
   }
 
   .workspace {
+    height: auto;
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .sidebar {
+    height: auto;
     min-height: auto;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -566,6 +576,8 @@ mark {
   }
 
   .detail-pane {
+    height: auto;
+    overflow: visible;
     padding: 18px;
   }
 
