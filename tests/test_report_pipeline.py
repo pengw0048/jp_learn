@@ -238,6 +238,24 @@ def test_study_candidate_filter_removes_function_words():
     assert is_study_candidate("約束", "名詞")
 
 
+def test_analysis_skips_katakana_word_embedded_in_longer_katakana_name(tmp_path: Path):
+    words = load_jlpt_words_from_entries(
+        [WordEntry(surface="ベルト", reading="ベルト", level=2)]
+    )
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n君はギルベルトから何を聞いた？\n\n"
+        "2\n00:00:04,000 --> 00:00:06,000\nベルトを締める。\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=words)
+
+    stats = analysis.word_stats["ベルト"]
+    assert stats.count == 1
+    assert [example.sentence for example in stats.examples] == ["ベルトを締める。"]
+
+
 def test_to_hiragana():
     assert to_hiragana("ヤクソク") == "やくそく"
 

@@ -22,13 +22,31 @@ class JapaneseTokenizer:
     def tokenize(self, text: str) -> list[Token]:
         if self._tagger is None:
             return [
-                Token(surface=surface, base=surface)
-                for surface in FALLBACK_TOKEN_RE.findall(text)
+                Token(
+                    surface=match.group(0),
+                    base=match.group(0),
+                    start=match.start(),
+                    end=match.end(),
+                )
+                for match in FALLBACK_TOKEN_RE.finditer(text)
             ]
 
         tokens: list[Token] = []
+        cursor = 0
         for word in self._tagger(text):
-            surface = word.surface.strip()
+            raw_surface = word.surface
+            start = text.find(raw_surface, cursor)
+            if start < 0:
+                start = text.find(raw_surface.strip(), cursor)
+                raw_length = len(raw_surface.strip())
+                leading_space = 0
+            else:
+                raw_length = len(raw_surface)
+                leading_space = len(raw_surface) - len(raw_surface.lstrip())
+            if start >= 0:
+                cursor = max(cursor, start + raw_length)
+
+            surface = raw_surface.strip()
             if not surface or not FALLBACK_TOKEN_RE.search(surface):
                 continue
             feature = word.feature
@@ -48,7 +66,18 @@ class JapaneseTokenizer:
             )
             if base in {"*", ""}:
                 base = surface
-            tokens.append(Token(surface=surface, base=base, reading=reading, pos=pos))
+            token_start = start + leading_space if start >= 0 else None
+            token_end = token_start + len(surface) if token_start is not None else None
+            tokens.append(
+                Token(
+                    surface=surface,
+                    base=base,
+                    reading=reading,
+                    pos=pos,
+                    start=token_start,
+                    end=token_end,
+                )
+            )
         return tokens
 
 

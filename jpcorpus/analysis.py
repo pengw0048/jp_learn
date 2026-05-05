@@ -6,12 +6,13 @@ from pathlib import Path
 
 from .jlpt import JLPTWords
 from .lyrics import parse_lyrics
-from .models import LyricFile, SubtitleFile, SubtitleLine, WordEntry
+from .models import LyricFile, SubtitleFile, SubtitleLine, Token, WordEntry
 from .subtitle import parse_subtitle
 from .tokenize import JapaneseTokenizer
 
 
 EXCLUDED_POS = {"助詞", "助動詞", "補助記号", "代名詞", "接続詞"}
+KATAKANA_EXTENSION_MARKS = {"ー", "ヽ", "ヾ"}
 STUDY_STOPWORDS = {
     "ある",
     "いる",
@@ -215,6 +216,8 @@ def analyze_media(
                 entry = jlpt_words.lookup(token.base, token.surface)
                 if entry is None:
                     continue
+                if is_embedded_katakana_match(line.text, token, entry):
+                    continue
                 seen_by_level[entry.level].add(entry.surface)
                 source.jlpt_counts[entry.level] += 1
                 source.unique_words.add(entry.surface)
@@ -343,6 +346,30 @@ def is_study_candidate(base: str, pos: str | None) -> bool:
     if base in STUDY_STOPWORDS:
         return False
     return True
+
+
+def is_embedded_katakana_match(text: str, token: Token, entry: WordEntry) -> bool:
+    if token.start is None or token.end is None:
+        return False
+    if not _is_katakana_word(token.surface) or not _is_katakana_word(entry.surface):
+        return False
+
+    left = text[token.start - 1] if token.start > 0 else ""
+    right = text[token.end] if token.end < len(text) else ""
+    return _is_katakana_word_char(left) or _is_katakana_word_char(right)
+
+
+def _is_katakana_word(value: str) -> bool:
+    return bool(value) and all(_is_katakana_word_char(char) for char in value)
+
+
+def _is_katakana_word_char(char: str) -> bool:
+    if char in KATAKANA_EXTENSION_MARKS:
+        return True
+    if len(char) != 1:
+        return False
+    codepoint = ord(char)
+    return 0x30A1 <= codepoint <= 0x30FA
 
 
 def to_hiragana(value: str) -> str:
