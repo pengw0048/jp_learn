@@ -88,7 +88,7 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 6
+    assert payload["schema_version"] == 7
     assert payload["summary"]["lyric_file_count"] == 0
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
@@ -108,6 +108,67 @@ def test_export_corpus_json(tmp_path: Path):
     assert payload["words"][1]["count"] == 0
     assert payload["words"][1]["examples"] == []
     assert output.exists()
+
+
+def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n私は約束を見る。\n",
+        encoding="utf-8",
+    )
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<k_ele><keb>約束</keb><ke_pri>news1</ke_pri></k_ele>"
+        "<r_ele><reb>やくそく</reb><re_pri>news1</re_pri></r_ele>"
+        "<sense>"
+        "<pos>noun (common) (futsuumeishi)</pos>"
+        "<misc>word usually written using kana alone</misc>"
+        "<gloss>promise</gloss>"
+        "</sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+    kanjidic2 = tmp_path / "kanjidic2.xml"
+    kanjidic2.write_text(
+        "<kanjidic2>"
+        "<character>"
+        "<literal>約</literal>"
+        "<misc><grade>4</grade><jlpt>3</jlpt></misc>"
+        "<reading_meaning><rmgroup>"
+        '<reading r_type="ja_on">ヤク</reading>'
+        '<reading r_type="ja_kun">つづ.まる</reading>'
+        "<meaning>promise</meaning>"
+        "</rmgroup></reading_meaning>"
+        "</character>"
+        "</kanjidic2>",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(
+        analysis,
+        level=4,
+        examples_per_word=2,
+        jmdict_path=jmdict,
+        kanjidic2_path=kanjidic2,
+    )
+    notes = payload["words"][0]["lexical_notes"]
+
+    assert notes["sources"] == ["JMdict", "KANJIDIC2"]
+    assert notes["spellings"][0]["text"] == "約束"
+    assert notes["spellings"][0]["common"] is True
+    assert notes["readings"][0]["text"] == "やくそく"
+    assert notes["parts_of_speech"] == ["名词"]
+    assert notes["usage_tags"] == ["通常假名书写"]
+    assert notes["kanji"][0]["literal"] == "約"
+    assert notes["kanji"][0]["on_readings"] == ["ヤク"]
+    assert notes["kanji"][0]["meanings"] == ["promise"]
 
 
 def test_example_context_and_reference_format(tmp_path: Path):

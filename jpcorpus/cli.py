@@ -15,6 +15,7 @@ from .corpus_export import write_corpus_json
 from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
+from .lexical_notes import download_jmdict, download_kanjidic2
 from .i18n import SUPPORTED_LANGUAGES
 from .llm import (
     DEFAULT_ANTHROPIC_BASE_URL,
@@ -41,8 +42,10 @@ from .lyrics import (
 )
 from .paths import (
     DEFAULT_ANIME_DB,
+    DEFAULT_JMDICT,
     DEFAULT_JIMAKU_CACHE,
     DEFAULT_JLPT_WORDS,
+    DEFAULT_KANJIDIC2,
     DEFAULT_LYRICS_CACHE,
     DEFAULT_STATE_DB,
     DEFAULT_ZH_DICT,
@@ -653,6 +656,13 @@ def export_corpus_json(
         help="Maximum nearby source blocks to keep on each side.",
     ),
     zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
+    jmdict: Path = typer.Option(DEFAULT_JMDICT, help="JMdict_e.gz path for offline lexical notes."),
+    kanjidic2: Path = typer.Option(DEFAULT_KANJIDIC2, help="KANJIDIC2 XML/GZ path for offline kanji notes."),
+    lexical_notes: bool = typer.Option(
+        True,
+        "--lexical-notes/--no-lexical-notes",
+        help="Include compact notes from local JMdict and KANJIDIC2 files when available.",
+    ),
     subtitles: list[Path] | None = typer.Option(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
@@ -675,6 +685,8 @@ def export_corpus_json(
         limit=limit,
         examples_per_word=examples_per_word,
         zh_glossary=ChineseGlossary.load(zh_dict),
+        jmdict_path=jmdict if lexical_notes else None,
+        kanjidic2_path=kanjidic2 if lexical_notes else None,
     )
     typer.echo(f"Wrote corpus JSON: {output}")
 
@@ -864,6 +876,43 @@ def fetch_jlpt_words(
     words = load_jlpt_words(path)
     counts = ", ".join(f"N{level}: {words.total_by_level(level)}" for level in range(5, 0, -1))
     typer.echo(f"Wrote JLPT word list: {path} ({counts})")
+
+
+@data_app.command("fetch-jmdict")
+def fetch_jmdict(
+    output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e.gz path."),
+    source_url: str = typer.Option(
+        "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
+        help="JMdict source URL.",
+    ),
+) -> None:
+    """Download JMdict for offline word-form and usage notes."""
+    path = download_jmdict(output, source_url=source_url)
+    typer.echo(f"Downloaded JMdict: {path}")
+
+
+@data_app.command("fetch-kanjidic2")
+def fetch_kanjidic2(
+    output: Path = typer.Option(DEFAULT_KANJIDIC2, help="Output KANJIDIC2 XML/GZ path."),
+    source_url: str = typer.Option(
+        "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz",
+        help="KANJIDIC2 source URL.",
+    ),
+) -> None:
+    """Download KANJIDIC2 for offline kanji notes."""
+    path = download_kanjidic2(output, source_url=source_url)
+    typer.echo(f"Downloaded KANJIDIC2: {path}")
+
+
+@data_app.command("fetch-lexical-resources")
+def fetch_lexical_resources(
+    jmdict_output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e.gz path."),
+    kanjidic2_output: Path = typer.Option(DEFAULT_KANJIDIC2, help="Output KANJIDIC2 XML/GZ path."),
+) -> None:
+    """Download offline lexical resources used by the viewer."""
+    jmdict_path = download_jmdict(jmdict_output)
+    kanjidic2_path = download_kanjidic2(kanjidic2_output)
+    typer.echo(f"Downloaded lexical resources: {jmdict_path}, {kanjidic2_path}")
 
 
 @data_app.command("fetch-zh-dict")

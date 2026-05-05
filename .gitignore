@@ -8,6 +8,8 @@ __pycache__/
 data/anime-offline-database.json
 data/jlpt-words.json
 data/jp-zh-dict.json
+data/JMdict_e.gz
+data/kanjidic2.xml.gz
 data/jimaku-cache/
 data/lyrics-cache/
 *.apkg

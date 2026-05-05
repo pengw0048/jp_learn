@@ -115,6 +115,13 @@ def test_maintenance_command_does_not_apply_limit_to_sync(monkeypatch):
     assert maintenance_command(spec) == ["jpcorpus", "sync"]
 
 
+def test_maintenance_command_can_fetch_lexical_resources(monkeypatch):
+    monkeypatch.setattr("jpcorpus.viewer_jobs.jpcorpus_command", lambda: ["jpcorpus"])
+    spec = normalize_maintenance_spec({"type": "fetch_lexical_resources"})
+
+    assert maintenance_command(spec) == ["jpcorpus", "data", "fetch-lexical-resources"]
+
+
 def test_composite_sync_media_finishes_with_corpus_export():
     spec = normalize_maintenance_spec({"type": "sync_media", "concurrency": 6})
 
@@ -134,9 +141,10 @@ def test_composite_refresh_all_updates_indexes_before_syncing():
 
     steps = composite_maintenance_steps(spec)
 
-    assert [step[1]["type"] for step in steps[:3]] == [
+    assert [step[1]["type"] for step in steps[:4]] == [
         "fetch_anime_db",
         "fetch_zh_dict",
         "fetch_jlpt_words",
+        "fetch_lexical_resources",
     ]
     assert steps[-1][1]["type"] == "export_corpus"

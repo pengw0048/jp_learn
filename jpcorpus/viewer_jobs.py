@@ -58,6 +58,9 @@ ALLOWED_MAINTENANCE_TASKS = {
     "fetch_anime_db",
     "fetch_zh_dict",
     "fetch_jlpt_words",
+    "fetch_jmdict",
+    "fetch_kanjidic2",
+    "fetch_lexical_resources",
 }
 CORPUS_RELOAD_TASKS = {"annotate", "export_corpus"}
 
@@ -631,6 +634,12 @@ def maintenance_command(spec: dict[str, Any]) -> list[str]:
         return command + ["data", "fetch-zh-dict"]
     if task_type == "fetch_jlpt_words":
         return command + ["data", "fetch-jlpt-words"]
+    if task_type == "fetch_jmdict":
+        return command + ["data", "fetch-jmdict"]
+    if task_type == "fetch_kanjidic2":
+        return command + ["data", "fetch-kanjidic2"]
+    if task_type == "fetch_lexical_resources":
+        return command + ["data", "fetch-lexical-resources"]
     raise ValueError(f"Unsupported maintenance task: {task_type}")
 
 
@@ -654,6 +663,7 @@ def composite_maintenance_steps(spec: dict[str, Any]) -> list[tuple[str, dict[st
             ("Update Anime Offline Database", {"type": "fetch_anime_db"}),
             ("Update Japanese-Chinese dictionary", {"type": "fetch_zh_dict"}),
             ("Update JLPT word list", {"type": "fetch_jlpt_words"}),
+            ("Update lexical resources", {"type": "fetch_lexical_resources"}),
             *sync_steps,
         ]
     raise ValueError(f"Unsupported composite maintenance task: {spec['type']}")

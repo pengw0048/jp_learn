@@ -8,11 +8,16 @@ from pathlib import Path
 from typing import Any
 
 from .analysis import CorpusAnalysis, WordExample, WordStats
+from .lexical_notes import (
+    LexicalResourceIndex,
+    target_kanji_for_words,
+    target_keys_for_words,
+)
 from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def analysis_to_dict(
@@ -22,10 +27,20 @@ def analysis_to_dict(
     limit: int | None = None,
     examples_per_word: int = 5,
     zh_glossary: ChineseGlossary | None = None,
+    jmdict_path: Path | None = None,
+    kanjidic2_path: Path | None = None,
 ) -> dict[str, Any]:
     words = _export_words(analysis, level=level)
     if limit is not None:
         words = words[:limit]
+    lexical_index = None
+    if jmdict_path or kanjidic2_path:
+        lexical_index = LexicalResourceIndex.load_optional(
+            jmdict_path=jmdict_path,
+            kanjidic2_path=kanjidic2_path,
+            target_keys=target_keys_for_words(words),
+            target_kanji=target_kanji_for_words(words),
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -57,7 +72,12 @@ def analysis_to_dict(
             for show in sorted(analysis.show_stats.values(), key=lambda item: item.title)
         ],
         "words": [
-            _word_to_dict(word, examples_per_word=examples_per_word, zh_glossary=zh_glossary)
+            _word_to_dict(
+                word,
+                examples_per_word=examples_per_word,
+                zh_glossary=zh_glossary,
+                lexical_index=lexical_index,
+            )
             for word in words
         ],
     }
@@ -71,6 +91,8 @@ def write_corpus_json(
     limit: int | None = None,
     examples_per_word: int = 5,
     zh_glossary: ChineseGlossary | None = None,
+    jmdict_path: Path | None = None,
+    kanjidic2_path: Path | None = None,
 ) -> Path:
     ensure_parent(output)
     payload = analysis_to_dict(
@@ -79,6 +101,8 @@ def write_corpus_json(
         limit=limit,
         examples_per_word=examples_per_word,
         zh_glossary=zh_glossary,
+        jmdict_path=jmdict_path,
+        kanjidic2_path=kanjidic2_path,
     )
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return output
@@ -102,8 +126,9 @@ def _word_to_dict(
     *,
     examples_per_word: int,
     zh_glossary: ChineseGlossary | None,
+    lexical_index: LexicalResourceIndex | None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "word": word.entry.surface,
         "reading": word.display_reading,
         "level": f"N{word.entry.level}",
@@ -123,6 +148,11 @@ def _word_to_dict(
             for example in _select_examples(word.examples, limit=examples_per_word)
         ],
     }
+    if lexical_index:
+        notes = lexical_index.notes_for(word.entry.surface, word.display_reading)
+        if notes:
+            payload["lexical_notes"] = notes
+    return payload
 
 
 def _select_examples(examples: list[WordExample], *, limit: int) -> list[WordExample]:

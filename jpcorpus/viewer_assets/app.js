@@ -55,6 +55,14 @@ const text = {
     chineseMeaning: "日中",
     missingMeaning: "暂无释义",
     noExamples: "这个词暂时没有例句",
+    lexicalNotes: "词语小注",
+    lexicalSpellings: "写法",
+    lexicalReadings: "读音",
+    lexicalPos: "词性",
+    lexicalUsage: "标签",
+    lexicalKanji: "汉字",
+    lexicalSources: "来源",
+    commonForm: "常见",
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
@@ -91,12 +99,14 @@ const text = {
     maintenanceStart: "开始",
     maintenanceStartSyncMedia: "同步并刷新",
     maintenanceStartExportCorpus: "刷新语料",
+    maintenanceStartFetchLexicalResources: "更新资源",
     maintenanceStartRefreshAll: "刷新所有",
     maintenanceStartAnnotate: "开始标注",
     maintenanceReloaded: "，页面已刷新",
     taskAnnotate: "LLM 标注",
     taskSyncMedia: "同步",
     taskExportCorpus: "刷新语料",
+    taskFetchLexicalResources: "更新词语资源",
     taskRefreshAll: "刷新所有",
     scopeCurrentWord: "当前词",
     scopeFilteredWords: "当前筛选结果",
@@ -105,7 +115,8 @@ const text = {
     maintenanceEstimateRefresh: "将重新生成约 {count} 条例句，并更新本地 LLM 缓存；当前来源 {source}，等级 {level}",
     maintenanceTaskSyncMedia: "从 Bangumi 同步动画/字幕和音乐，再从 LRCLIB 拉歌词，最后刷新页面语料",
     maintenanceTaskExportCorpus: "不联网，只用现有本地数据重新生成网页语料",
-    maintenanceTaskRefreshAll: "更新词表、词典和动画数据库，再同步媒体、拉歌词并刷新语料",
+    maintenanceTaskFetchLexicalResources: "下载 JMdict 和 KANJIDIC2；之后点“刷新语料”才会出现在页面里",
+    maintenanceTaskRefreshAll: "更新词表、中文词典、词语资源和动画数据库，再同步媒体、拉歌词并刷新语料",
     maintenanceDisabled: "维护 API 未启用",
     maintenanceIdle: "还没有运行任务",
     maintenanceRunningTask: "正在运行：{task}，开始于 {time}",
@@ -150,6 +161,14 @@ const text = {
     chineseMeaning: "ZH",
     missingMeaning: "No meaning yet",
     noExamples: "No examples for this word yet",
+    lexicalNotes: "Word notes",
+    lexicalSpellings: "Spellings",
+    lexicalReadings: "Readings",
+    lexicalPos: "POS",
+    lexicalUsage: "Tags",
+    lexicalKanji: "Kanji",
+    lexicalSources: "Sources",
+    commonForm: "common",
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
@@ -186,12 +205,14 @@ const text = {
     maintenanceStart: "Start",
     maintenanceStartSyncMedia: "Sync and refresh",
     maintenanceStartExportCorpus: "Refresh corpus",
+    maintenanceStartFetchLexicalResources: "Update resources",
     maintenanceStartRefreshAll: "Refresh all",
     maintenanceStartAnnotate: "Start annotation",
     maintenanceReloaded: ", page refreshed",
     taskAnnotate: "LLM annotations",
     taskSyncMedia: "Sync",
     taskExportCorpus: "Export corpus",
+    taskFetchLexicalResources: "Update word resources",
     taskRefreshAll: "Refresh all",
     scopeCurrentWord: "Current word",
     scopeFilteredWords: "Current filtered words",
@@ -200,7 +221,8 @@ const text = {
     maintenanceEstimateRefresh: "Regenerate about {count} examples and update the local LLM cache; source {source}, level {level}",
     maintenanceTaskSyncMedia: "Syncs Bangumi anime/subtitles and music, fetches LRCLIB lyrics, then refreshes the corpus",
     maintenanceTaskExportCorpus: "Uses existing local data only and regenerates the viewer corpus",
-    maintenanceTaskRefreshAll: "Updates word/dictionary/anime data, syncs media, fetches lyrics, then refreshes the corpus",
+    maintenanceTaskFetchLexicalResources: "Downloads JMdict and KANJIDIC2; refresh the corpus afterwards to show them",
+    maintenanceTaskRefreshAll: "Updates word/dictionary/lexical/anime data, syncs media, fetches lyrics, then refreshes the corpus",
     maintenanceDisabled: "Maintenance API disabled",
     maintenanceIdle: "No task has run yet",
     maintenanceRunningTask: "Running: {task}, started {time}",
@@ -591,7 +613,7 @@ function renderDetailHeader(word) {
     meanings.append(el("div", "meaning-alt", t("missingMeaning")));
   }
 
-  header.append(titleRow, meanings, renderStatusActions(word));
+  header.append(titleRow, meanings, renderLexicalNotes(word), renderStatusActions(word));
   return header;
 }
 
@@ -624,6 +646,7 @@ function renderStudyCard(word, index, total) {
     const meanings = el("div", "study-answer-block");
     meanings.append(mainMeaning ? renderMeaningValue(word, "meaning-main") : el("div", "meaning-main", "—"));
     card.append(meanings);
+    card.append(renderLexicalNotes(word));
   }
 
   card.append(renderExamples(word, {
@@ -1125,6 +1148,80 @@ function renderParsedMeaning(meaning, className) {
   return wrap;
 }
 
+function renderLexicalNotes(word) {
+  const notes = word.lexical_notes;
+  if (!notes || typeof notes !== "object") {
+    return document.createDocumentFragment();
+  }
+  const section = el("section", "lexical-notes");
+  section.append(el("h3", "section-title", t("lexicalNotes")));
+  const body = el("div", "lexical-note-grid");
+  appendLexicalRow(body, t("lexicalSpellings"), lexicalFormNodes(notes.spellings));
+  appendLexicalRow(body, t("lexicalReadings"), lexicalFormNodes(notes.readings));
+  appendLexicalRow(body, t("lexicalPos"), lexicalTextNodes(notes.parts_of_speech));
+  appendLexicalRow(body, t("lexicalUsage"), lexicalTextNodes(notes.usage_tags));
+  appendLexicalRow(body, t("lexicalKanji"), lexicalKanjiNodes(notes.kanji));
+  appendLexicalRow(body, t("lexicalSources"), lexicalTextNodes(notes.sources, "lexical-source-chip"));
+  if (!body.childElementCount) {
+    return document.createDocumentFragment();
+  }
+  section.append(body);
+  return section;
+}
+
+function appendLexicalRow(parent, label, nodes) {
+  if (!nodes.length) {
+    return;
+  }
+  const row = el("div", "lexical-note-row");
+  row.append(el("span", "lexical-note-label", label));
+  const values = el("div", "lexical-note-values");
+  nodes.forEach((node) => values.append(node));
+  row.append(values);
+  parent.append(row);
+}
+
+function lexicalFormNodes(values) {
+  return asArray(values).map((form) => {
+    const chip = el("span", "lexical-chip lexical-form-chip");
+    chip.append(document.createTextNode(String(form.text || "")));
+    if (form.common) {
+      chip.append(el("small", "", t("commonForm")));
+    }
+    const tags = asArray(form.tags).filter(Boolean).join(" / ");
+    if (tags) {
+      chip.title = tags;
+    }
+    return chip;
+  }).filter((node) => node.textContent.trim());
+}
+
+function lexicalTextNodes(values, className = "lexical-chip") {
+  return asArray(values)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => el("span", className, value));
+}
+
+function lexicalKanjiNodes(values) {
+  return asArray(values).map((kanji) => {
+    const chip = el("span", "lexical-kanji-chip");
+    chip.append(el("strong", "", String(kanji.literal || "")));
+    const readings = [
+      ...asArray(kanji.on_readings),
+      ...asArray(kanji.kun_readings),
+    ].filter(Boolean).slice(0, 4);
+    if (readings.length) {
+      chip.append(el("span", "lexical-kanji-reading", readings.join("・")));
+    }
+    const meanings = asArray(kanji.meanings).filter(Boolean).slice(0, 3);
+    if (meanings.length) {
+      chip.append(el("span", "lexical-kanji-meaning", meanings.join(", ")));
+    }
+    return chip;
+  }).filter((node) => node.textContent.trim());
+}
+
 function parseMeaning(value) {
   let textValue = String(value || "").trim();
   const raw = textValue;
@@ -1316,6 +1413,7 @@ function maintenanceTaskDescription(task) {
   const key = {
     sync_media: "maintenanceTaskSyncMedia",
     export_corpus: "maintenanceTaskExportCorpus",
+    fetch_lexical_resources: "maintenanceTaskFetchLexicalResources",
     refresh_all: "maintenanceTaskRefreshAll",
   }[task];
   return key ? t(key) : "";
@@ -1325,6 +1423,7 @@ function maintenanceStartLabel(task) {
   const key = {
     sync_media: "maintenanceStartSyncMedia",
     export_corpus: "maintenanceStartExportCorpus",
+    fetch_lexical_resources: "maintenanceStartFetchLexicalResources",
     refresh_all: "maintenanceStartRefreshAll",
     annotate: "maintenanceStartAnnotate",
   }[task];
@@ -1335,6 +1434,7 @@ function maintenanceTaskLabel(task) {
   const key = {
     sync_media: "taskSyncMedia",
     export_corpus: "taskExportCorpus",
+    fetch_lexical_resources: "taskFetchLexicalResources",
     refresh_all: "taskRefreshAll",
     annotate: "taskAnnotate",
   }[task];
@@ -1639,6 +1739,10 @@ function el(tag, className = "", value = "") {
 
 function strong(value) {
   return el("strong", "", String(value));
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function formatNumber(value) {
