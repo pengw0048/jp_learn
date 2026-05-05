@@ -1,7 +1,9 @@
 const STORAGE_LANG = "jpcorpus.viewer.lang";
 const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
+const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
+const MODE_VALUES = new Set(["browse", "study"]);
 const EXAMPLE_SELECTION_FIELDS = [
   "source_type",
   "source_title",
@@ -30,6 +32,7 @@ const text = {
     statusLearning: "想学",
     statusKnown: "认识",
     statusIgnored: "忽略",
+    statusUncertain: "模糊",
     sourceLabel: "来源",
     sourceAll: "全部",
     sourceSubtitles: "字幕",
@@ -40,7 +43,9 @@ const text = {
     loadErrorBody: "先运行导出命令，再重新打开 viewer。",
     allLevels: "全部",
     wordsFound: "{count} 个词",
+    studyWordsFound: "{count} 个可复习词",
     noWords: "没有匹配的词",
+    noStudyWords: "当前筛选下没有带例句的可复习词",
     count: "频次",
     examples: "例句",
     exampleColumns: "列数",
@@ -53,6 +58,16 @@ const text = {
     usageNote: "用法",
     reannotateExample: "重标",
     reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
+    studyMode: "学习",
+    browseMode: "浏览",
+    studyProgress: "第 {current} / {total} 个",
+    revealAnswer: "显示答案",
+    hideAnswer: "收起答案",
+    nextWord: "下一个",
+    studyAgain: "不会",
+    studyUnsure: "模糊",
+    studyKnown: "认识",
+    studyHint: "先读例句，想一下意思，再打开答案。",
     shows: "作品",
     subtitles: "字幕",
     lyrics: "歌词",
@@ -110,6 +125,7 @@ const text = {
     statusLearning: "Study",
     statusKnown: "Known",
     statusIgnored: "Ignored",
+    statusUncertain: "Unsure",
     sourceLabel: "Source",
     sourceAll: "All",
     sourceSubtitles: "Subtitles",
@@ -120,7 +136,9 @@ const text = {
     loadErrorBody: "Export the corpus first, then reload the viewer.",
     allLevels: "All",
     wordsFound: "{count} words",
+    studyWordsFound: "{count} review words",
     noWords: "No matching words",
+    noStudyWords: "No reviewable words with examples in the current filter",
     count: "Count",
     examples: "Examples",
     exampleColumns: "Columns",
@@ -133,6 +151,16 @@ const text = {
     usageNote: "Usage",
     reannotateExample: "Refresh",
     reannotateExampleTitle: "Regenerate this example translation and usage note",
+    studyMode: "Study",
+    browseMode: "Browse",
+    studyProgress: "{current} / {total}",
+    revealAnswer: "Show answer",
+    hideAnswer: "Hide answer",
+    nextWord: "Next",
+    studyAgain: "Again",
+    studyUnsure: "Unsure",
+    studyKnown: "Known",
+    studyHint: "Read the examples first, guess the meaning, then reveal the answer.",
     shows: "Shows",
     subtitles: "Subtitles",
     lyrics: "Lyrics",
@@ -181,6 +209,7 @@ const text = {
 const stateLabels = {
   none: { zh: "未标记", en: "Unmarked", symbol: "·" },
   learning: { zh: "想学", en: "Study", symbol: "★" },
+  uncertain: { zh: "模糊", en: "Unsure", symbol: "?" },
   known: { zh: "认识", en: "Known", symbol: "✓" },
   ignored: { zh: "忽略", en: "Ignored", symbol: "−" },
 };
@@ -196,7 +225,11 @@ const app = {
   source: "all",
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
+  mode: readMode(),
   statuses: readStatuses(),
+  study: {
+    showAnswer: false,
+  },
   maintenance: {
     enabled: false,
     job: null,
@@ -219,6 +252,7 @@ const refs = {
   wordList: $("#word-list"),
   emptyState: $("#empty-state"),
   wordDetail: $("#word-detail"),
+  studyToggle: $("#study-toggle"),
   maintenanceToggle: $("#maintenance-toggle"),
   maintenancePanel: $("#maintenance-panel"),
   maintenanceClose: $("#maintenance-close"),
@@ -254,7 +288,7 @@ async function init() {
     }
     app.corpus = await response.json();
     app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
-    app.selectedWord = chooseInitialWord();
+    app.selectedWord = chooseInitialWord(currentWordSet());
     render();
   } catch (error) {
     renderLoadError(error);
@@ -264,7 +298,8 @@ async function init() {
 function bindControls() {
   refs.searchInput.addEventListener("input", (event) => {
     app.query = event.target.value.trim().toLowerCase();
-    app.selectedWord = chooseInitialWord(filteredWords());
+    app.selectedWord = chooseInitialWord(currentWordSet());
+    app.study.showAnswer = false;
     render();
   });
   refs.sortSelect.addEventListener("change", (event) => {
@@ -273,14 +308,17 @@ function bindControls() {
   });
   refs.statusFilter.addEventListener("change", (event) => {
     app.status = event.target.value;
-    app.selectedWord = chooseInitialWord(filteredWords());
+    app.selectedWord = chooseInitialWord(currentWordSet());
+    app.study.showAnswer = false;
     render();
   });
   refs.sourceFilter.addEventListener("change", (event) => {
     app.source = event.target.value;
-    app.selectedWord = chooseInitialWord(filteredWords());
+    app.selectedWord = chooseInitialWord(currentWordSet());
+    app.study.showAnswer = false;
     render();
   });
+  refs.studyToggle.addEventListener("click", toggleStudyMode);
   document.querySelectorAll("[data-lang]").forEach((button) => {
     button.addEventListener("click", () => {
       app.lang = button.dataset.lang;
@@ -339,6 +377,8 @@ function render() {
 }
 
 function renderHeader() {
+  refs.studyToggle.textContent = t(app.mode === "study" ? "browseMode" : "studyMode");
+  refs.studyToggle.classList.toggle("active", app.mode === "study");
   refs.generatedAt.textContent = app.corpus.generated_at
     ? t("generatedAt", { date: app.corpus.generated_at })
     : "";
@@ -431,7 +471,8 @@ function renderLevelFilter() {
       button.classList.toggle("active", app.level === level);
       button.addEventListener("click", () => {
         app.level = level;
-        app.selectedWord = chooseInitialWord(filteredWords());
+        app.selectedWord = chooseInitialWord(currentWordSet());
+        app.study.showAnswer = false;
         render();
       });
       return button;
@@ -440,16 +481,19 @@ function renderLevelFilter() {
 }
 
 function renderWordList() {
-  const words = filteredWords();
-  refs.resultCount.textContent = t("wordsFound", { count: formatNumber(words.length) });
+  const words = currentWordSet();
+  refs.resultCount.textContent = t(app.mode === "study" ? "studyWordsFound" : "wordsFound", {
+    count: formatNumber(words.length),
+  });
   if (words.length === 0) {
-    refs.wordList.replaceChildren(emptyMessage(t("noWords")));
+    app.selectedWord = null;
+    refs.wordList.replaceChildren(emptyMessage(t(app.mode === "study" ? "noStudyWords" : "noWords")));
     return;
   }
-  refs.wordList.replaceChildren(...words.map(renderWordRow));
   if (!app.selectedWord || !words.some((word) => word.word === app.selectedWord.word)) {
     app.selectedWord = words[0];
   }
+  refs.wordList.replaceChildren(...words.map(renderWordRow));
 }
 
 function renderWordRow(word) {
@@ -471,12 +515,18 @@ function renderWordRow(word) {
     "word-meta",
     `${word.reading || ""} · ${t("count")} ${formatNumber(displayCount(word))}`,
   );
-  const meaning = renderMeaningValue(word, "word-meaning");
-  button.append(main, meta, meaning);
+  button.append(main, meta);
+  if (app.mode !== "study") {
+    button.append(renderMeaningValue(word, "word-meaning"));
+  }
   return button;
 }
 
 function renderDetail() {
+  if (app.mode === "study") {
+    renderStudyDetail();
+    return;
+  }
   const word = app.selectedWord;
   if (!word) {
     refs.wordDetail.hidden = true;
@@ -488,6 +538,23 @@ function renderDetail() {
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
   refs.wordDetail.replaceChildren(renderDetailHeader(word), renderExamples(word));
+}
+
+function renderStudyDetail() {
+  const words = studyQueue();
+  if (words.length === 0) {
+    refs.wordDetail.hidden = true;
+    refs.emptyState.hidden = false;
+    refs.emptyState.querySelector("h2").textContent = t("noStudyWords");
+    refs.emptyState.querySelector("p").textContent = "";
+    return;
+  }
+  const selectedIndex = Math.max(0, words.findIndex((word) => word.word === app.selectedWord?.word));
+  const word = words[selectedIndex] || words[0];
+  app.selectedWord = word;
+  refs.emptyState.hidden = true;
+  refs.wordDetail.hidden = false;
+  refs.wordDetail.replaceChildren(renderStudyCard(word, selectedIndex, words.length));
 }
 
 function renderDetailHeader(word) {
@@ -515,9 +582,82 @@ function renderDetailHeader(word) {
   return header;
 }
 
+function renderStudyCard(word, index, total) {
+  const card = el("section", "study-card");
+  const topLine = el("div", "study-topline");
+  topLine.append(
+    el("span", "study-progress", t("studyProgress", {
+      current: formatNumber(index + 1),
+      total: formatNumber(total),
+    })),
+    el("span", "study-hint", t("studyHint")),
+  );
+
+  const titleRow = el("div", "study-title-row");
+  const title = el("div", "detail-title");
+  title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
+  const stats = el("div", "detail-stats");
+  stats.append(
+    statChip(word.level || ""),
+    statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
+    statChip(`${t("examples")} ${formatNumber(examplesForWord(word).length)}`),
+  );
+  titleRow.append(title, stats);
+  card.append(topLine, titleRow);
+
+  if (app.study.showAnswer) {
+    const mainMeaning = displayMeaningRaw(word);
+    const meanings = el("div", "study-answer-block");
+    meanings.append(mainMeaning ? renderMeaningValue(word, "meaning-main") : el("div", "meaning-main", "—"));
+    card.append(meanings);
+  }
+
+  card.append(renderExamples(word, {
+    revealAnnotations: app.study.showAnswer,
+    allowActions: app.study.showAnswer,
+  }));
+  card.append(renderStudyActions(word));
+  return card;
+}
+
+function renderStudyActions(word) {
+  const actions = el("div", "study-actions");
+  const reveal = el(
+    "button",
+    "study-primary-action",
+    t(app.study.showAnswer ? "hideAnswer" : "revealAnswer"),
+  );
+  reveal.type = "button";
+  reveal.addEventListener("click", () => {
+    app.study.showAnswer = !app.study.showAnswer;
+    renderDetail();
+  });
+
+  const statusActions = el("div", "study-status-actions");
+  [
+    ["learning", t("studyAgain")],
+    ["uncertain", t("studyUnsure")],
+    ["known", t("studyKnown")],
+    ["ignored", stateLabels.ignored[app.lang]],
+  ].forEach(([status, label]) => {
+    const button = el("button", "", label);
+    button.type = "button";
+    button.classList.toggle("active", statusFor(word) === status);
+    button.addEventListener("click", () => markStudyWord(status));
+    statusActions.append(button);
+  });
+
+  const next = el("button", "study-next-action", t("nextWord"));
+  next.type = "button";
+  next.addEventListener("click", nextStudyWord);
+
+  actions.append(reveal, statusActions, next);
+  return actions;
+}
+
 function renderStatusActions(word) {
   const wrap = el("div", "status-actions");
-  ["learning", "known", "ignored", "none"].forEach((status) => {
+  ["learning", "uncertain", "known", "ignored", "none"].forEach((status) => {
     const button = el("button", "");
     button.type = "button";
     button.textContent = stateLabels[status][app.lang];
@@ -533,12 +673,54 @@ function renderStatusActions(word) {
 
 function selectWord(word, button) {
   app.selectedWord = word;
+  app.study.showAnswer = false;
   refs.wordList.querySelectorAll(".word-row.active").forEach((row) => {
     row.classList.remove("active");
   });
   button.classList.add("active");
   renderDetail();
   renderMaintenance();
+}
+
+function toggleStudyMode() {
+  app.mode = app.mode === "study" ? "browse" : "study";
+  localStorage.setItem(STORAGE_MODE, app.mode);
+  app.study.showAnswer = false;
+  app.selectedWord = chooseInitialWord(currentWordSet());
+  render();
+}
+
+function nextStudyWord() {
+  const words = studyQueue();
+  if (words.length === 0) {
+    app.selectedWord = null;
+    render();
+    return;
+  }
+  const currentIndex = words.findIndex((word) => word.word === app.selectedWord?.word);
+  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % words.length : 0;
+  app.selectedWord = words[nextIndex];
+  app.study.showAnswer = false;
+  render();
+}
+
+function markStudyWord(status) {
+  const word = app.selectedWord;
+  if (!word) {
+    return;
+  }
+  const previousQueue = studyQueue();
+  const currentIndex = previousQueue.findIndex((item) => item.word === word.word);
+  const preferredNext = currentIndex >= 0 ? previousQueue[currentIndex + 1] : null;
+  setStatus(word, status);
+  const nextQueue = studyQueue();
+  app.selectedWord =
+    (preferredNext && nextQueue.find((item) => item.word === preferredNext.word))
+    || nextQueue.find((item) => item.word !== word.word)
+    || nextQueue[0]
+    || null;
+  app.study.showAnswer = false;
+  render();
 }
 
 async function startMaintenanceJob() {
@@ -666,7 +848,9 @@ async function reloadCorpus() {
   render();
 }
 
-function renderExamples(word) {
+function renderExamples(word, options = {}) {
+  const revealAnnotations = options.revealAnnotations ?? true;
+  const allowActions = options.allowActions ?? true;
   const section = el("section", "examples");
   const header = el("div", "examples-header");
   header.append(el("h3", "section-title", t("examples")), renderExampleColumnControl());
@@ -687,11 +871,14 @@ function renderExamples(word) {
     lines.append(current);
     appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
     lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
-    item.append(lines, renderExampleActions(word, example));
-    if (example.translation_zh) {
+    item.append(lines);
+    if (allowActions) {
+      item.append(renderExampleActions(word, example));
+    }
+    if (revealAnnotations && example.translation_zh) {
       item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
     }
-    if (example.usage_note_zh) {
+    if (revealAnnotations && example.usage_note_zh) {
       item.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
     }
     grid.append(item);
@@ -793,6 +980,41 @@ function filteredWords() {
   });
   words.sort(compareWords);
   return words;
+}
+
+function currentWordSet() {
+  return app.mode === "study" ? studyQueue() : filteredWords();
+}
+
+function studyQueue() {
+  const words = filteredWords().filter((word) => {
+    if (app.status === "all" && statusFor(word) === "ignored") {
+      return false;
+    }
+    return examplesForWord(word).length > 0;
+  });
+  words.sort(compareStudyWords);
+  return words;
+}
+
+function compareStudyWords(left, right) {
+  return studyPriority(left) - studyPriority(right)
+    || (right.count || 0) - (left.count || 0)
+    || compareKana(left, right);
+}
+
+function studyPriority(word) {
+  const status = statusFor(word);
+  if (status === "learning") {
+    return 0;
+  }
+  if (status === "uncertain" || status === "none") {
+    return 1;
+  }
+  if (status === "known") {
+    return 2;
+  }
+  return 3;
 }
 
 function compareWords(left, right) {
@@ -1244,6 +1466,11 @@ function readStatuses() {
 function readExampleColumns() {
   const value = localStorage.getItem(STORAGE_EXAMPLE_COLUMNS) || "auto";
   return EXAMPLE_COLUMN_VALUES.has(value) ? value : "auto";
+}
+
+function readMode() {
+  const value = localStorage.getItem(STORAGE_MODE) || "browse";
+  return MODE_VALUES.has(value) ? value : "browse";
 }
 
 function statusDot(status) {
