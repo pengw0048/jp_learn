@@ -720,6 +720,7 @@ def annotate(
         help="API key. Local OpenAI-compatible servers may not require one.",
     ),
     limit: int = typer.Option(20, min=1, help="Maximum examples to annotate this run."),
+    concurrency: int = typer.Option(1, min=1, max=16, help="Parallel LLM annotation requests."),
     overwrite: bool = typer.Option(False, help="Regenerate existing annotations."),
     use_show_context: bool = typer.Option(
         False,
@@ -765,6 +766,13 @@ def annotate(
         )
     else:
         raise typer.BadParameter("Unsupported provider. Use 'openai-compatible', 'anthropic', or 'apple'.")
+    errors = []
+
+    def on_annotation_error(word: dict[str, Any], example: dict[str, Any], exc: Exception) -> None:
+        errors.append((word, example, exc))
+        label = word.get("word") or example.get("matched_text") or example.get("sentence") or "example"
+        typer.echo(f"Annotation failed for {label}: {exc}", err=True)
+
     count = annotate_corpus_file(
         input,
         output,
@@ -778,8 +786,13 @@ def annotate(
             "base_url": resolved_base_url,
             "use_show_context": use_show_context,
         },
+        concurrency=concurrency,
+        on_error=on_annotation_error,
     )
-    typer.echo(f"Annotated {count} examples: {output}")
+    if errors:
+        typer.echo(f"Annotated {count} examples with {len(errors)} failures: {output}")
+    else:
+        typer.echo(f"Annotated {count} examples: {output}")
 
 
 @data_app.command("fetch-anime-db")

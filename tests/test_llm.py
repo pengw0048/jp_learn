@@ -27,6 +27,17 @@ class FakeAnnotationClient:
         }
 
 
+class FailingAnnotationClient:
+    def annotate_example(self, word, example):
+        if "失敗" in example["sentence"]:
+            raise RuntimeError("intentional failure")
+        return {
+            "translation_zh": f"翻译: {example['sentence']}",
+            "usage_note_zh": f"{word['word']} 在这里是目标词。",
+            "scene_description": "",
+        }
+
+
 def test_parse_annotation_response_accepts_json_fence():
     payload = parse_annotation_response(
         """```json
@@ -184,3 +195,35 @@ def test_annotate_corpus_reuses_versioned_cache(tmp_path):
     assert first_client.calls == 1
     assert second_client.calls == 0
     assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
+
+
+def test_annotate_corpus_concurrency_continues_after_failures():
+    corpus = {
+        "schema_version": 6,
+        "words": [
+            {
+                "word": "行く",
+                "examples": [
+                    {"sentence": "明日行く。"},
+                    {"sentence": "これは失敗する。"},
+                    {"sentence": "学校へ行く。"},
+                ],
+            }
+        ],
+    }
+    errors = []
+
+    payload, count = annotate_corpus(
+        corpus,
+        client=FailingAnnotationClient(),
+        limit=3,
+        concurrency=2,
+        on_error=lambda word, example, exc: errors.append((word, example, exc)),
+    )
+
+    examples = payload["words"][0]["examples"]
+    assert count == 2
+    assert len(errors) == 1
+    assert examples[0]["translation_zh"] == "翻译: 明日行く。"
+    assert "translation_zh" not in examples[1]
+    assert examples[2]["translation_zh"] == "翻译: 学校へ行く。"

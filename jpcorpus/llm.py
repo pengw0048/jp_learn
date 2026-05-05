@@ -4,9 +4,10 @@ import hashlib
 import json
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import httpx
 
@@ -16,7 +17,7 @@ from .paths import ensure_parent
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
 REQUIRED_ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh")
 ANNOTATION_CACHE_PURPOSE = "llm-annotation"
-ANNOTATION_CACHE_VERSION = 2
+ANNOTATION_CACHE_VERSION = 3
 APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
@@ -201,7 +202,7 @@ def build_annotation_prompt(
         f"{show_context_block}"
         "Return JSON with exactly these string fields:\n"
         "- translation_zh: natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit.\n"
-        "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this source block.\n"
+        "- usage_note_zh: one short Simplified Chinese note explaining the target word's meaning or grammar in this source block; when quoting Japanese expressions, copy the Japanese text exactly and do not simplify Japanese kanji.\n"
         "- scene_description: an empty string.\n"
         "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts."
     )
@@ -232,11 +233,14 @@ def annotate_corpus(
     overwrite: bool = False,
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
+    concurrency: int = 1,
+    on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
 ) -> tuple[dict[str, Any], int]:
     annotated = 0
+    targets: list[tuple[dict[str, Any], dict[str, Any], str | None]] = []
     for word in payload.get("words", []):
         for example in word.get("examples", []):
-            if annotated >= limit:
+            if annotated + len(targets) >= limit:
                 break
             if not overwrite and _has_annotations(example):
                 continue
@@ -254,21 +258,39 @@ def annotate_corpus(
                             example[field] = value
                     annotated += 1
                     continue
-            annotations = client.annotate_example(word, example)
-            if cache_state is not None and cache_key is not None:
-                cache_state.save_cache_entry(
-                    purpose=ANNOTATION_CACHE_PURPOSE,
-                    cache_key=cache_key,
-                    version=ANNOTATION_CACHE_VERSION,
-                    status="hit",
-                    value=annotations,
-                )
-            for field, value in annotations.items():
-                if overwrite or not example.get(field):
-                    example[field] = value
-            annotated += 1
-        if annotated >= limit:
+            targets.append((word, example, cache_key))
+        if annotated + len(targets) >= limit:
             break
+
+    if targets:
+        max_workers = max(1, concurrency)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(client.annotate_example, word, example): (word, example, cache_key)
+                for word, example, cache_key in targets
+            }
+            for future in as_completed(futures):
+                word, example, cache_key = futures[future]
+                try:
+                    annotations = future.result()
+                except Exception as exc:
+                    if on_error is None:
+                        raise
+                    on_error(word, example, exc)
+                    continue
+                if cache_state is not None and cache_key is not None:
+                    cache_state.save_cache_entry(
+                        purpose=ANNOTATION_CACHE_PURPOSE,
+                        cache_key=cache_key,
+                        version=ANNOTATION_CACHE_VERSION,
+                        status="hit",
+                        value=annotations,
+                    )
+                for field, value in annotations.items():
+                    if overwrite or not example.get(field):
+                        example[field] = value
+                annotated += 1
+
     payload["schema_version"] = max(int(payload.get("schema_version") or 0), 6)
     metadata = payload.setdefault("annotation", {})
     if isinstance(metadata, dict):
@@ -285,6 +307,8 @@ def annotate_corpus_file(
     overwrite: bool = False,
     cache_state: Any | None = None,
     cache_context: dict[str, Any] | None = None,
+    concurrency: int = 1,
+    on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
 ) -> int:
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     payload, annotated = annotate_corpus(
@@ -294,6 +318,8 @@ def annotate_corpus_file(
         overwrite=overwrite,
         cache_state=cache_state,
         cache_context=cache_context,
+        concurrency=concurrency,
+        on_error=on_error,
     )
     ensure_parent(output_path)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
