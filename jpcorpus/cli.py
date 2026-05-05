@@ -5,20 +5,22 @@ from pathlib import Path
 
 import typer
 
-from .analysis import analyze_paths, analyze_subtitles
+from .analysis import analyze_media, analyze_paths
 from .anime_db import AnimeOfflineIndex, download_latest_anime_db
 from .anki_export import export_anki_deck
-from .bangumi import BangumiClient, collection_to_show, run_oauth_flow
+from .bangumi import SUBJECT_MUSIC, BangumiClient, collection_to_music_tracks, collection_to_show, run_oauth_flow
 from .corpus_export import write_corpus_json
 from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .i18n import SUPPORTED_LANGUAGES
 from .llm import AppleFoundationModelsClient, LLMConfig, OpenAICompatibleClient, annotate_corpus_file
+from .lyrics import LrcLibClient, is_probably_instrumental_title, write_lrclib_lyric
 from .paths import (
     DEFAULT_ANIME_DB,
     DEFAULT_JIMAKU_CACHE,
     DEFAULT_JLPT_WORDS,
+    DEFAULT_LYRICS_CACHE,
     DEFAULT_STATE_DB,
     DEFAULT_ZH_DICT,
     ensure_dir,
@@ -36,9 +38,11 @@ app = typer.Typer(help="Build a personal JLPT corpus from watched Japanese media
 link_app = typer.Typer(help="Link external accounts.")
 export_app = typer.Typer(help="Export study artifacts.")
 data_app = typer.Typer(help="Manage local cache files.")
+lyrics_app = typer.Typer(help="Sync music tracks and cache lyric files.")
 app.add_typer(link_app, name="link")
 app.add_typer(export_app, name="export")
 app.add_typer(data_app, name="data")
+app.add_typer(lyrics_app, name="lyrics")
 
 
 def user_agent() -> str:
@@ -74,9 +78,11 @@ def load_analysis(
             context_max_lines=context_max_lines,
         )
     state = State(state_db)
-    return analyze_subtitles(
+    return analyze_media(
         watched_show_count=state.count_watched_shows(),
+        music_track_count=state.count_music_tracks(),
         subtitle_files=state.list_subtitle_files(),
+        lyric_files=state.list_lyric_files(),
         jlpt_words=words,
         max_examples_per_word=max_examples_per_word,
         context_lines=context_lines,
@@ -214,6 +220,96 @@ def sync(
     typer.echo(f"Jimaku matched {matched} shows and cached {downloaded} subtitle files.")
 
 
+@lyrics_app.command("sync")
+def sync_lyrics(
+    state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
+    max_albums: int | None = typer.Option(None, help="Limit Bangumi music collections during development."),
+    max_tracks: int | None = typer.Option(None, help="Limit saved tracks during development."),
+) -> None:
+    """Sync listened Bangumi music collections and split albums into tracks."""
+    state = State(state_db)
+    token = state.get_token("bangumi")
+    if token is None:
+        raise typer.BadParameter("Bangumi is not linked. Run `jpcorpus link bangumi` first.")
+    client = BangumiClient(access_token=token["access_token"], user_agent=user_agent())
+    username = token.get("username")
+    if not username:
+        me = client.me()
+        username = me["username"]
+
+    typer.echo("Syncing Bangumi music collections...")
+    collections = client.watched_collections(
+        username,
+        subject_type=SUBJECT_MUSIC,
+        max_items=max_albums,
+    )
+    saved_tracks = 0
+    for item in collections:
+        subject = item.get("subject") or {}
+        subject_id = item.get("subject_id") or subject.get("id")
+        if subject_id is None:
+            continue
+        try:
+            episodes = client.episodes(int(subject_id))
+        except Exception as exc:
+            typer.echo(f"Bangumi track miss for {subject.get('name') or subject_id}: {exc}")
+            episodes = []
+        for track in collection_to_music_tracks(item, episodes):
+            if max_tracks is not None and saved_tracks >= max_tracks:
+                break
+            state.save_music_track(track)
+            saved_tracks += 1
+        if max_tracks is not None and saved_tracks >= max_tracks:
+            break
+    typer.echo(f"Saved {saved_tracks} tracks from {len(collections)} Bangumi music collections.")
+
+
+@lyrics_app.command("fetch")
+def fetch_lyrics(
+    state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
+    cache_dir: Path = typer.Option(DEFAULT_LYRICS_CACHE, help="LRCLIB lyric cache directory."),
+    limit: int | None = typer.Option(None, help="Maximum tracks to try this run."),
+    overwrite: bool = typer.Option(False, help="Refetch tracks that already have cached lyrics."),
+) -> None:
+    """Fetch cached lyrics from LRCLIB for synced Bangumi music tracks."""
+    state = State(state_db)
+    tracks = state.list_music_tracks()
+    if not tracks:
+        typer.echo("No Bangumi music tracks yet. Run `jpcorpus lyrics sync` first.")
+        return
+
+    cached = {
+        lyric_file.track_key
+        for lyric_file in state.list_lyric_files()
+        if lyric_file.provider == "lrclib"
+    }
+    client = LrcLibClient(user_agent=user_agent())
+    attempted = 0
+    matched = 0
+    for track in tracks:
+        if limit is not None and attempted >= limit:
+            break
+        if is_probably_instrumental_title(track.title):
+            typer.echo(f"Skipping instrumental track: {track.title}")
+            continue
+        if not overwrite and track.track_key in cached:
+            continue
+        attempted += 1
+        try:
+            result = client.best_match(track)
+        except Exception as exc:
+            typer.echo(f"LRCLIB miss for {track.title}: {exc}")
+            continue
+        if result is None:
+            typer.echo(f"LRCLIB miss for {track.title}")
+            continue
+        lyric_file = write_lrclib_lyric(track, result, cache_dir=cache_dir)
+        state.save_lyric_file(lyric_file, raw_payload=result)
+        matched += 1
+        typer.echo(f"Cached lyrics: {track.title}")
+    typer.echo(f"LRCLIB matched {matched} of {attempted} tried tracks.")
+
+
 @app.command()
 def report(
     output: Path = typer.Option(Path("report.md"), help="Markdown report output path."),
@@ -228,7 +324,7 @@ def report(
     ),
     top: int = typer.Option(50, help="Words to include in the target-level table."),
     examples_per_word: int = typer.Option(2, min=1, help="Examples to show per target word."),
-    context_lines: int = typer.Option(2, min=0, help="Subtitle lines to keep before and after each example."),
+    context_lines: int = typer.Option(2, min=0, help="Source blocks to keep before and after each example."),
     subtitles: list[Path] | None = typer.Option(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
@@ -272,7 +368,7 @@ def export_anki(
         help="Analyze local subtitle files instead of the synced state database.",
     ),
 ) -> None:
-    """Export a genanki .apkg deck from cached subtitles."""
+    """Export a genanki .apkg deck from cached media."""
     analysis = load_analysis(state_db=state_db, jlpt_words=jlpt_words, subtitles=subtitles)
     export_anki_deck(
         analysis,
@@ -292,16 +388,16 @@ def export_corpus_json(
     level: int | None = typer.Option(None, min=1, max=5, help="Only export one JLPT level."),
     limit: int | None = typer.Option(None, help="Maximum words to export."),
     examples_per_word: int = typer.Option(5, min=1, help="Examples to include per word."),
-    context_lines: int = typer.Option(2, min=0, help="Subtitle lines to keep before and after each example."),
+    context_lines: int = typer.Option(2, min=0, help="Source blocks to keep before and after each example."),
     context_min_chars: int = typer.Option(
         40,
         min=0,
-        help="Keep collecting nearby subtitle lines until each side has at least this many characters.",
+        help="Keep collecting nearby source blocks until each side has at least this many characters.",
     ),
     context_max_lines: int = typer.Option(
         4,
         min=1,
-        help="Maximum nearby subtitle lines to keep on each side.",
+        help="Maximum nearby source blocks to keep on each side.",
     ),
     zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
     subtitles: list[Path] | None = typer.Option(

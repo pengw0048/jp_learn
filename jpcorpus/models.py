@@ -46,6 +46,41 @@ class SubtitleFile:
 
 
 @dataclass(frozen=True)
+class MusicTrack:
+    track_key: str
+    bangumi_id: int
+    title: str
+    album_title: str
+    title_zh: str | None = None
+    artist: str | None = None
+    bangumi_episode_id: int | None = None
+    track_number: int | None = None
+    disc: int | None = None
+    duration_ms: int | None = None
+    subject: dict[str, Any] = field(default_factory=dict)
+    episode: dict[str, Any] = field(default_factory=dict)
+    collection: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def display_title(self) -> str:
+        return self.title_zh or self.title
+
+
+@dataclass(frozen=True)
+class LyricFile:
+    track_key: str
+    bangumi_id: int
+    track_title: str
+    album_title: str
+    path: Path
+    provider: str
+    artist: str | None = None
+    source_id: str | None = None
+    source_url: str | None = None
+    synced: bool = False
+
+
+@dataclass(frozen=True)
 class SubtitleLine:
     text: str
     start_ms: int | None = None

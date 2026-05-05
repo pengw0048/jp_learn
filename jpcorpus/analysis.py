@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .jlpt import JLPTWords
-from .models import SubtitleFile, SubtitleLine, WordEntry
+from .lyrics import parse_lyrics
+from .models import LyricFile, SubtitleFile, SubtitleLine, WordEntry
 from .subtitle import parse_subtitle
 from .tokenize import JapaneseTokenizer
 
@@ -50,6 +51,7 @@ class WordExample:
     source_title: str
     subtitle_file: str
     matched_text: str
+    source_type: str = "subtitle"
     episode: int | None = None
     start_ms: int | None = None
     end_ms: int | None = None
@@ -65,6 +67,7 @@ class WordStats:
     entry: WordEntry
     count: int = 0
     sources: Counter[str] = field(default_factory=Counter)
+    source_type_counts: Counter[str] = field(default_factory=Counter)
     readings: Counter[str] = field(default_factory=Counter)
     examples: list[WordExample] = field(default_factory=list)
 
@@ -122,6 +125,9 @@ class CorpusAnalysis:
     show_stats: dict[str, ShowStats]
     seen_by_level: dict[int, set[str]]
     jlpt_words: JLPTWords
+    music_track_count: int = 0
+    lyric_file_count: int = 0
+    source_type_counts: Counter[str] = field(default_factory=Counter)
 
     def top_words(self, *, level: int | None = None, limit: int = 50) -> list[WordStats]:
         words = list(self.word_stats.values())
@@ -147,27 +153,58 @@ def analyze_subtitles(
     context_min_chars: int = 0,
     context_max_lines: int | None = None,
 ) -> CorpusAnalysis:
+    return analyze_media(
+        watched_show_count=watched_show_count,
+        music_track_count=0,
+        subtitle_files=subtitle_files,
+        lyric_files=[],
+        jlpt_words=jlpt_words,
+        max_examples_per_word=max_examples_per_word,
+        context_lines=context_lines,
+        context_min_chars=context_min_chars,
+        context_max_lines=context_max_lines,
+    )
+
+
+def analyze_media(
+    *,
+    watched_show_count: int,
+    music_track_count: int,
+    subtitle_files: list[SubtitleFile],
+    lyric_files: list[LyricFile],
+    jlpt_words: JLPTWords,
+    max_examples_per_word: int = 3,
+    context_lines: int = 2,
+    context_min_chars: int = 0,
+    context_max_lines: int | None = None,
+) -> CorpusAnalysis:
     tokenizer = JapaneseTokenizer()
     word_stats: dict[str, WordStats] = {}
     show_stats: dict[str, ShowStats] = {}
     seen_by_level: dict[int, set[str]] = defaultdict(set)
     unique_tokens: set[str] = set()
+    source_type_counts: Counter[str] = Counter()
     total_tokens = 0
 
-    for subtitle_file in subtitle_files:
-        if not subtitle_file.path.exists():
-            continue
-        show = show_stats.setdefault(
-            subtitle_file.show_title,
-            ShowStats(title=subtitle_file.show_title),
-        )
-        show.file_count += 1
-        subtitle_lines = parse_subtitle(subtitle_file.path)
-        for line_index, line in enumerate(subtitle_lines):
+    def consume_lines(
+        *,
+        source_type: str,
+        source_title: str,
+        source_file: str,
+        lines: list[SubtitleLine],
+        episode: int | None = None,
+        show_summary: str | None = None,
+        show_characters: list[str] | None = None,
+    ) -> None:
+        nonlocal total_tokens
+        source = show_stats.setdefault(source_title, ShowStats(title=source_title))
+        source.file_count += 1
+        for line_index, line in enumerate(lines):
             tokens = tokenizer.tokenize(line.text)
             for token in tokens:
                 total_tokens += 1
-                show.total_tokens += 1
+                source_type_counts[source_type] += 1
+                source.total_tokens += 1
                 unique_tokens.add(token.base)
                 if not is_study_candidate(token.base, token.pos):
                     continue
@@ -175,24 +212,26 @@ def analyze_subtitles(
                 if entry is None:
                     continue
                 seen_by_level[entry.level].add(entry.surface)
-                show.jlpt_counts[entry.level] += 1
-                show.unique_words.add(entry.surface)
+                source.jlpt_counts[entry.level] += 1
+                source.unique_words.add(entry.surface)
                 stats = word_stats.setdefault(entry.surface, WordStats(entry=entry))
                 stats.count += 1
-                stats.sources[subtitle_file.show_title] += 1
+                stats.sources[source_title] += 1
+                stats.source_type_counts[source_type] += 1
                 if token.reading:
                     stats.readings[to_hiragana(token.reading)] += 1
                 stats.add_example(
                     WordExample(
                         sentence=line.text,
-                        source_title=subtitle_file.show_title,
-                        subtitle_file=subtitle_file.name,
+                        source_title=source_title,
+                        subtitle_file=source_file,
                         matched_text=token.surface,
-                        episode=subtitle_file.episode,
+                        source_type=source_type,
+                        episode=episode,
                         start_ms=line.start_ms,
                         end_ms=line.end_ms,
                         context_before=collect_context(
-                            subtitle_lines,
+                            lines,
                             line_index=line_index,
                             direction="before",
                             preferred_lines=context_lines,
@@ -200,20 +239,44 @@ def analyze_subtitles(
                             max_lines=context_max_lines,
                         ),
                         context_after=collect_context(
-                            subtitle_lines,
+                            lines,
                             line_index=line_index,
                             direction="after",
                             preferred_lines=context_lines,
                             min_chars=context_min_chars,
                             max_lines=context_max_lines,
                         ),
-                        show_summary=subtitle_file.show_summary,
-                        show_characters=subtitle_file.show_characters,
+                        show_summary=show_summary,
+                        show_characters=show_characters or [],
                     ),
                     limit=max_examples_per_word,
                 )
 
+    for subtitle_file in subtitle_files:
+        if not subtitle_file.path.exists():
+            continue
+        consume_lines(
+            source_type="subtitle",
+            source_title=subtitle_file.show_title,
+            source_file=subtitle_file.name,
+            lines=parse_subtitle(subtitle_file.path),
+            episode=subtitle_file.episode,
+            show_summary=subtitle_file.show_summary,
+            show_characters=subtitle_file.show_characters,
+        )
+
+    for lyric_file in lyric_files:
+        if not lyric_file.path.exists():
+            continue
+        consume_lines(
+            source_type="lyrics",
+            source_title=lyric_file.track_title,
+            source_file=lyric_file.path.name,
+            lines=parse_lyrics(lyric_file.path),
+        )
+
     subtitle_show_count = len({file.bangumi_id for file in subtitle_files if file.path.exists()})
+    existing_lyric_files = [file for file in lyric_files if file.path.exists()]
     return CorpusAnalysis(
         watched_show_count=watched_show_count,
         subtitle_show_count=subtitle_show_count,
@@ -224,6 +287,9 @@ def analyze_subtitles(
         show_stats=show_stats,
         seen_by_level=dict(seen_by_level),
         jlpt_words=jlpt_words,
+        music_track_count=music_track_count,
+        lyric_file_count=len(existing_lyric_files),
+        source_type_counts=source_type_counts,
     )
 
 

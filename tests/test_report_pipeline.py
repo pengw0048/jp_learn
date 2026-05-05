@@ -3,6 +3,7 @@ from pathlib import Path
 from jpcorpus.analysis import (
     WordExample,
     WordStats,
+    analyze_media,
     analyze_paths,
     collect_context,
     is_study_candidate,
@@ -11,7 +12,7 @@ from jpcorpus.analysis import (
 from jpcorpus.anki_export import export_anki_deck
 from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
-from jpcorpus.models import SubtitleLine, WordEntry
+from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
 from jpcorpus.subtitle import clean_subtitle_text
@@ -87,10 +88,13 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == 6
+    assert payload["summary"]["lyric_file_count"] == 0
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
+    assert payload["words"][0]["source_type_counts"] == {"subtitle": 1}
     assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
+    assert payload["words"][0]["examples"][0]["source_type"] == "subtitle"
     assert payload["words"][0]["examples"][0]["matched_text"] == "約束"
     assert payload["words"][0]["examples"][0]["context_before"] == []
     assert payload["words"][0]["examples"][0]["show_context"] == {
@@ -156,6 +160,60 @@ def test_context_collects_past_short_subtitle_fragments():
         min_chars=10,
         max_lines=3,
     ) == ["ん？", "それから説明が続きます。"]
+
+
+def test_analysis_combines_subtitles_and_lyrics(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n私は約束を見る。\n",
+        encoding="utf-8",
+    )
+    lyric = tmp_path / "song.lrc"
+    lyric.write_text(
+        "[00:01.00]約束を見ている\n"
+        "[00:04.00]微妙な気持ち\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_media(
+        watched_show_count=1,
+        music_track_count=1,
+        subtitle_files=[
+            SubtitleFile(
+                bangumi_id=1,
+                show_title="Sample Show",
+                path=subtitle,
+                name=subtitle.name,
+                episode=1,
+            )
+        ],
+        lyric_files=[
+            LyricFile(
+                track_key="track-1",
+                bangumi_id=2,
+                track_title="Sample Song",
+                album_title="Sample Album",
+                path=lyric,
+                provider="lrclib",
+                synced=True,
+            )
+        ],
+        jlpt_words=load_jlpt_words(jlpt_path),
+        context_lines=1,
+    )
+    payload = analysis_to_dict(analysis, level=4, examples_per_word=5)
+
+    assert payload["summary"]["subtitle_file_count"] == 1
+    assert payload["summary"]["music_track_count"] == 1
+    assert payload["summary"]["lyric_file_count"] == 1
+    assert payload["words"][0]["word"] == "約束"
+    assert payload["words"][0]["source_type_counts"] == {"subtitle": 1, "lyrics": 1}
+    assert {example["source_type"] for example in payload["words"][0]["examples"]} == {
+        "subtitle",
+        "lyrics",
+    }
 
 
 def test_clean_subtitle_text_preserves_cue_line_breaks():

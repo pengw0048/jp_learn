@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .models import SubtitleFile, WatchedShow
+from .models import LyricFile, MusicTrack, SubtitleFile, WatchedShow
 from .paths import DEFAULT_STATE_DB, ensure_parent
 
 
@@ -70,6 +70,42 @@ class State:
                   local_path TEXT NOT NULL UNIQUE,
                   downloaded_at TEXT NOT NULL,
                   FOREIGN KEY (bangumi_id) REFERENCES watched_shows(bangumi_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS music_tracks (
+                  track_key TEXT PRIMARY KEY,
+                  bangumi_id INTEGER NOT NULL,
+                  bangumi_episode_id INTEGER,
+                  title TEXT NOT NULL,
+                  title_zh TEXT,
+                  album_title TEXT NOT NULL,
+                  artist TEXT,
+                  track_number INTEGER,
+                  disc INTEGER,
+                  duration_ms INTEGER,
+                  subject_json TEXT NOT NULL,
+                  episode_json TEXT NOT NULL,
+                  collection_json TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS music_tracks_bangumi_idx
+                  ON music_tracks(bangumi_id);
+
+                CREATE TABLE IF NOT EXISTS lyric_files (
+                  track_key TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  source_id TEXT,
+                  source_url TEXT,
+                  track_title TEXT NOT NULL,
+                  album_title TEXT NOT NULL,
+                  artist TEXT,
+                  synced INTEGER NOT NULL DEFAULT 0,
+                  local_path TEXT NOT NULL UNIQUE,
+                  raw_json TEXT NOT NULL,
+                  fetched_at TEXT NOT NULL,
+                  PRIMARY KEY (track_key, provider),
+                  FOREIGN KEY (track_key) REFERENCES music_tracks(track_key)
                 );
                 """
             )
@@ -270,6 +306,131 @@ class State:
             )
         return subtitle_files
 
+    def save_music_track(self, track: MusicTrack) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO music_tracks
+                  (track_key, bangumi_id, bangumi_episode_id, title, title_zh,
+                   album_title, artist, track_number, disc, duration_ms,
+                   subject_json, episode_json, collection_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(track_key) DO UPDATE SET
+                  bangumi_id=excluded.bangumi_id,
+                  bangumi_episode_id=excluded.bangumi_episode_id,
+                  title=excluded.title,
+                  title_zh=excluded.title_zh,
+                  album_title=excluded.album_title,
+                  artist=excluded.artist,
+                  track_number=excluded.track_number,
+                  disc=excluded.disc,
+                  duration_ms=excluded.duration_ms,
+                  subject_json=excluded.subject_json,
+                  episode_json=excluded.episode_json,
+                  collection_json=excluded.collection_json,
+                  updated_at=excluded.updated_at
+                """,
+                (
+                    track.track_key,
+                    track.bangumi_id,
+                    track.bangumi_episode_id,
+                    track.title,
+                    track.title_zh,
+                    track.album_title,
+                    track.artist,
+                    track.track_number,
+                    track.disc,
+                    track.duration_ms,
+                    json.dumps(track.subject, ensure_ascii=False),
+                    json.dumps(track.episode, ensure_ascii=False),
+                    json.dumps(track.collection, ensure_ascii=False),
+                    utc_now(),
+                ),
+            )
+
+    def list_music_tracks(self, limit: int | None = None) -> list[MusicTrack]:
+        sql = """
+            SELECT *
+            FROM music_tracks
+            ORDER BY album_title, COALESCE(disc, 1), COALESCE(track_number, 9999), title
+        """
+        params: tuple[Any, ...] = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (limit,)
+        with self.connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_music_track(row) for row in rows]
+
+    def count_music_tracks(self) -> int:
+        with self.connect() as conn:
+            return int(conn.execute("SELECT COUNT(*) FROM music_tracks").fetchone()[0])
+
+    def save_lyric_file(
+        self,
+        lyric_file: LyricFile,
+        *,
+        raw_payload: dict[str, Any] | None = None,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO lyric_files
+                  (track_key, provider, source_id, source_url, track_title,
+                   album_title, artist, synced, local_path, raw_json, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(track_key, provider) DO UPDATE SET
+                  source_id=excluded.source_id,
+                  source_url=excluded.source_url,
+                  track_title=excluded.track_title,
+                  album_title=excluded.album_title,
+                  artist=excluded.artist,
+                  synced=excluded.synced,
+                  local_path=excluded.local_path,
+                  raw_json=excluded.raw_json,
+                  fetched_at=excluded.fetched_at
+                """,
+                (
+                    lyric_file.track_key,
+                    lyric_file.provider,
+                    lyric_file.source_id,
+                    lyric_file.source_url,
+                    lyric_file.track_title,
+                    lyric_file.album_title,
+                    lyric_file.artist,
+                    1 if lyric_file.synced else 0,
+                    str(lyric_file.path),
+                    json.dumps(raw_payload or {}, ensure_ascii=False),
+                    utc_now(),
+                ),
+            )
+
+    def list_lyric_files(self) -> list[LyricFile]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT lf.*, mt.bangumi_id
+                FROM lyric_files lf
+                JOIN music_tracks mt ON mt.track_key = lf.track_key
+                ORDER BY lf.album_title, lf.track_title
+                """
+            ).fetchall()
+        return [
+            LyricFile(
+                track_key=row["track_key"],
+                bangumi_id=int(row["bangumi_id"]),
+                track_title=row["track_title"],
+                album_title=row["album_title"],
+                artist=row["artist"],
+                path=Path(row["local_path"]),
+                provider=row["provider"],
+                source_id=row["source_id"],
+                source_url=row["source_url"],
+                synced=bool(row["synced"]),
+            )
+            for row in rows
+        ]
+
     def _row_to_show(self, row: sqlite3.Row) -> WatchedShow:
         return WatchedShow(
             bangumi_id=int(row["bangumi_id"]),
@@ -284,6 +445,23 @@ class State:
             anilist_id=row["anilist_id"],
             anidb_id=row["anidb_id"],
             jimaku_entry_id=row["jimaku_entry_id"],
+        )
+
+    def _row_to_music_track(self, row: sqlite3.Row) -> MusicTrack:
+        return MusicTrack(
+            track_key=row["track_key"],
+            bangumi_id=int(row["bangumi_id"]),
+            bangumi_episode_id=row["bangumi_episode_id"],
+            title=row["title"],
+            title_zh=row["title_zh"],
+            album_title=row["album_title"],
+            artist=row["artist"],
+            track_number=row["track_number"],
+            disc=row["disc"],
+            duration_ms=row["duration_ms"],
+            subject=json.loads(row["subject_json"]),
+            episode=json.loads(row["episode_json"]),
+            collection=json.loads(row["collection_json"]),
         )
 
 

@@ -11,6 +11,7 @@ DEFAULT_ANIME_DB = DEFAULT_DATA_DIR / "anime-offline-database.json"
 DEFAULT_JLPT_WORDS = DEFAULT_DATA_DIR / "jlpt-words.json"
 DEFAULT_ZH_DICT = DEFAULT_DATA_DIR / "jp-zh-dict.json"
 DEFAULT_JIMAKU_CACHE = DEFAULT_DATA_DIR / "jimaku-cache"
+DEFAULT_LYRICS_CACHE = DEFAULT_DATA_DIR / "lyrics-cache"
 
 
 def ensure_parent(path: Path) -> Path:

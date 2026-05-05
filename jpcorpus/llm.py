@@ -46,7 +46,7 @@ class OpenAICompatibleClient:
                 {
                     "role": "system",
                     "content": (
-                        "You annotate Japanese subtitle examples for Chinese-speaking JLPT learners. "
+                        "You annotate Japanese media examples for Chinese-speaking JLPT learners. "
                         "Return strict JSON only."
                     ),
                 },
@@ -121,20 +121,20 @@ def build_annotation_prompt(
             f"Characters: {show_characters or '(none)'}\n\n"
         )
     return (
-        "Annotate this Japanese subtitle example.\n\n"
+        "Annotate this Japanese media example.\n\n"
         f"Word: {word.get('word')}\n"
         f"Reading: {word.get('reading')}\n"
         f"JLPT level: {word.get('level')}\n"
         f"Chinese meaning: {word.get('meaning_zh') or ''}\n"
         f"English meaning: {word.get('meaning') or ''}\n"
         f"Matched text in sentence: {example.get('matched_text') or ''}\n\n"
-        f"Previous subtitle blocks:\n{context_before or '(none)'}\n\n"
-        f"Current subtitle block:\n{example.get('sentence') or ''}\n\n"
-        f"Next subtitle blocks:\n{context_after or '(none)'}\n\n"
+        f"Previous source blocks:\n{context_before or '(none)'}\n\n"
+        f"Current source block:\n{example.get('sentence') or ''}\n\n"
+        f"Next source blocks:\n{context_after or '(none)'}\n\n"
         f"{show_context_block}"
         "Return JSON with exactly these string fields:\n"
-        "- translation_zh: natural Simplified Chinese translation of the full current subtitle block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit.\n"
-        "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this subtitle block.\n"
+        "- translation_zh: natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit.\n"
+        "- usage_note_zh: one short Chinese note explaining the target word's meaning or grammar in this source block.\n"
         "- scene_description: one short Chinese description based on the full provided subtitle context.\n"
         "Keep each field concise. Do not invent setting, genre, speaker identity, or hidden episode facts. "
         "If the scene is unclear, say that it is unclear."
@@ -179,7 +179,7 @@ def annotate_corpus(
             annotated += 1
         if annotated >= limit:
             break
-    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 5)
+    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 6)
     metadata = payload.setdefault("annotation", {})
     if isinstance(metadata, dict):
         metadata["fields"] = list(ANNOTATION_FIELDS)

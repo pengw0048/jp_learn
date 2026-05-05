@@ -26,7 +26,7 @@ let showSummary = truncated(request.show_context?.summary ?? "", limit: 280)
 let showCharacters = Array((request.show_context?.characters ?? []).prefix(12))
 let showContextBlock = (request.use_show_context == true && (!showSummary.isEmpty || !showCharacters.isEmpty))
     ? """
-Show context for scene only; trust the subtitle text if there is any conflict:
+Show context for scene only; trust the source text if there is any conflict:
 Summary: \(showSummary.isEmpty ? "(none)" : showSummary)
 Characters: \(showCharacters.isEmpty ? "(none)" : showCharacters.joined(separator: ", "))
 
@@ -42,14 +42,14 @@ guard model.isAvailable else {
 }
 
 let instructions = """
-You annotate Japanese subtitle examples for Chinese-speaking JLPT learners.
+You annotate Japanese media examples for Chinese-speaking JLPT learners.
 Return strict JSON only, with keys translation_zh, usage_note_zh, scene_description.
 Do not wrap the JSON in Markdown.
-Only use the provided subtitle blocks. Do not invent setting, genre, speaker identity, or hidden episode facts.
+Only use the provided source blocks. Do not invent setting, genre, speaker identity, or hidden episode facts.
 """
 
 let prompt = """
-Annotate this Japanese subtitle example.
+Annotate this Japanese media example.
 
 Word: \(request.word)
 Reading: \(request.reading)
@@ -58,21 +58,21 @@ Chinese meaning: \(request.meaning_zh)
 English meaning: \(request.meaning)
 Matched text in sentence: \(request.matched_text)
 
-Previous subtitle blocks:
+Previous source blocks:
 \(request.context_before.isEmpty ? "(none)" : request.context_before.joined(separator: "\n"))
 
-Current subtitle block:
+Current source block:
 \(request.sentence)
 
-Next subtitle blocks:
+Next source blocks:
 \(request.context_after.isEmpty ? "(none)" : request.context_after.joined(separator: "\n"))
 
 \(showContextBlock)
 Return JSON:
 {
-  "translation_zh": "natural Simplified Chinese translation of the full current subtitle block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit",
-  "usage_note_zh": "one short Chinese note explaining the target word's meaning or grammar in this subtitle block",
-  "scene_description": "one short Chinese description based on the full provided subtitle context; say unclear if unclear"
+  "translation_zh": "natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit",
+  "usage_note_zh": "one short Chinese note explaining the target word's meaning or grammar in this source block",
+  "scene_description": "one short Chinese description based on the full provided source context; say unclear if unclear"
 }
 """
 

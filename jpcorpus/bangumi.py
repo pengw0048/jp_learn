@@ -10,12 +10,13 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
-from .models import WatchedShow
+from .models import MusicTrack, WatchedShow
 
 
 API_BASE = "https://api.bgm.tv"
 OAUTH_BASE = "https://bgm.tv"
 SUBJECT_ANIME = 2
+SUBJECT_MUSIC = 3
 COLLECTION_DONE = 2
 
 
@@ -62,6 +63,7 @@ class BangumiClient:
         self,
         username: str,
         *,
+        subject_type: int = SUBJECT_ANIME,
         page_size: int = 50,
         max_items: int | None = None,
     ) -> list[dict[str, Any]]:
@@ -70,7 +72,7 @@ class BangumiClient:
         with httpx.Client(timeout=self.timeout) as client:
             while True:
                 params = {
-                    "subject_type": SUBJECT_ANIME,
+                    "subject_type": subject_type,
                     "type": COLLECTION_DONE,
                     "limit": page_size,
                     "offset": offset,
@@ -86,6 +88,32 @@ class BangumiClient:
                 items.extend(batch)
                 if max_items is not None and len(items) >= max_items:
                     return items[:max_items]
+                if not batch or len(batch) < page_size:
+                    return items
+                total = payload.get("total")
+                offset += len(batch)
+                if isinstance(total, int) and offset >= total:
+                    return items
+
+    def episodes(
+        self,
+        subject_id: int,
+        *,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        offset = 0
+        with httpx.Client(timeout=self.timeout) as client:
+            while True:
+                response = client.get(
+                    f"{API_BASE}/v0/episodes",
+                    headers=self._headers(),
+                    params={"subject_id": subject_id, "limit": page_size, "offset": offset},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                batch = payload.get("data", [])
+                items.extend(batch)
                 if not batch or len(batch) < page_size:
                     return items
                 total = payload.get("total")
@@ -140,6 +168,129 @@ def collection_to_show(item: dict[str, Any]) -> WatchedShow:
         subject=subject,
         collection=item,
     )
+
+
+def collection_to_music_tracks(
+    item: dict[str, Any],
+    episodes: list[dict[str, Any]],
+) -> list[MusicTrack]:
+    subject = item.get("subject") or {}
+    bangumi_id = item.get("subject_id") or subject.get("id")
+    if bangumi_id is None:
+        raise ValueError(f"Collection item has no subject ID: {item!r}")
+
+    album_title = subject.get("name") or subject.get("name_cn") or f"Bangumi {bangumi_id}"
+    artist = extract_artist(subject)
+    tracks = []
+    for episode in episodes:
+        title = episode.get("name") or episode.get("name_cn")
+        if not title:
+            continue
+        episode_id = episode.get("id")
+        track_key = (
+            f"bangumi:{int(bangumi_id)}:ep:{int(episode_id)}"
+            if episode_id is not None
+            else f"bangumi:{int(bangumi_id)}:track:{len(tracks) + 1}"
+        )
+        tracks.append(
+            MusicTrack(
+                track_key=track_key,
+                bangumi_id=int(bangumi_id),
+                title=title,
+                title_zh=episode.get("name_cn") or None,
+                album_title=album_title,
+                artist=artist,
+                bangumi_episode_id=int(episode_id) if episode_id is not None else None,
+                track_number=coerce_int(episode.get("sort") or episode.get("ep")),
+                disc=coerce_int(episode.get("disc")),
+                duration_ms=parse_duration_ms(episode.get("duration_seconds") or episode.get("duration")),
+                subject=subject,
+                episode=episode,
+                collection=item,
+            )
+        )
+    if tracks:
+        return tracks
+    return [
+        MusicTrack(
+            track_key=f"bangumi:{int(bangumi_id)}:subject",
+            bangumi_id=int(bangumi_id),
+            title=album_title,
+            album_title=album_title,
+            artist=artist,
+            subject=subject,
+            collection=item,
+        )
+    ]
+
+
+def extract_artist(subject: dict[str, Any]) -> str | None:
+    keys = {
+        "artist",
+        "artists",
+        "アーティスト",
+        "歌手",
+        "演唱",
+        "艺术家",
+        "藝人",
+        "作词",
+        "作詞",
+        "作曲",
+    }
+    for item in subject.get("infobox") or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip().casefold()
+        if key not in {candidate.casefold() for candidate in keys}:
+            continue
+        value = normalize_infobox_value(item.get("value"))
+        if value:
+            return value
+    return None
+
+
+def normalize_infobox_value(value: Any) -> str | None:
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, dict):
+                part = item.get("v") or item.get("name") or item.get("title")
+            else:
+                part = item
+            if part:
+                parts.append(str(part).strip())
+        text = ", ".join(part for part in parts if part)
+    else:
+        text = str(value or "").strip()
+    return text or None
+
+
+def coerce_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_duration_ms(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return int(float(value) * 1000)
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text) * 1000
+    parts = text.split(":")
+    if not all(part.isdigit() for part in parts):
+        return None
+    seconds = 0
+    for part in parts:
+        seconds = seconds * 60 + int(part)
+    return seconds * 1000
 
 
 class _OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -223,4 +374,3 @@ def run_oauth_flow(
         code=server.code,
         redirect_uri=redirect_uri,
     )
-

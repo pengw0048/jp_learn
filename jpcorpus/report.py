@@ -31,6 +31,7 @@ def build_markdown_report(
             "report.summary_counts",
             watched=analysis.watched_show_count,
             subtitle_shows=analysis.subtitle_show_count,
+            lyric_files=analysis.lyric_file_count,
             tokens=f"{analysis.total_tokens:,}",
             unique_tokens=f"{analysis.unique_token_count:,}",
         ),
@@ -186,7 +187,9 @@ def highlight_example(sentence: str, stats: WordStats, *, example: WordExample |
 def format_reference(example: WordExample, *, brackets: bool = True) -> str:
     source = f"《{example.source_title}》" if brackets else example.source_title
     parts = [source]
-    if example.episode is not None:
+    if example.source_type == "lyrics":
+        pass
+    elif example.episode is not None:
         parts.append(f"EP{example.episode:02d}")
     elif example.subtitle_file:
         parts.append(example.subtitle_file)

@@ -10,7 +10,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def analysis_to_dict(
@@ -31,6 +31,9 @@ def analysis_to_dict(
             "watched_show_count": analysis.watched_show_count,
             "subtitle_show_count": analysis.subtitle_show_count,
             "subtitle_file_count": analysis.subtitle_file_count,
+            "music_track_count": analysis.music_track_count,
+            "lyric_file_count": analysis.lyric_file_count,
+            "source_type_counts": dict(analysis.source_type_counts),
             "total_tokens": analysis.total_tokens,
             "unique_token_count": analysis.unique_token_count,
             "jlpt_coverage": {
@@ -106,6 +109,9 @@ def _word_to_dict(
         "meaning": word.entry.meaning,
         "meaning_zh": _meaning_zh(word, zh_glossary),
         "count": word.count,
+        "source_type_counts": dict(word.source_type_counts),
+        "subtitle_count": word.source_type_counts.get("subtitle", 0),
+        "lyrics_count": word.source_type_counts.get("lyrics", 0),
         "sources": [
             {"title": title, "count": count}
             for title, count in word.sources.most_common()
@@ -120,15 +126,17 @@ def _word_to_dict(
 def _select_examples(examples: list[WordExample], *, limit: int) -> list[WordExample]:
     remaining = list(examples)
     selected: list[WordExample] = []
-    selected_sources: set[str] = set()
+    selected_sources: set[tuple[str, str]] = set()
     while remaining and len(selected) < limit:
         diverse_pool = [
-            example for example in remaining if example.source_title not in selected_sources
+            example
+            for example in remaining
+            if (example.source_type, example.source_title) not in selected_sources
         ]
         pool = diverse_pool or remaining
         best = max(pool, key=_example_quality_score)
         selected.append(best)
-        selected_sources.add(best.source_title)
+        selected_sources.add((best.source_type, best.source_title))
         remaining.remove(best)
     return selected
 
@@ -164,6 +172,7 @@ def _meaning_zh(word: WordStats, zh_glossary: ChineseGlossary | None) -> str | N
 def _example_to_dict(example: WordExample) -> dict[str, Any]:
     return {
         "sentence": example.sentence,
+        "source_type": example.source_type,
         "source_title": example.source_title,
         "subtitle_file": example.subtitle_file,
         "matched_text": example.matched_text,
@@ -181,6 +190,8 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "usage_note_zh": None,
         "reference": {
             "source_title": example.source_title,
+            "source_type": example.source_type,
+            "source_file": example.subtitle_file,
             "episode": example.episode,
             "start_ms": example.start_ms,
             "end_ms": example.end_ms,

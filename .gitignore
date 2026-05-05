@@ -9,6 +9,7 @@ data/anime-offline-database.json
 data/jlpt-words.json
 data/jp-zh-dict.json
 data/jimaku-cache/
+data/lyrics-cache/
 *.apkg
 report*.md
 corpus*.json

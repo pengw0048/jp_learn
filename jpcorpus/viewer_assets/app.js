@@ -16,6 +16,10 @@ const text = {
     statusLearning: "想学",
     statusKnown: "认识",
     statusIgnored: "忽略",
+    sourceLabel: "来源",
+    sourceAll: "全部",
+    sourceSubtitles: "字幕",
+    sourceLyrics: "歌词",
     loadingTitle: "正在读取 corpus.json",
     loadingBody: "如果这里停住了，请确认本地服务能访问 corpus.json。",
     loadErrorTitle: "没有读到 corpus.json",
@@ -33,6 +37,7 @@ const text = {
     usageNote: "用法",
     shows: "作品",
     subtitles: "字幕",
+    lyrics: "歌词",
     studyWords: "单词",
   },
   en: {
@@ -49,6 +54,10 @@ const text = {
     statusLearning: "Study",
     statusKnown: "Known",
     statusIgnored: "Ignored",
+    sourceLabel: "Source",
+    sourceAll: "All",
+    sourceSubtitles: "Subtitles",
+    sourceLyrics: "Lyrics",
     loadingTitle: "Loading corpus.json",
     loadingBody: "If this does not change, make sure the local server can read corpus.json.",
     loadErrorTitle: "Could not read corpus.json",
@@ -65,6 +74,7 @@ const text = {
     usageNote: "Usage",
     shows: "Shows",
     subtitles: "Subtitles",
+    lyrics: "Lyrics",
     studyWords: "Study words",
   },
 };
@@ -84,6 +94,7 @@ const app = {
   level: "all",
   sort: "count",
   status: "all",
+  source: "all",
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
   statuses: readStatuses(),
 };
@@ -97,6 +108,7 @@ const refs = {
   levelFilter: $("#level-filter"),
   sortSelect: $("#sort-select"),
   statusFilter: $("#status-filter"),
+  sourceFilter: $("#source-filter"),
   resultCount: $("#result-count"),
   wordList: $("#word-list"),
   emptyState: $("#empty-state"),
@@ -134,6 +146,11 @@ function bindControls() {
   });
   refs.statusFilter.addEventListener("change", (event) => {
     app.status = event.target.value;
+    app.selectedWord = chooseInitialWord(filteredWords());
+    render();
+  });
+  refs.sourceFilter.addEventListener("change", (event) => {
+    app.source = event.target.value;
     app.selectedWord = chooseInitialWord(filteredWords());
     render();
   });
@@ -178,6 +195,7 @@ function renderHeader() {
   const items = [
     [t("shows"), summary.watched_show_count],
     [t("subtitles"), summary.subtitle_file_count],
+    [t("lyrics"), summary.lyric_file_count],
     [t("studyWords"), app.words.length],
     [t("examples"), totalExampleCount()],
   ];
@@ -239,7 +257,7 @@ function renderWordRow(word) {
   const meta = el(
     "div",
     "word-meta",
-    `${word.reading || ""} · ${t("count")} ${formatNumber(word.count || 0)}`,
+    `${word.reading || ""} · ${t("count")} ${formatNumber(displayCount(word))}`,
   );
   const meaning = el("div", "word-meaning", displayMeaning(word));
   button.append(main, meta, meaning);
@@ -266,10 +284,11 @@ function renderDetailHeader(word) {
   const title = el("div", "detail-title");
   title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
   const stats = el("div", "detail-stats");
+  const examples = examplesForWord(word);
   stats.append(
     statChip(word.level || ""),
-    statChip(`${t("count")} ${formatNumber(word.count || 0)}`),
-    statChip(`${t("examples")} ${formatNumber((word.examples || []).length)}`),
+    statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
+    statChip(`${t("examples")} ${formatNumber(examples.length)}`),
   );
   titleRow.append(title, stats);
 
@@ -303,7 +322,7 @@ function renderStatusActions(word) {
 function renderExamples(word) {
   const section = el("section", "examples");
   section.append(el("h3", "section-title", t("examples")));
-  const examples = Array.isArray(word.examples) ? word.examples : [];
+  const examples = examplesForWord(word);
   if (examples.length === 0) {
     section.append(emptyMessage(t("noExamples")));
     return section;
@@ -368,6 +387,9 @@ function filteredWords() {
     }
     const status = statusFor(word);
     if (app.status !== "all" && status !== app.status) {
+      return false;
+    }
+    if (app.source !== "all" && sourceCount(word, app.source) === 0) {
       return false;
     }
     if (!query) {
@@ -438,6 +460,26 @@ function totalExampleCount() {
   );
 }
 
+function examplesForWord(word) {
+  const examples = Array.isArray(word.examples) ? word.examples : [];
+  if (app.source === "all") {
+    return examples;
+  }
+  return examples.filter((example) => example.source_type === app.source);
+}
+
+function displayCount(word) {
+  if (app.source === "all") {
+    return word.count || 0;
+  }
+  return sourceCount(word, app.source);
+}
+
+function sourceCount(word, sourceType) {
+  const counts = word.source_type_counts || {};
+  return counts[sourceType] || 0;
+}
+
 function formatReference(example) {
   const parts = [];
   if (example.source_title) {
@@ -445,7 +487,7 @@ function formatReference(example) {
   }
   if (Number.isInteger(example.episode)) {
     parts.push(`EP${String(example.episode).padStart(2, "0")}`);
-  } else if (example.subtitle_file) {
+  } else if (example.source_type !== "lyrics" && example.subtitle_file) {
     parts.push(example.subtitle_file);
   }
   if (Number.isInteger(example.start_ms)) {

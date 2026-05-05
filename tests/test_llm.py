@@ -69,7 +69,7 @@ def test_annotate_corpus_adds_missing_example_annotations():
 
     assert count == 1
     assert client.calls == 1
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == 6
     assert payload["annotation"]["fields"] == [
         "translation_zh",
         "usage_note_zh",

@@ -33,6 +33,8 @@ uv run jpcorpus data fetch-jlpt-words
 uv run jpcorpus data fetch-zh-dict
 uv run jpcorpus link bangumi
 uv run jpcorpus sync
+uv run jpcorpus lyrics sync
+uv run jpcorpus lyrics fetch
 uv run jpcorpus report --level 3 --output report.md
 uv run jpcorpus report --language en --level 3 --output report.en.md
 uv run jpcorpus export corpus-json --output corpus.json
@@ -44,7 +46,9 @@ uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 
-The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced subtitles as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle blocks for LLM scene annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future scene context; `jpcorpus annotate` keeps prompts subtitle-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can call any OpenAI-compatible endpoint to add example-level `translation_zh`, `usage_note_zh`, and `scene_description` fields. That includes OpenAI, a LiteLLM proxy, Ollama/Open WebUI style local servers, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, examples, and browser-local study status.
+The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle or lyric blocks for LLM scene annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future scene context; `jpcorpus annotate` keeps prompts source-text-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can call any OpenAI-compatible endpoint to add example-level `translation_zh`, `usage_note_zh`, and `scene_description` fields. That includes OpenAI, a LiteLLM proxy, Ollama/Open WebUI style local servers, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, source filters, examples, and browser-local study status.
+
+Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` reads Bangumi music collections and splits album subjects into track rows through Bangumi episodes. `jpcorpus lyrics fetch` searches LRCLIB and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 
 Optional LLM annotation:
 
@@ -90,7 +94,8 @@ data/
   anime-offline-database.json  # cached Anime Offline Database release asset
   jlpt-words.json              # local JLPT vocabulary list
   jimaku-cache/                # downloaded .srt/.ass files
-~/.jpcorpus/state.db           # OAuth token, watched shows, subtitle file index
+  lyrics-cache/                # downloaded .lrc/.txt lyric files
+~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index
 ```
 
 `jpcorpus` accepts JLPT JSON as either a list of objects or a dictionary grouped by level. Each word object can use common keys such as `word`, `surface`, `reading`, `level`, `meaning`, or `translation`.
