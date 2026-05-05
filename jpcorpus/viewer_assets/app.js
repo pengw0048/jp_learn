@@ -57,30 +57,27 @@ const text = {
     maintenanceOverwriteLyrics: "覆盖已有歌词",
     maintenanceShowContext: "使用作品简介",
     maintenanceStart: "开始",
+    maintenanceStartSyncMedia: "同步并刷新",
+    maintenanceStartExportCorpus: "刷新语料",
+    maintenanceStartRefreshAll: "刷新所有",
+    maintenanceStartAnnotate: "开始标注",
+    maintenanceReloaded: "，页面已刷新",
     taskAnnotate: "LLM 标注",
-    taskExportCorpus: "重新导出语料",
-    taskSyncAnime: "同步动画/字幕",
-    taskSyncMusic: "同步音乐",
-    taskFetchLyrics: "拉取歌词",
-    taskFetchAnimeDb: "更新动画数据库",
-    taskFetchZhDict: "更新中文词典",
-    taskFetchJlptWords: "更新 JLPT 词表",
+    taskSyncMedia: "同步",
+    taskExportCorpus: "刷新语料",
+    taskRefreshAll: "刷新所有",
     scopeCurrentWord: "当前词",
     scopeFilteredWords: "当前筛选结果",
     scopeFirstUnannotated: "前 N 条缺失例句",
     maintenanceEstimate: "将处理约 {count} 条例句；当前来源 {source}，等级 {level}",
-    maintenanceTaskExportCorpus: "会重新生成 corpus.json，并把已有 LLM 缓存应用到当前 viewer 文件",
-    maintenanceTaskSyncAnime: "会同步 Bangumi 动画收藏，并在有 JIMAKU_API_KEY 时拉字幕",
-    maintenanceTaskSyncMusic: "会同步 Bangumi 音乐收藏，并把专辑拆成曲目",
-    maintenanceTaskFetchLyrics: "会从 LRCLIB 拉歌词；上限为空时尝试全部缺失曲目",
-    maintenanceTaskFetchAnimeDb: "会下载最新 Anime Offline Database",
-    maintenanceTaskFetchZhDict: "会下载最新日中词典",
-    maintenanceTaskFetchJlptWords: "会下载并规范化 JLPT 词表",
+    maintenanceTaskSyncMedia: "从 Bangumi 同步动画/字幕和音乐，再从 LRCLIB 拉歌词，最后刷新页面语料",
+    maintenanceTaskExportCorpus: "不联网，只用现有本地数据重新生成网页语料",
+    maintenanceTaskRefreshAll: "更新词表、词典和动画数据库，再同步媒体、拉歌词并刷新语料",
     maintenanceDisabled: "维护 API 未启用",
-    maintenanceIdle: "空闲",
-    maintenanceRunning: "运行中",
-    maintenanceSucceeded: "完成",
-    maintenanceFailed: "失败",
+    maintenanceIdle: "还没有运行任务",
+    maintenanceRunningTask: "正在运行：{task}，开始于 {time}",
+    maintenanceSucceededTask: "已完成：{task}{reload}，完成于 {time}",
+    maintenanceFailedTask: "失败：{task}，结束于 {time}",
   },
   en: {
     appTitle: "Personal Japanese Corpus",
@@ -135,30 +132,27 @@ const text = {
     maintenanceOverwriteLyrics: "Overwrite lyrics",
     maintenanceShowContext: "Use show context",
     maintenanceStart: "Start",
+    maintenanceStartSyncMedia: "Sync and refresh",
+    maintenanceStartExportCorpus: "Refresh corpus",
+    maintenanceStartRefreshAll: "Refresh all",
+    maintenanceStartAnnotate: "Start annotation",
+    maintenanceReloaded: ", page refreshed",
     taskAnnotate: "LLM annotations",
+    taskSyncMedia: "Sync",
     taskExportCorpus: "Export corpus",
-    taskSyncAnime: "Sync anime/subtitles",
-    taskSyncMusic: "Sync music",
-    taskFetchLyrics: "Fetch lyrics",
-    taskFetchAnimeDb: "Update anime DB",
-    taskFetchZhDict: "Update ZH dictionary",
-    taskFetchJlptWords: "Update JLPT words",
+    taskRefreshAll: "Refresh all",
     scopeCurrentWord: "Current word",
     scopeFilteredWords: "Current filtered words",
     scopeFirstUnannotated: "First N missing examples",
     maintenanceEstimate: "About {count} examples; source {source}, level {level}",
-    maintenanceTaskExportCorpus: "Regenerates corpus.json and applies existing LLM cache to the served viewer file",
-    maintenanceTaskSyncAnime: "Syncs Bangumi anime and fetches subtitles when JIMAKU_API_KEY is set",
-    maintenanceTaskSyncMusic: "Syncs Bangumi music and splits albums into tracks",
-    maintenanceTaskFetchLyrics: "Fetches LRCLIB lyrics; blank limit tries all missing tracks",
-    maintenanceTaskFetchAnimeDb: "Downloads the latest Anime Offline Database",
-    maintenanceTaskFetchZhDict: "Downloads the latest Japanese-Chinese dictionary",
-    maintenanceTaskFetchJlptWords: "Downloads and normalizes the JLPT word list",
+    maintenanceTaskSyncMedia: "Syncs Bangumi anime/subtitles and music, fetches LRCLIB lyrics, then refreshes the corpus",
+    maintenanceTaskExportCorpus: "Uses existing local data only and regenerates the viewer corpus",
+    maintenanceTaskRefreshAll: "Updates word/dictionary/anime data, syncs media, fetches lyrics, then refreshes the corpus",
     maintenanceDisabled: "Maintenance API disabled",
-    maintenanceIdle: "Idle",
-    maintenanceRunning: "Running",
-    maintenanceSucceeded: "Done",
-    maintenanceFailed: "Failed",
+    maintenanceIdle: "No task has run yet",
+    maintenanceRunningTask: "Running: {task}, started {time}",
+    maintenanceSucceededTask: "Done: {task}{reload}, finished {time}",
+    maintenanceFailedTask: "Failed: {task}, ended {time}",
   },
 };
 
@@ -374,10 +368,7 @@ function renderMaintenance() {
   const estimate = isAnnotation ? estimateAnnotationJob(spec) : { planned: 1 };
   const job = app.maintenance.job;
   document.querySelectorAll(".annotation-control").forEach((node) => {
-    node.hidden = !isAnnotation && !node.classList.contains("lyrics-control");
-  });
-  document.querySelectorAll(".lyrics-control").forEach((node) => {
-    node.hidden = !(isAnnotation || task === "fetch_lyrics");
+    node.hidden = !isAnnotation;
   });
   refs.maintenanceLimitLabel.textContent =
     task === "fetch_lyrics" ? t("maintenanceLimitOptional") : t("maintenanceLimit");
@@ -397,7 +388,8 @@ function renderMaintenance() {
   }
   refs.maintenanceStart.disabled =
     !app.maintenance.enabled || job?.status === "running" || (isAnnotation && estimate.planned <= 0);
-  refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job.status) : t("maintenanceIdle");
+  refs.maintenanceStart.textContent = maintenanceStartLabel(task);
+  refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
 }
 
@@ -856,28 +848,65 @@ function sourceLabel(source) {
 
 function maintenanceTaskDescription(task) {
   const key = {
+    sync_media: "maintenanceTaskSyncMedia",
     export_corpus: "maintenanceTaskExportCorpus",
-    sync_anime: "maintenanceTaskSyncAnime",
-    sync_music: "maintenanceTaskSyncMusic",
-    fetch_lyrics: "maintenanceTaskFetchLyrics",
-    fetch_anime_db: "maintenanceTaskFetchAnimeDb",
-    fetch_zh_dict: "maintenanceTaskFetchZhDict",
-    fetch_jlpt_words: "maintenanceTaskFetchJlptWords",
+    refresh_all: "maintenanceTaskRefreshAll",
   }[task];
   return key ? t(key) : "";
 }
 
-function maintenanceStatusLabel(status) {
-  if (status === "running") {
-    return t("maintenanceRunning");
+function maintenanceStartLabel(task) {
+  const key = {
+    sync_media: "maintenanceStartSyncMedia",
+    export_corpus: "maintenanceStartExportCorpus",
+    refresh_all: "maintenanceStartRefreshAll",
+    annotate: "maintenanceStartAnnotate",
+  }[task];
+  return key ? t(key) : t("maintenanceStart");
+}
+
+function maintenanceTaskLabel(task) {
+  const key = {
+    sync_media: "taskSyncMedia",
+    export_corpus: "taskExportCorpus",
+    refresh_all: "taskRefreshAll",
+    annotate: "taskAnnotate",
+  }[task];
+  return key ? t(key) : task || t("maintenance");
+}
+
+function maintenanceStatusLabel(job) {
+  const task = maintenanceTaskLabel(job.kind || job.spec?.type || maintenanceTask());
+  const time = formatJobTime(job.finished_at || job.started_at);
+  if (job.status === "running") {
+    return t("maintenanceRunningTask", { task, time });
   }
-  if (status === "succeeded") {
-    return t("maintenanceSucceeded");
+  if (job.status === "succeeded") {
+    return t("maintenanceSucceededTask", {
+      task,
+      reload: job.result?.reload_corpus ? t("maintenanceReloaded") : "",
+      time,
+    });
   }
-  if (status === "failed") {
-    return t("maintenanceFailed");
+  if (job.status === "failed") {
+    return t("maintenanceFailedTask", { task, time });
   }
   return t("maintenanceIdle");
+}
+
+function formatJobTime(value) {
+  if (!value) {
+    return "--";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function numberValue(input, fallback) {

@@ -84,14 +84,10 @@
           <label>
             <span data-i18n="maintenanceTask">任务</span>
             <select id="maintenance-task">
+              <option value="sync_media" data-i18n="taskSyncMedia">同步</option>
+              <option value="export_corpus" data-i18n="taskExportCorpus">刷新语料</option>
+              <option value="refresh_all" data-i18n="taskRefreshAll">刷新所有</option>
               <option value="annotate" data-i18n="taskAnnotate">LLM 标注</option>
-              <option value="export_corpus" data-i18n="taskExportCorpus">重新导出语料</option>
-              <option value="sync_anime" data-i18n="taskSyncAnime">同步动画/字幕</option>
-              <option value="sync_music" data-i18n="taskSyncMusic">同步音乐</option>
-              <option value="fetch_lyrics" data-i18n="taskFetchLyrics">拉取歌词</option>
-              <option value="fetch_anime_db" data-i18n="taskFetchAnimeDb">更新动画数据库</option>
-              <option value="fetch_zh_dict" data-i18n="taskFetchZhDict">更新中文词典</option>
-              <option value="fetch_jlpt_words" data-i18n="taskFetchJlptWords">更新 JLPT 词表</option>
             </select>
           </label>
           <label class="annotation-control">

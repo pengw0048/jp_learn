@@ -32,6 +32,8 @@ ALLOWED_SOURCES = {"all", "subtitle", "lyrics"}
 ALLOWED_LEVELS = {"all", "N5", "N4", "N3", "N2", "N1"}
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
 ALLOWED_MAINTENANCE_TASKS = {
+    "sync_media",
+    "refresh_all",
     "sync_anime",
     "sync_music",
     "fetch_lyrics",
@@ -167,7 +169,9 @@ class ViewerJobRunner:
 
     def _run_maintenance_job(self, job: ViewerJob, spec: dict[str, Any]) -> None:
         try:
-            if spec["type"] == "export_corpus":
+            if spec["type"] in {"sync_media", "refresh_all"}:
+                result = self._run_composite_job(job, spec)
+            elif spec["type"] == "export_corpus":
                 result = self._run_export_corpus(job)
             else:
                 command = maintenance_command(spec)
@@ -177,6 +181,25 @@ class ViewerJobRunner:
         except Exception as exc:
             self._log(job, f"Job failed: {exc}")
             self._finish(job, "failed", {}, error=str(exc))
+
+    def _run_composite_job(self, job: ViewerJob, spec: dict[str, Any]) -> dict[str, Any]:
+        steps = composite_maintenance_steps(spec)
+        completed_steps = []
+        result: dict[str, Any] = {"steps": completed_steps, "reload_corpus": True}
+        for index, (label, step_spec) in enumerate(steps, start=1):
+            self._log(job, f"Step {index}/{len(steps)}: {label}")
+            if step_spec["type"] == "export_corpus":
+                step_result = self._run_export_corpus(job)
+            else:
+                step_result = self._run_command(job, maintenance_command(step_spec))
+            completed_steps.append(
+                {
+                    "type": step_spec["type"],
+                    "label": label,
+                    "result": step_result,
+                }
+            )
+        return result
 
     def _run_export_corpus(self, job: ViewerJob) -> dict[str, Any]:
         raw_path = Path("corpus.json")
@@ -446,6 +469,31 @@ def maintenance_command(spec: dict[str, Any]) -> list[str]:
     if task_type == "fetch_jlpt_words":
         return command + ["data", "fetch-jlpt-words"]
     raise ValueError(f"Unsupported maintenance task: {task_type}")
+
+
+def composite_maintenance_steps(spec: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    lyric_spec = {
+        "type": "fetch_lyrics",
+        "limit": spec["limit"],
+        "concurrency": spec["concurrency"],
+        "overwrite": spec["overwrite"],
+    }
+    sync_steps = [
+        ("Sync Bangumi anime and subtitles", {"type": "sync_anime"}),
+        ("Sync Bangumi music tracks", {"type": "sync_music"}),
+        ("Fetch missing LRCLIB lyrics", lyric_spec),
+        ("Export refreshed corpus", {"type": "export_corpus"}),
+    ]
+    if spec["type"] == "sync_media":
+        return sync_steps
+    if spec["type"] == "refresh_all":
+        return [
+            ("Update Anime Offline Database", {"type": "fetch_anime_db"}),
+            ("Update Japanese-Chinese dictionary", {"type": "fetch_zh_dict"}),
+            ("Update JLPT word list", {"type": "fetch_jlpt_words"}),
+            *sync_steps,
+        ]
+    raise ValueError(f"Unsupported composite maintenance task: {spec['type']}")
 
 
 def jpcorpus_command() -> list[str]:
