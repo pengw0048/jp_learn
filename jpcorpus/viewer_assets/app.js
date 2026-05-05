@@ -1,9 +1,11 @@
 const STORAGE_LANG = "jpcorpus.viewer.lang";
 const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
+const STORAGE_STUDY_COUNTS = "jpcorpus.viewer.studyCounts.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 const MODE_VALUES = new Set(["browse", "study"]);
+const STUDY_TARGET_COUNT = 7;
 const EXAMPLE_SELECTION_FIELDS = [
   "source_type",
   "source_title",
@@ -29,7 +31,7 @@ const text = {
     statusLabel: "状态",
     statusAll: "全部",
     statusNone: "未标记",
-    statusLearning: "想学",
+    statusLearning: "复习中",
     statusKnown: "认识",
     statusIgnored: "忽略",
     statusUncertain: "模糊",
@@ -64,10 +66,12 @@ const text = {
     revealAnswer: "显示答案",
     hideAnswer: "收起答案",
     nextWord: "下一个",
-    studyAgain: "不会",
     studyUnsure: "模糊",
     studyKnown: "认识",
-    studyHint: "先读例句，想一下意思，再打开答案。",
+    studyMastered: "已记住",
+    studyChecks: "勾 {count}/{target}",
+    studyCheckButton: "打勾 +1",
+    studyHint: "先读例句，想一下意思；不会就打一个勾，满 7 勾算记住。",
     shows: "作品",
     subtitles: "字幕",
     lyrics: "歌词",
@@ -122,7 +126,7 @@ const text = {
     statusLabel: "Status",
     statusAll: "All",
     statusNone: "Unmarked",
-    statusLearning: "Study",
+    statusLearning: "Reviewing",
     statusKnown: "Known",
     statusIgnored: "Ignored",
     statusUncertain: "Unsure",
@@ -157,10 +161,12 @@ const text = {
     revealAnswer: "Show answer",
     hideAnswer: "Hide answer",
     nextWord: "Next",
-    studyAgain: "Again",
     studyUnsure: "Unsure",
     studyKnown: "Known",
-    studyHint: "Read the examples first, guess the meaning, then reveal the answer.",
+    studyMastered: "Mastered",
+    studyChecks: "{count}/{target} checks",
+    studyCheckButton: "+1 check",
+    studyHint: "Read first and guess; add a check when it is not solid. Seven checks means mastered.",
     shows: "Shows",
     subtitles: "Subtitles",
     lyrics: "Lyrics",
@@ -208,7 +214,7 @@ const text = {
 
 const stateLabels = {
   none: { zh: "未标记", en: "Unmarked", symbol: "·" },
-  learning: { zh: "想学", en: "Study", symbol: "★" },
+  learning: { zh: "复习中", en: "Reviewing", symbol: "★" },
   uncertain: { zh: "模糊", en: "Unsure", symbol: "?" },
   known: { zh: "认识", en: "Known", symbol: "✓" },
   ignored: { zh: "忽略", en: "Ignored", symbol: "−" },
@@ -227,6 +233,7 @@ const app = {
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
   mode: readMode(),
   statuses: readStatuses(),
+  studyCounts: readStudyCounts(),
   study: {
     showAnswer: false,
   },
@@ -507,7 +514,12 @@ function renderWordRow(word) {
   const main = el("div", "word-main");
   const wordText = el("div", "word-text", word.word || "");
   const badges = el("div", "word-badges");
-  badges.append(badge(word.level || ""), statusDot(statusFor(word)));
+  badges.append(badge(word.level || ""));
+  const checks = renderStudyCountBadge(word);
+  if (checks) {
+    badges.append(checks);
+  }
+  badges.append(statusDot(statusFor(word)));
   main.append(wordText, badges);
 
   const meta = el(
@@ -568,6 +580,7 @@ function renderDetailHeader(word) {
     statChip(word.level || ""),
     statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
     statChip(`${t("examples")} ${formatNumber(examples.length)}`),
+    statChip(studyCheckLabel(word)),
   );
   titleRow.append(title, stats);
 
@@ -601,6 +614,7 @@ function renderStudyCard(word, index, total) {
     statChip(word.level || ""),
     statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
     statChip(`${t("examples")} ${formatNumber(examplesForWord(word).length)}`),
+    statChip(studyCheckLabel(word)),
   );
   titleRow.append(title, stats);
   card.append(topLine, titleRow);
@@ -635,15 +649,20 @@ function renderStudyActions(word) {
 
   const statusActions = el("div", "study-status-actions");
   [
-    ["learning", t("studyAgain")],
-    ["uncertain", t("studyUnsure")],
+    ["check", t("studyCheckButton")],
     ["known", t("studyKnown")],
     ["ignored", stateLabels.ignored[app.lang]],
-  ].forEach(([status, label]) => {
+  ].forEach(([action, label]) => {
     const button = el("button", "", label);
     button.type = "button";
-    button.classList.toggle("active", statusFor(word) === status);
-    button.addEventListener("click", () => markStudyWord(status));
+    button.classList.toggle("active", action !== "check" && statusFor(word) === action);
+    button.addEventListener("click", () => {
+      if (action === "check") {
+        addStudyCheck(word);
+      } else {
+        markStudyWord(action);
+      }
+    });
     statusActions.append(button);
   });
 
@@ -710,9 +729,24 @@ function markStudyWord(status) {
     return;
   }
   const previousQueue = studyQueue();
+  if (status === "known") {
+    setStudyCount(word, STUDY_TARGET_COUNT);
+  }
+  setStatus(word, status);
+  advanceStudyQueue(previousQueue, word);
+}
+
+function addStudyCheck(word) {
+  const previousQueue = studyQueue();
+  const nextCount = Math.min(studyCountFor(word) + 1, STUDY_TARGET_COUNT);
+  setStudyCount(word, nextCount);
+  setStatus(word, nextCount >= STUDY_TARGET_COUNT ? "known" : "learning");
+  advanceStudyQueue(previousQueue, word);
+}
+
+function advanceStudyQueue(previousQueue, word) {
   const currentIndex = previousQueue.findIndex((item) => item.word === word.word);
   const preferredNext = currentIndex >= 0 ? previousQueue[currentIndex + 1] : null;
-  setStatus(word, status);
   const nextQueue = studyQueue();
   app.selectedWord =
     (preferredNext && nextQueue.find((item) => item.word === preferredNext.word))
@@ -988,7 +1022,8 @@ function currentWordSet() {
 
 function studyQueue() {
   const words = filteredWords().filter((word) => {
-    if (app.status === "all" && statusFor(word) === "ignored") {
+    const status = statusFor(word);
+    if (app.status === "all" && (status === "ignored" || status === "known")) {
       return false;
     }
     return examplesForWord(word).length > 0;
@@ -1005,16 +1040,23 @@ function compareStudyWords(left, right) {
 
 function studyPriority(word) {
   const status = statusFor(word);
-  if (status === "learning") {
+  const count = studyCountFor(word);
+  if (status === "ignored") {
+    return 9;
+  }
+  if (count > 0 && count < STUDY_TARGET_COUNT) {
     return 0;
   }
-  if (status === "uncertain" || status === "none") {
+  if (status === "learning") {
     return 1;
   }
-  if (status === "known") {
+  if (status === "uncertain" || status === "none") {
     return 2;
   }
-  return 3;
+  if (status === "known") {
+    return 3;
+  }
+  return 4;
 }
 
 function compareWords(left, right) {
@@ -1443,21 +1485,93 @@ function formatTimestamp(milliseconds) {
 }
 
 function statusFor(word) {
-  return app.statuses[word.word] || "none";
+  const stored = app.statuses[word.word] || "none";
+  if (stored === "ignored") {
+    return stored;
+  }
+  const count = studyCountFor(word);
+  if (count >= STUDY_TARGET_COUNT) {
+    return "known";
+  }
+  if (stored === "none" && count > 0) {
+    return "learning";
+  }
+  return stored;
 }
 
 function setStatus(word, status) {
   if (status === "none") {
     delete app.statuses[word.word];
+    setStudyCount(word, 0);
   } else {
     app.statuses[word.word] = status;
+    if (status === "known") {
+      setStudyCount(word, STUDY_TARGET_COUNT);
+    }
   }
   localStorage.setItem(STORAGE_STATUS, JSON.stringify(app.statuses));
 }
 
+function studyCountFor(word) {
+  return clampStudyCount(app.studyCounts[word.word] || 0);
+}
+
+function setStudyCount(word, count) {
+  const normalized = clampStudyCount(count);
+  if (normalized <= 0) {
+    delete app.studyCounts[word.word];
+  } else {
+    app.studyCounts[word.word] = normalized;
+  }
+  localStorage.setItem(STORAGE_STUDY_COUNTS, JSON.stringify(app.studyCounts));
+}
+
+function clampStudyCount(value) {
+  const count = Number.parseInt(value, 10);
+  if (!Number.isFinite(count) || count <= 0) {
+    return 0;
+  }
+  return Math.min(count, STUDY_TARGET_COUNT);
+}
+
+function studyCheckLabel(word) {
+  return t("studyChecks", {
+    count: formatNumber(studyCountFor(word)),
+    target: formatNumber(STUDY_TARGET_COUNT),
+  });
+}
+
+function renderStudyCountBadge(word) {
+  const count = studyCountFor(word);
+  if (count <= 0 && app.mode !== "study") {
+    return null;
+  }
+  const node = el("span", `study-count-badge ${count >= STUDY_TARGET_COUNT ? "mastered" : ""}`.trim());
+  node.textContent = count >= STUDY_TARGET_COUNT ? t("studyMastered") : `${count}/${STUDY_TARGET_COUNT}`;
+  node.title = studyCheckLabel(word);
+  return node;
+}
+
 function readStatuses() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_STATUS) || "{}");
+    const value = JSON.parse(localStorage.getItem(STORAGE_STATUS) || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStudyCounts() {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_COUNTS) || "{}");
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([word, count]) => [word, clampStudyCount(count)])
+        .filter(([, count]) => count > 0),
+    );
   } catch {
     return {};
   }

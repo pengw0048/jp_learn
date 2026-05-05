@@ -351,7 +351,8 @@ select {
 }
 
 .level-badge,
-.status-dot {
+.status-dot,
+.study-count-badge {
   display: inline-grid;
   place-items: center;
   min-width: 34px;
@@ -366,6 +367,16 @@ select {
 
 .status-dot {
   min-width: 24px;
+}
+
+.study-count-badge {
+  background: #eef5fb;
+  color: var(--lyrics);
+}
+
+.study-count-badge.mastered {
+  background: #e5f2e8;
+  color: var(--known);
 }
 
 .status-dot.learning {
