@@ -60,7 +60,7 @@ const text = {
     lexicalReadings: "异读",
     lexicalPos: "语法",
     lexicalSenses: "义项",
-    lexicalKanji: "汉字",
+    lexicalKanji: "字音",
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
@@ -164,7 +164,7 @@ const text = {
     lexicalReadings: "Alt. reading",
     lexicalPos: "Grammar",
     lexicalSenses: "Senses",
-    lexicalKanji: "Kanji",
+    lexicalKanji: "Kanji readings",
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
@@ -1174,15 +1174,24 @@ function renderLexicalNotes(word) {
   const section = el("section", "lexical-notes");
   section.append(el("h3", "section-title", t("lexicalNotes")));
   const body = el("div", "lexical-note-grid");
-  appendLexicalRow(body, t("lexicalSpellings"), lexicalFormNodes(
-    lexicalUsefulForms(notes.spellings, word.word),
-  ));
-  appendLexicalRow(body, t("lexicalReadings"), lexicalFormNodes(
-    lexicalUsefulForms(notes.readings, word.reading),
-  ));
-  appendLexicalRow(body, t("lexicalPos"), lexicalTextNodes(notes.parts_of_speech));
-  appendLexicalRow(body, t("lexicalSenses"), lexicalSenseNodes(notes.senses), "lexical-note-values sense-values");
-  appendLexicalRow(body, t("lexicalKanji"), lexicalKanjiNodes(notes.kanji));
+  const spellingNodes = lexicalFormNodes(lexicalUsefulForms(notes.spellings, word.word));
+  const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, word.reading));
+  const posNodes = lexicalTextNodes(notes.parts_of_speech);
+  const senseNodes = app.lang === "zh" ? [] : lexicalSenseNodes(notes.senses);
+  const kanjiNodes = lexicalKanjiNodes(notes.kanji, word);
+  const hasUsefulNotes =
+    spellingNodes.length > 0
+    || readingNodes.length > 0
+    || senseNodes.length > 0
+    || kanjiNodes.length > 0;
+  if (!hasUsefulNotes) {
+    return document.createDocumentFragment();
+  }
+  appendLexicalRow(body, t("lexicalSpellings"), spellingNodes);
+  appendLexicalRow(body, t("lexicalReadings"), readingNodes);
+  appendLexicalRow(body, t("lexicalPos"), posNodes);
+  appendLexicalRow(body, t("lexicalSenses"), senseNodes, "lexical-note-values sense-values");
+  appendLexicalRow(body, t("lexicalKanji"), kanjiNodes);
   if (!body.childElementCount) {
     return document.createDocumentFragment();
   }
@@ -1246,7 +1255,10 @@ function lexicalSenseNodes(values) {
   }).filter((node) => node.textContent.trim());
 }
 
-function lexicalKanjiNodes(values) {
+function lexicalKanjiNodes(values, word) {
+  if (isSingleKanjiWord(word.word)) {
+    return [];
+  }
   return asArray(values).map((kanji) => {
     const chip = el("span", "lexical-kanji-chip");
     chip.append(el("strong", "", String(kanji.literal || "")));
@@ -1259,6 +1271,11 @@ function lexicalKanjiNodes(values) {
     }
     return chip;
   }).filter((node) => node.textContent.trim());
+}
+
+function isSingleKanjiWord(value) {
+  const textValue = String(value || "");
+  return textValue.length === 1 && /[\u3400-\u4dbf\u4e00-\u9fff]/u.test(textValue);
 }
 
 function parseMeaning(value) {
