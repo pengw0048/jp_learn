@@ -1,5 +1,7 @@
 const STORAGE_LANG = "jpcorpus.viewer.lang";
 const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
+const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
+const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 
 const text = {
   zh: {
@@ -29,6 +31,8 @@ const text = {
     noWords: "没有匹配的词",
     count: "频次",
     examples: "例句",
+    exampleColumns: "列数",
+    exampleColumnsAuto: "自动",
     chineseMeaning: "日中",
     fallbackMeaning: "英文释义",
     noExamples: "这个词暂时没有例句",
@@ -67,6 +71,8 @@ const text = {
     noWords: "No matching words",
     count: "Count",
     examples: "Examples",
+    exampleColumns: "Columns",
+    exampleColumnsAuto: "Auto",
     chineseMeaning: "ZH",
     noExamples: "No examples for this word yet",
     scene: "Scene",
@@ -95,6 +101,7 @@ const app = {
   sort: "count",
   status: "all",
   source: "all",
+  exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
   statuses: readStatuses(),
 };
@@ -321,12 +328,15 @@ function renderStatusActions(word) {
 
 function renderExamples(word) {
   const section = el("section", "examples");
-  section.append(el("h3", "section-title", t("examples")));
+  const header = el("div", "examples-header");
+  header.append(el("h3", "section-title", t("examples")), renderExampleColumnControl());
+  section.append(header);
   const examples = examplesForWord(word);
   if (examples.length === 0) {
     section.append(emptyMessage(t("noExamples")));
     return section;
   }
+  const grid = el("div", `examples-grid columns-${app.exampleColumns}`);
   examples.forEach((example) => {
     const item = el("div", "example");
     const lines = el("div", "example-lines");
@@ -343,9 +353,34 @@ function renderExamples(word) {
     if (example.usage_note_zh) {
       item.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
     }
-    section.append(item);
+    grid.append(item);
   });
+  section.append(grid);
   return section;
+}
+
+function renderExampleColumnControl() {
+  const label = el("label", "columns-control");
+  label.append(el("span", "", t("exampleColumns")));
+  const select = el("select", "");
+  [
+    ["auto", t("exampleColumnsAuto")],
+    ["1", "1"],
+    ["2", "2"],
+    ["3", "3"],
+  ].forEach(([value, textValue]) => {
+    const option = el("option", "", textValue);
+    option.value = value;
+    option.selected = app.exampleColumns === value;
+    select.append(option);
+  });
+  select.addEventListener("change", (event) => {
+    app.exampleColumns = event.target.value;
+    localStorage.setItem(STORAGE_EXAMPLE_COLUMNS, app.exampleColumns);
+    renderDetail();
+  });
+  label.append(select);
+  return label;
 }
 
 function appendContextBlock(parent, lines, position) {
@@ -532,6 +567,11 @@ function readStatuses() {
   } catch {
     return {};
   }
+}
+
+function readExampleColumns() {
+  const value = localStorage.getItem(STORAGE_EXAMPLE_COLUMNS) || "auto";
+  return EXAMPLE_COLUMN_VALUES.has(value) ? value : "auto";
 }
 
 function statusDot(status) {
