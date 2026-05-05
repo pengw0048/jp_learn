@@ -270,6 +270,7 @@ def fetch_lyrics(
     cache_dir: Path = typer.Option(DEFAULT_LYRICS_CACHE, help="LRCLIB lyric cache directory."),
     limit: int | None = typer.Option(None, help="Maximum tracks to try this run."),
     overwrite: bool = typer.Option(False, help="Refetch tracks that already have cached lyrics."),
+    force: bool = typer.Option(False, "--force", help="Retry tracks recorded as previous LRCLIB misses."),
 ) -> None:
     """Fetch cached lyrics from LRCLIB for synced Bangumi music tracks."""
     state = State(state_db)
@@ -283,31 +284,62 @@ def fetch_lyrics(
         for lyric_file in state.list_lyric_files()
         if lyric_file.provider == "lrclib"
     }
+    misses = state.list_lyric_miss_keys(provider="lrclib")
     client = LrcLibClient(user_agent=user_agent())
     attempted = 0
     matched = 0
+    skipped_cached = 0
+    skipped_missed = 0
+    skipped_instrumental = 0
     for track in tracks:
         if limit is not None and attempted >= limit:
             break
-        if is_probably_instrumental_title(track.title):
-            typer.echo(f"Skipping instrumental track: {track.title}")
-            continue
         if not overwrite and track.track_key in cached:
+            skipped_cached += 1
+            continue
+        if not force and track.track_key in misses:
+            skipped_missed += 1
+            continue
+        if is_probably_instrumental_title(track.title):
+            state.save_lyric_miss(
+                track_key=track.track_key,
+                provider="lrclib",
+                reason="instrumental",
+                detail=track.title,
+            )
+            skipped_instrumental += 1
+            typer.echo(f"Skipping instrumental track: {track.title}")
             continue
         attempted += 1
         try:
             result = client.best_match(track)
         except Exception as exc:
+            state.save_lyric_miss(
+                track_key=track.track_key,
+                provider="lrclib",
+                reason="error",
+                detail=str(exc),
+            )
             typer.echo(f"LRCLIB miss for {track.title}: {exc}")
             continue
         if result is None:
+            state.save_lyric_miss(
+                track_key=track.track_key,
+                provider="lrclib",
+                reason="not_found",
+            )
             typer.echo(f"LRCLIB miss for {track.title}")
             continue
         lyric_file = write_lrclib_lyric(track, result, cache_dir=cache_dir)
         state.save_lyric_file(lyric_file, raw_payload=result)
         matched += 1
         typer.echo(f"Cached lyrics: {track.title}")
-    typer.echo(f"LRCLIB matched {matched} of {attempted} tried tracks.")
+    typer.echo(
+        "LRCLIB matched "
+        f"{matched} of {attempted} tried tracks "
+        f"({skipped_cached} cached, {skipped_missed} previous misses, "
+        f"{skipped_instrumental} instrumental skipped)."
+    )
 
 
 @app.command()

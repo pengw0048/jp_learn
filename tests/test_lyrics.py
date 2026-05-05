@@ -7,7 +7,8 @@ from jpcorpus.lyrics import (
     score_lrclib_result,
     write_lrclib_lyric,
 )
-from jpcorpus.models import MusicTrack
+from jpcorpus.models import LyricFile, MusicTrack
+from jpcorpus.state import State
 
 
 def test_parse_lrc_text_preserves_timed_japanese_lines():
@@ -91,3 +92,36 @@ def test_bangumi_music_collection_splits_album_tracks():
     assert tracks[0].track_key == "bangumi:7733:ep:44870"
     assert tracks[0].artist == "高橋洋子"
     assert tracks[1].track_number == 2
+
+
+def test_state_caches_lyric_misses_until_a_file_is_saved(tmp_path: Path):
+    state = State(tmp_path / "state.db")
+    track = MusicTrack(
+        track_key="track-1",
+        bangumi_id=1,
+        title="汐",
+        album_title="CLANNAD",
+    )
+    state.save_music_track(track)
+
+    state.save_lyric_miss(
+        track_key=track.track_key,
+        provider="lrclib",
+        reason="not_found",
+    )
+
+    assert state.list_lyric_miss_keys(provider="lrclib") == {"track-1"}
+    assert state.count_lyric_misses(provider="lrclib") == 1
+
+    state.save_lyric_file(
+        LyricFile(
+            track_key=track.track_key,
+            bangumi_id=track.bangumi_id,
+            track_title=track.title,
+            album_title=track.album_title,
+            path=tmp_path / "track.lrc",
+            provider="lrclib",
+        )
+    )
+
+    assert state.list_lyric_miss_keys(provider="lrclib") == set()

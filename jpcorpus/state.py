@@ -107,6 +107,16 @@ class State:
                   PRIMARY KEY (track_key, provider),
                   FOREIGN KEY (track_key) REFERENCES music_tracks(track_key)
                 );
+
+                CREATE TABLE IF NOT EXISTS lyric_misses (
+                  track_key TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  reason TEXT NOT NULL,
+                  detail TEXT,
+                  missed_at TEXT NOT NULL,
+                  PRIMARY KEY (track_key, provider),
+                  FOREIGN KEY (track_key) REFERENCES music_tracks(track_key)
+                );
                 """
             )
 
@@ -404,6 +414,10 @@ class State:
                     utc_now(),
                 ),
             )
+            conn.execute(
+                "DELETE FROM lyric_misses WHERE track_key = ? AND provider = ?",
+                (lyric_file.track_key, lyric_file.provider),
+            )
 
     def list_lyric_files(self) -> list[LyricFile]:
         with self.connect() as conn:
@@ -430,6 +444,45 @@ class State:
             )
             for row in rows
         ]
+
+    def save_lyric_miss(
+        self,
+        *,
+        track_key: str,
+        provider: str,
+        reason: str,
+        detail: str | None = None,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO lyric_misses
+                  (track_key, provider, reason, detail, missed_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(track_key, provider) DO UPDATE SET
+                  reason=excluded.reason,
+                  detail=excluded.detail,
+                  missed_at=excluded.missed_at
+                """,
+                (track_key, provider, reason, detail, utc_now()),
+            )
+
+    def list_lyric_miss_keys(self, *, provider: str) -> set[str]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT track_key FROM lyric_misses WHERE provider = ?",
+                (provider,),
+            ).fetchall()
+        return {row["track_key"] for row in rows}
+
+    def count_lyric_misses(self, *, provider: str | None = None) -> int:
+        sql = "SELECT COUNT(*) FROM lyric_misses"
+        params: tuple[Any, ...] = ()
+        if provider is not None:
+            sql += " WHERE provider = ?"
+            params = (provider,)
+        with self.connect() as conn:
+            return int(conn.execute(sql, params).fetchone()[0])
 
     def _row_to_show(self, row: sqlite3.Row) -> WatchedShow:
         return WatchedShow(
