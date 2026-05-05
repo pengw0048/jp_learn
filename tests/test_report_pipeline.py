@@ -88,7 +88,7 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 7
+    assert payload["schema_version"] == 8
     assert payload["summary"]["lyric_file_count"] == 0
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
@@ -124,10 +124,12 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
         "<entry>"
         "<ent_seq>1</ent_seq>"
         "<k_ele><keb>約束</keb><ke_pri>news1</ke_pri></k_ele>"
+        "<k_ele><keb>約束け</keb><ke_inf>rarely used kanji form</ke_inf></k_ele>"
         "<r_ele><reb>やくそく</reb><re_pri>news1</re_pri></r_ele>"
         "<sense>"
         "<pos>noun (common) (futsuumeishi)</pos>"
         "<misc>word usually written using kana alone</misc>"
+        "<s_inf>English sense notes should not appear in the compact UI.</s_inf>"
         "<gloss>promise</gloss>"
         "</sense>"
         "</entry>"
@@ -160,9 +162,9 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
     )
     notes = payload["words"][0]["lexical_notes"]
 
-    assert notes["sources"] == ["JMdict", "KANJIDIC2"]
     assert notes["spellings"][0]["text"] == "約束"
     assert notes["spellings"][0]["common"] is True
+    assert [form["text"] for form in notes["spellings"]] == ["約束"]
     assert notes["readings"][0]["text"] == "やくそく"
     assert notes["parts_of_speech"] == ["名词"]
     assert notes["usage_tags"] == ["通常假名书写"]

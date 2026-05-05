@@ -57,12 +57,10 @@ const text = {
     noExamples: "这个词暂时没有例句",
     lexicalNotes: "词语小注",
     lexicalSpellings: "写法",
-    lexicalReadings: "读音",
-    lexicalPos: "词性",
-    lexicalUsage: "标签",
+    lexicalReadings: "异读",
+    lexicalPos: "语法",
+    lexicalUsage: "提示",
     lexicalKanji: "汉字",
-    lexicalSources: "来源",
-    commonForm: "常见",
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
@@ -163,12 +161,10 @@ const text = {
     noExamples: "No examples for this word yet",
     lexicalNotes: "Word notes",
     lexicalSpellings: "Spellings",
-    lexicalReadings: "Readings",
-    lexicalPos: "POS",
-    lexicalUsage: "Tags",
+    lexicalReadings: "Alt. reading",
+    lexicalPos: "Grammar",
+    lexicalUsage: "Notes",
     lexicalKanji: "Kanji",
-    lexicalSources: "Sources",
-    commonForm: "common",
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
@@ -1156,12 +1152,15 @@ function renderLexicalNotes(word) {
   const section = el("section", "lexical-notes");
   section.append(el("h3", "section-title", t("lexicalNotes")));
   const body = el("div", "lexical-note-grid");
-  appendLexicalRow(body, t("lexicalSpellings"), lexicalFormNodes(notes.spellings));
-  appendLexicalRow(body, t("lexicalReadings"), lexicalFormNodes(notes.readings));
+  appendLexicalRow(body, t("lexicalSpellings"), lexicalFormNodes(
+    lexicalUsefulForms(notes.spellings, word.word),
+  ));
+  appendLexicalRow(body, t("lexicalReadings"), lexicalFormNodes(
+    lexicalUsefulForms(notes.readings, word.reading),
+  ));
   appendLexicalRow(body, t("lexicalPos"), lexicalTextNodes(notes.parts_of_speech));
   appendLexicalRow(body, t("lexicalUsage"), lexicalTextNodes(notes.usage_tags));
   appendLexicalRow(body, t("lexicalKanji"), lexicalKanjiNodes(notes.kanji));
-  appendLexicalRow(body, t("lexicalSources"), lexicalTextNodes(notes.sources, "lexical-source-chip"));
   if (!body.childElementCount) {
     return document.createDocumentFragment();
   }
@@ -1181,13 +1180,18 @@ function appendLexicalRow(parent, label, nodes) {
   parent.append(row);
 }
 
+function lexicalUsefulForms(values, currentValue) {
+  const forms = asArray(values).filter((form) => String(form.text || "").trim());
+  if (forms.length <= 1 && forms[0]?.text === currentValue) {
+    return [];
+  }
+  return forms;
+}
+
 function lexicalFormNodes(values) {
   return asArray(values).map((form) => {
     const chip = el("span", "lexical-chip lexical-form-chip");
     chip.append(document.createTextNode(String(form.text || "")));
-    if (form.common) {
-      chip.append(el("small", "", t("commonForm")));
-    }
     const tags = asArray(form.tags).filter(Boolean).join(" / ");
     if (tags) {
       chip.title = tags;
@@ -1208,15 +1212,11 @@ function lexicalKanjiNodes(values) {
     const chip = el("span", "lexical-kanji-chip");
     chip.append(el("strong", "", String(kanji.literal || "")));
     const readings = [
-      ...asArray(kanji.on_readings),
-      ...asArray(kanji.kun_readings),
+      ...asArray(kanji.on_readings).slice(0, 2),
+      ...asArray(kanji.kun_readings).slice(0, 1),
     ].filter(Boolean).slice(0, 4);
     if (readings.length) {
       chip.append(el("span", "lexical-kanji-reading", readings.join("・")));
-    }
-    const meanings = asArray(kanji.meanings).filter(Boolean).slice(0, 3);
-    if (meanings.length) {
-      chip.append(el("span", "lexical-kanji-meaning", meanings.join(", ")));
     }
     return chip;
   }).filter((node) => node.textContent.trim());

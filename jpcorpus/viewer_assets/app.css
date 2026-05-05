@@ -577,8 +577,8 @@ select {
 
 .lexical-note-row {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 9px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
   align-items: start;
 }
 
@@ -593,41 +593,31 @@ select {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px 8px;
   min-width: 0;
 }
 
 .lexical-chip,
-.lexical-source-chip,
 .lexical-form-chip,
 .lexical-kanji-chip {
   min-height: 24px;
-  padding: 2px 7px;
+  padding: 1px 0;
   border-radius: 8px;
-  background: var(--panel-2);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
 }
 
-.lexical-form-chip,
-.lexical-kanji-chip {
+.lexical-form-chip {
+  padding: 1px 7px;
+  background: var(--panel-2);
   font-family: var(--font-ja);
   color: var(--text);
 }
 
-.lexical-form-chip small {
-  margin-left: 5px;
-  color: var(--accent);
-  font-family: var(--font-ui);
-  font-weight: 760;
-}
-
-.lexical-source-chip {
-  color: var(--accent);
-}
-
 .lexical-kanji-chip {
+  font-family: var(--font-ja);
+  color: var(--text);
   display: inline-flex;
   align-items: baseline;
   gap: 6px;

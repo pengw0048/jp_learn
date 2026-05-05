@@ -17,7 +17,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def analysis_to_dict(

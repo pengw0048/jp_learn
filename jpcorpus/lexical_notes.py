@@ -15,10 +15,15 @@ from .paths import DEFAULT_JMDICT, DEFAULT_KANJIDIC2, ensure_parent
 JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz"
 KANJIDIC2_URL = "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz"
 
-MAX_JMDICT_ENTRIES_PER_WORD = 2
-MAX_FORMS_PER_WORD = 8
-MAX_TAGS_PER_WORD = 10
+MAX_JMDICT_ENTRIES_PER_WORD = 1
+MAX_FORMS_PER_WORD = 4
+MAX_TAGS_PER_WORD = 4
 MAX_KANJI_PER_WORD = 8
+
+HIDDEN_FORM_TAGS = {
+    "rarely used kanji form",
+    "search-only kanji form",
+}
 
 
 POS_LABELS = {
@@ -37,46 +42,46 @@ POS_LABELS = {
     "prefix": "接头词",
     "suffix": "接尾词",
     "Ichidan verb": "一段动词",
-    "Godan verb with 'u' ending": "五段动词・う",
-    "Godan verb with `u' ending": "五段动词・う",
-    "Godan verb with 'ku' ending": "五段动词・く",
-    "Godan verb with `ku' ending": "五段动词・く",
-    "Godan verb with 'gu' ending": "五段动词・ぐ",
-    "Godan verb with `gu' ending": "五段动词・ぐ",
-    "Godan verb with 'su' ending": "五段动词・す",
-    "Godan verb with `su' ending": "五段动词・す",
-    "Godan verb with 'tsu' ending": "五段动词・つ",
-    "Godan verb with `tsu' ending": "五段动词・つ",
-    "Godan verb with 'nu' ending": "五段动词・ぬ",
-    "Godan verb with `nu' ending": "五段动词・ぬ",
-    "Godan verb with 'bu' ending": "五段动词・ぶ",
-    "Godan verb with `bu' ending": "五段动词・ぶ",
-    "Godan verb with 'mu' ending": "五段动词・む",
-    "Godan verb with `mu' ending": "五段动词・む",
-    "Godan verb with 'ru' ending": "五段动词・る",
-    "Godan verb with `ru' ending": "五段动词・る",
-    "Kuru verb - special class": "カ变动词",
-    "Suru verb - included": "サ变动词",
-    "Suru verb - special class": "サ变动词",
-    "transitive verb": "他动词",
-    "intransitive verb": "自动词",
+    "Godan verb with 'u' ending": "五段・う",
+    "Godan verb with `u' ending": "五段・う",
+    "Godan verb with 'ku' ending": "五段・く",
+    "Godan verb with `ku' ending": "五段・く",
+    "Godan verb with 'gu' ending": "五段・ぐ",
+    "Godan verb with `gu' ending": "五段・ぐ",
+    "Godan verb with 'su' ending": "五段・す",
+    "Godan verb with `su' ending": "五段・す",
+    "Godan verb with 'tsu' ending": "五段・つ",
+    "Godan verb with `tsu' ending": "五段・つ",
+    "Godan verb with 'nu' ending": "五段・ぬ",
+    "Godan verb with `nu' ending": "五段・ぬ",
+    "Godan verb with 'bu' ending": "五段・ぶ",
+    "Godan verb with `bu' ending": "五段・ぶ",
+    "Godan verb with 'mu' ending": "五段・む",
+    "Godan verb with `mu' ending": "五段・む",
+    "Godan verb with 'ru' ending": "五段・る",
+    "Godan verb with `ru' ending": "五段・る",
+    "Kuru verb - special class": "カ变",
+    "Suru verb - included": "サ变",
+    "Suru verb - special class": "サ变",
+    "transitive verb": "他动",
+    "intransitive verb": "自动",
     "n": "名词",
     "pn": "代词",
     "adv": "副词",
     "adj-i": "い形容词",
     "adj-na": "な形容词",
     "v1": "一段动词",
-    "v5u": "五段动词・う",
-    "v5k": "五段动词・く",
-    "v5g": "五段动词・ぐ",
-    "v5s": "五段动词・す",
-    "v5t": "五段动词・つ",
-    "v5n": "五段动词・ぬ",
-    "v5b": "五段动词・ぶ",
-    "v5m": "五段动词・む",
-    "v5r": "五段动词・る",
-    "vt": "他动词",
-    "vi": "自动词",
+    "v5u": "五段・う",
+    "v5k": "五段・く",
+    "v5g": "五段・ぐ",
+    "v5s": "五段・す",
+    "v5t": "五段・つ",
+    "v5n": "五段・ぬ",
+    "v5b": "五段・ぶ",
+    "v5m": "五段・む",
+    "v5r": "五段・る",
+    "vt": "他动",
+    "vi": "自动",
 }
 
 TAG_LABELS = {
@@ -196,17 +201,24 @@ class LexicalResourceIndex:
         if not jmdict_entries and not kanji_notes:
             return None
 
-        payload: dict[str, object] = {"sources": []}
-        sources: list[str] = []
+        payload: dict[str, object] = {}
         if jmdict_entries:
-            sources.append("JMdict")
-            spellings = unique_forms(form for entry in jmdict_entries for form in entry.spellings)
-            readings = unique_forms(form for entry in jmdict_entries for form in entry.readings)
+            spellings = visible_forms(
+                unique_forms(form for entry in jmdict_entries for form in entry.spellings),
+                preferred_text=surface,
+            )
+            readings = visible_forms(
+                unique_forms(form for entry in jmdict_entries for form in entry.readings),
+                preferred_text=reading,
+            )
             parts_of_speech = unique_strings(
                 label_pos(pos) for entry in jmdict_entries for pos in entry.parts_of_speech
             )
             usage_tags = unique_strings(
-                label_tag(tag) for entry in jmdict_entries for tag in entry.usage_tags
+                label
+                for entry in jmdict_entries
+                for tag in entry.usage_tags
+                if (label := label_tag(tag))
             )
             if spellings:
                 payload["spellings"] = [form.to_dict() for form in spellings[:MAX_FORMS_PER_WORD]]
@@ -217,9 +229,7 @@ class LexicalResourceIndex:
             if usage_tags:
                 payload["usage_tags"] = usage_tags[:MAX_TAGS_PER_WORD]
         if kanji_notes:
-            sources.append("KANJIDIC2")
             payload["kanji"] = [note.to_dict() for note in kanji_notes]
-        payload["sources"] = sources
         return payload
 
     def _jmdict_entries(self, surface: str, reading: str | None) -> list[JMDictEntry]:
@@ -341,7 +351,7 @@ def jmdict_entry_from_xml(element: ET.Element) -> JMDictEntry:
     usage_tags = unique_strings(
         text
         for sense in element.findall("sense")
-        for tag_name in ("misc", "field", "dial", "s_inf")
+        for tag_name in ("misc", "field", "dial")
         for text in child_texts(sense, tag_name)
     )
     return JMDictEntry(
@@ -434,6 +444,38 @@ def unique_forms(forms: Iterable[JMDictForm]) -> list[JMDictForm]:
     return results
 
 
+def visible_forms(forms: list[JMDictForm], *, preferred_text: str | None) -> list[JMDictForm]:
+    visible: list[JMDictForm] = []
+    preferred = preferred_text or ""
+    for form in forms:
+        if form.text == preferred:
+            visible.append(clean_form_tags(form))
+            break
+    for form in forms:
+        if form.text == preferred or has_hidden_form_tag(form):
+            continue
+        if form.common:
+            visible.append(clean_form_tags(form))
+    for form in forms:
+        if form.text == preferred or has_hidden_form_tag(form):
+            continue
+        if not form.common and not form.tags:
+            visible.append(clean_form_tags(form))
+    return unique_forms(visible)
+
+
+def clean_form_tags(form: JMDictForm) -> JMDictForm:
+    return JMDictForm(
+        text=form.text,
+        tags=tuple(tag for tag in form.tags if tag not in HIDDEN_FORM_TAGS),
+        common=form.common,
+    )
+
+
+def has_hidden_form_tag(form: JMDictForm) -> bool:
+    return any(tag in HIDDEN_FORM_TAGS for tag in form.tags)
+
+
 def unique_strings(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     results: list[str] = []
@@ -451,7 +493,7 @@ def label_pos(value: str) -> str:
 
 
 def label_tag(value: str) -> str:
-    return TAG_LABELS.get(value, value)
+    return TAG_LABELS.get(value, "")
 
 
 @contextmanager
