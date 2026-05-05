@@ -503,9 +503,13 @@ mark {
   white-space: nowrap;
 }
 
-.scene {
+.annotation-line {
   margin-top: 8px;
   color: var(--muted);
+}
+
+.translation-line {
+  color: var(--text);
 }
 
 .empty-list {

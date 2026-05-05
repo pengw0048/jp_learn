@@ -10,7 +10,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def analysis_to_dict(
@@ -173,6 +173,8 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
         "context_before": example.context_before,
         "context_after": example.context_after,
         "scene_description": example.scene_description,
+        "translation_zh": None,
+        "usage_note_zh": None,
         "reference": {
             "source_title": example.source_title,
             "episode": example.episode,

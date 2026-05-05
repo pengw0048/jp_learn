@@ -14,6 +14,7 @@ from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .i18n import SUPPORTED_LANGUAGES
+from .llm import LLMConfig, OpenAICompatibleClient, annotate_corpus_file
 from .paths import (
     DEFAULT_ANIME_DB,
     DEFAULT_JIMAKU_CACHE,
@@ -320,6 +321,48 @@ def view(
 ) -> None:
     """Serve the local corpus web viewer."""
     serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=typer.echo)
+
+
+@app.command()
+def annotate(
+    input: Path = typer.Option(Path("corpus.json"), help="Input corpus JSON path."),
+    output: Path = typer.Option(Path("corpus.annotated.json"), help="Annotated corpus JSON output path."),
+    model: str | None = typer.Option(
+        None,
+        envvar="JPCORPUS_LLM_MODEL",
+        help="LLM model name for the configured provider.",
+    ),
+    base_url: str = typer.Option(
+        "https://api.openai.com/v1",
+        envvar="JPCORPUS_LLM_BASE_URL",
+        help="OpenAI-compatible API base URL.",
+    ),
+    api_key: str | None = typer.Option(
+        None,
+        envvar="JPCORPUS_LLM_API_KEY",
+        help="API key. Local OpenAI-compatible servers may not require one.",
+    ),
+    limit: int = typer.Option(20, min=1, help="Maximum examples to annotate this run."),
+    overwrite: bool = typer.Option(False, help="Regenerate existing annotations."),
+) -> None:
+    """Annotate corpus examples with translation, usage notes, and scene descriptions."""
+    if not model:
+        raise typer.BadParameter("Set --model or JPCORPUS_LLM_MODEL.")
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    if "api.openai.com" in base_url and not api_key:
+        raise typer.BadParameter("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY for OpenAI.")
+    client = OpenAICompatibleClient(
+        LLMConfig(model=model, base_url=base_url, api_key=api_key)
+    )
+    count = annotate_corpus_file(
+        input,
+        output,
+        client=client,
+        limit=limit,
+        overwrite=overwrite,
+    )
+    typer.echo(f"Annotated {count} examples: {output}")
 
 
 @data_app.command("fetch-anime-db")

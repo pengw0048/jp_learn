@@ -79,13 +79,15 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
     assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
     assert payload["words"][0]["examples"][0]["matched_text"] == "約束"
     assert payload["words"][0]["examples"][0]["context_before"] == []
     assert payload["words"][0]["examples"][0]["scene_description"] is None
+    assert payload["words"][0]["examples"][0]["translation_zh"] is None
+    assert payload["words"][0]["examples"][0]["usage_note_zh"] is None
     assert payload["words"][1]["word"] == "気持ち"
     assert payload["words"][1]["count"] == 0
     assert payload["words"][1]["examples"] == []

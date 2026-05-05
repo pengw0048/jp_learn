@@ -28,6 +28,9 @@ const text = {
     chineseMeaning: "日中",
     fallbackMeaning: "英文释义",
     noExamples: "这个词暂时没有例句",
+    scene: "场景",
+    translation: "翻译",
+    usageNote: "用法",
     shows: "作品",
     subtitles: "字幕",
     studyWords: "单词",
@@ -58,6 +61,9 @@ const text = {
     chineseMeaning: "ZH",
     fallbackMeaning: "Source meaning",
     noExamples: "No examples for this word yet",
+    scene: "Scene",
+    translation: "Translation",
+    usageNote: "Usage",
     shows: "Shows",
     subtitles: "Subtitles",
     studyWords: "Study words",
@@ -312,8 +318,14 @@ function renderExamples(word) {
     paragraph.append(" ");
     paragraph.append(el("span", "reference", `（${formatReference(example)}）`));
     item.append(paragraph);
+    if (example.translation_zh) {
+      item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
+    }
+    if (example.usage_note_zh) {
+      item.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
+    }
     if (example.scene_description) {
-      item.append(el("div", "scene", example.scene_description));
+      item.append(el("div", "annotation-line", `${t("scene")}: ${example.scene_description}`));
     }
     section.append(item);
   });
@@ -383,14 +395,21 @@ function compareWords(left, right) {
 }
 
 function compareKana(left, right) {
-  const readingCompare = String(left.reading || left.word || "").localeCompare(
-    String(right.reading || right.word || ""),
+  const readingCompare = kanaSortKey(left).localeCompare(
+    kanaSortKey(right),
     "ja",
   );
   if (readingCompare !== 0) {
     return readingCompare;
   }
   return String(left.word || "").localeCompare(String(right.word || ""), "ja");
+}
+
+function kanaSortKey(word) {
+  let value = String(word.reading || word.word || "").normalize("NFKC").trim();
+  value = value.replace(/^[（(][^）)]*[）)]\s*/u, "");
+  value = value.replace(/^[^ぁ-ゖァ-ヺ一-龯々]+/u, "");
+  return value || String(word.word || "");
 }
 
 function chooseInitialWord(words = app.words) {
