@@ -1660,9 +1660,12 @@ function lexicalExampleTranslation(example) {
   if (!translations || typeof translations !== "object") {
     return "";
   }
-  const preferred = app.lang === "zh"
-    ? ["cmn", "zh", "zho", "chi", "eng", "en"]
-    : ["eng", "en", "cmn", "zh", "zho", "chi"];
+  if (app.lang === "zh") {
+    return ["cmn", "zh", "zho", "chi"]
+      .map((lang) => String(translations[lang] || "").trim())
+      .find(Boolean) || "";
+  }
+  const preferred = ["eng", "en", "cmn", "zh", "zho", "chi"];
   for (const lang of preferred) {
     const value = String(translations[lang] || "").trim();
     if (value) {

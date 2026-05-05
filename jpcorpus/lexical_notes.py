@@ -13,7 +13,7 @@ import httpx
 from .paths import DEFAULT_JMDICT, DEFAULT_KANJIDIC2, ensure_parent
 
 
-JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz"
+JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz"
 KANJIDIC2_URL = "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz"
 
 MAX_JMDICT_ENTRIES_PER_WORD = 1

@@ -656,7 +656,7 @@ def export_corpus_json(
         help="Maximum nearby source blocks to keep on each side.",
     ),
     zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
-    jmdict: Path = typer.Option(DEFAULT_JMDICT, help="JMdict_e.gz path for offline lexical notes."),
+    jmdict: Path = typer.Option(DEFAULT_JMDICT, help="JMdict/JMdict_e_examp path for offline lexical notes."),
     kanjidic2: Path = typer.Option(DEFAULT_KANJIDIC2, help="KANJIDIC2 XML/GZ path for offline kanji notes."),
     lexical_notes: bool = typer.Option(
         True,
@@ -880,13 +880,13 @@ def fetch_jlpt_words(
 
 @data_app.command("fetch-jmdict")
 def fetch_jmdict(
-    output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e.gz path."),
+    output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e_examp.gz-compatible path."),
     source_url: str = typer.Option(
-        "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz",
+        "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz",
         help="JMdict source URL.",
     ),
 ) -> None:
-    """Download JMdict for offline word-form and usage notes."""
+    """Download JMdict with examples for offline word-form and usage notes."""
     path = download_jmdict(output, source_url=source_url)
     typer.echo(f"Downloaded JMdict: {path}")
 
@@ -906,7 +906,7 @@ def fetch_kanjidic2(
 
 @data_app.command("fetch-lexical-resources")
 def fetch_lexical_resources(
-    jmdict_output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e.gz path."),
+    jmdict_output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e_examp.gz-compatible path."),
     kanjidic2_output: Path = typer.Option(DEFAULT_KANJIDIC2, help="Output KANJIDIC2 XML/GZ path."),
 ) -> None:
     """Download offline lexical resources used by the viewer."""
