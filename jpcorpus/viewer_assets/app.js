@@ -338,14 +338,15 @@ function renderExamples(word) {
   }
   const grid = el("div", `examples-grid columns-${app.exampleColumns}`);
   examples.forEach((example) => {
-    const item = el("div", "example");
+    const sourceClass = example.source_type === "lyrics" ? "lyrics" : "subtitle";
+    const item = el("div", `example example-${sourceClass}`);
     const lines = el("div", "example-lines");
     appendContextBlock(lines, contextPreview(example.context_before, "before"), "before");
     const current = el("div", "example-current");
     appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
     lines.append(current);
     appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
-    lines.append(el("small", "reference", formatReference(example)));
+    lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
     item.append(lines);
     if (example.translation_zh) {
       item.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
