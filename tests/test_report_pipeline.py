@@ -351,9 +351,33 @@ def test_jlpt_duplicate_surface_prefers_basic_level_reading():
     assert entry.reading == "くる"
 
 
+def test_jlpt_common_greeting_overrides_are_beginner_level(tmp_path: Path):
+    path = tmp_path / "jlpt.json"
+    path.write_text(
+        '[{"word":"おはよう","reading":"おはよう","level":"N2","meaning":"Good morning"}]',
+        encoding="utf-8",
+    )
+
+    entry = load_jlpt_words(path).lookup("おはよう")
+
+    assert entry is not None
+    assert entry.level == 5
+    assert entry.meaning == "good morning"
+
+
 def test_clean_chinese_gloss_removes_leading_reading():
     assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
     assert clean_gloss("(いま1) 现在") == "现在"
+
+
+def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):
+    path = tmp_path / "dict.json"
+    path.write_text("{}", encoding="utf-8")
+
+    glossary = ChineseGlossary.load(path)
+
+    assert glossary.lookup("おはよう") == "早上好"
+    assert glossary.lookup("ありがとう") == "谢谢"
 
 
 def test_select_examples_prefers_quality_and_source_diversity():

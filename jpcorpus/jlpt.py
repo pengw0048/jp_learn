@@ -17,6 +17,17 @@ READING_KEYS = ("reading", "kana", "furigana", "pronunciation")
 LEVEL_KEYS = ("level", "jlpt", "jlpt_level")
 TAG_KEYS = ("tags", "tag")
 MEANING_KEYS = ("meaning", "translation", "gloss", "english", "zh")
+JLPT_ENTRY_OVERRIDES: dict[str, dict[str, object]] = {
+    "ありがとう": {"level": 5, "meaning": "thank you"},
+    "おはよう": {"level": 5, "meaning": "good morning"},
+    "こんにちは": {"level": 5, "meaning": "hello, good day"},
+    "こんばんは": {"level": 5, "meaning": "good evening"},
+    "ごめんなさい": {"level": 5, "meaning": "sorry, excuse me"},
+    "さようなら": {"level": 5, "meaning": "goodbye"},
+    "いただきます": {"level": 5, "meaning": "said before eating"},
+    "ごちそうさま": {"level": 5, "meaning": "thank you for the meal"},
+    "お休み": {"level": 5, "meaning": "good night"},
+}
 
 
 class JLPTWords:
@@ -79,11 +90,18 @@ def _entry_from_mapping(mapping: dict[str, Any], default_level: int | None = Non
     level = parse_level(_first(mapping, LEVEL_KEYS)) or parse_level(_first(mapping, TAG_KEYS)) or default_level
     if level is None:
         raise ValueError(f"JLPT word row has no level field: {mapping!r}")
+    surface_text = str(surface)
+    reading = _string_or_none(_first(mapping, READING_KEYS))
+    meaning = _string_or_none(_first(mapping, MEANING_KEYS))
+    override = JLPT_ENTRY_OVERRIDES.get(surface_text)
+    if override:
+        level = int(override.get("level", level))
+        meaning = str(override.get("meaning") or meaning or "")
     return WordEntry(
-        surface=str(surface),
-        reading=_string_or_none(_first(mapping, READING_KEYS)),
+        surface=surface_text,
+        reading=reading,
         level=level,
-        meaning=_string_or_none(_first(mapping, MEANING_KEYS)),
+        meaning=meaning,
     )
 
 

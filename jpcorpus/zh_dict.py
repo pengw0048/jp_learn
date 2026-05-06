@@ -15,6 +15,22 @@ DEFAULT_ZH_DICT_URL = (
     "https://raw.githubusercontent.com/lxl66566/"
     "Japanese-Chinese-thesaurus/main/final.json"
 )
+CHINESE_GLOSS_OVERRIDES = {
+    "ありがとう": "谢谢",
+    "有難う": "谢谢",
+    "有り難う": "谢谢",
+    "おはよう": "早上好",
+    "お早う": "早上好",
+    "こんにちは": "你好；午安",
+    "こんばんは": "晚上好",
+    "ごめんなさい": "对不起；不好意思",
+    "すみません": "不好意思；对不起；劳驾",
+    "さようなら": "再见",
+    "いただきます": "我开动了；饭前致谢",
+    "ごちそうさま": "多谢款待；我吃好了",
+    "お休み": "晚安；休息",
+    "おやすみ": "晚安；休息",
+}
 
 
 @dataclass(frozen=True)
@@ -28,7 +44,9 @@ class ChineseGlossary:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError(f"Chinese glossary must be a JSON object: {path}")
-        return cls({str(key): clean_gloss(str(value)) for key, value in payload.items()})
+        entries = {str(key): clean_gloss(str(value)) for key, value in payload.items()}
+        entries.update(CHINESE_GLOSS_OVERRIDES)
+        return cls(entries)
 
     def lookup(self, *keys: str | None) -> str | None:
         for key in keys:
