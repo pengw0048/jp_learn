@@ -290,6 +290,31 @@ class LexicalResourceIndex:
             payload["kanji"] = [note.to_dict() for note in kanji_notes]
         return payload
 
+    def has_jmdict_entry(
+        self,
+        surface: str,
+        reading: str | None = None,
+        *,
+        meaning_hint: str | None = None,
+    ) -> bool:
+        return bool(self._jmdict_entries(surface, reading, meaning_hint=meaning_hint))
+
+    def canonical_surface(
+        self,
+        surface: str,
+        reading: str | None = None,
+        *,
+        meaning_hint: str | None = None,
+    ) -> str:
+        if not is_kana_text(surface):
+            return surface
+        entries = self._jmdict_entries(surface, reading, meaning_hint=meaning_hint)
+        for entry in entries:
+            for form in entry.spellings:
+                if form.common and not form.tags:
+                    return form.text
+        return surface
+
     def _jmdict_entries(
         self,
         surface: str,
@@ -649,10 +674,9 @@ def sorted_jmdict_candidates(
         candidates,
         key=lambda entry: (
             -jmdict_meaning_score(entry, hint_tokens),
+            not jmdict_entry_is_common(entry),
             jmdict_surface_rank(entry, surface),
             not jmdict_entry_matches_reading(entry, reading_keys),
-            not any(form.common for form in entry.spellings),
-            not any(form.common for form in entry.readings),
         ),
     )
 
@@ -677,6 +701,12 @@ def jmdict_surface_rank(entry: JMDictEntry, surface: str) -> int:
     if is_kana_text(surface):
         return 2
     return 1
+
+
+def jmdict_entry_is_common(entry: JMDictEntry) -> bool:
+    return any(form.common for form in entry.spellings) or any(
+        form.common for form in entry.readings
+    )
 
 
 def jmdict_entry_matches_reading(entry: JMDictEntry, reading_keys: set[str]) -> bool:

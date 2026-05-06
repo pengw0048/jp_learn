@@ -51,6 +51,12 @@ class JapaneseTokenizer:
                 continue
             feature = word.feature
             pos = _get_feature(feature, "pos1")
+            pos_detail = _join_pos_detail(
+                _get_feature(feature, "pos1"),
+                _get_feature(feature, "pos2"),
+                _get_feature(feature, "pos3"),
+                _get_feature(feature, "pos4"),
+            )
             if pos in {"補助記号", "空白", "記号"}:
                 continue
             base = (
@@ -74,6 +80,7 @@ class JapaneseTokenizer:
                     base=base,
                     reading=reading,
                     pos=pos,
+                    pos_detail=pos_detail,
                     start=token_start,
                     end=token_end,
                 )
@@ -86,6 +93,11 @@ def _get_feature(feature: object, name: str) -> str | None:
     if value in (None, "", "*"):
         return None
     return str(value)
+
+
+def _join_pos_detail(*values: str | None) -> str | None:
+    parts = [value for value in values if value and value != "*"]
+    return "-".join(parts) if parts else None
 
 
 def iter_tokens(texts: Iterable[str]) -> Iterable[Token]:

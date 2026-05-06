@@ -13,11 +13,12 @@ from .lexical_notes import (
     target_kanji_for_words,
     target_keys_for_words,
 )
+from .models import WordEntry
 from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def analysis_to_dict(
@@ -30,17 +31,27 @@ def analysis_to_dict(
     jmdict_path: Path | None = None,
     kanjidic2_path: Path | None = None,
 ) -> dict[str, Any]:
-    words = _export_words(analysis, level=level)
-    if limit is not None:
-        words = words[:limit]
     lexical_index = None
     if jmdict_path or kanjidic2_path:
+        lexical_targets = _lexical_target_words(analysis, level=level)
         lexical_index = LexicalResourceIndex.load_optional(
             jmdict_path=jmdict_path,
             kanjidic2_path=kanjidic2_path,
-            target_keys=target_keys_for_words(words),
-            target_kanji=target_kanji_for_words(words),
+            target_keys=target_keys_for_words(lexical_targets),
+            target_kanji=target_kanji_for_words(lexical_targets),
         )
+    words = _export_words(analysis, level=level, lexical_index=lexical_index)
+    if limit is not None:
+        words = words[:limit]
+    word_payloads = [
+        _word_to_dict(
+            word,
+            examples_per_word=examples_per_word,
+            zh_glossary=zh_glossary,
+            lexical_index=lexical_index,
+        )
+        for word in words
+    ]
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -57,6 +68,11 @@ def analysis_to_dict(
                 f"N{level_number}": analysis.coverage(level_number)
                 for level_number in range(5, 0, -1)
             },
+            "word_source_coverage": _word_source_coverage(
+                analysis,
+                word_payloads=word_payloads,
+                lexical_index=lexical_index,
+            ),
         },
         "shows": [
             {
@@ -71,15 +87,7 @@ def analysis_to_dict(
             }
             for show in sorted(analysis.show_stats.values(), key=lambda item: item.title)
         ],
-        "words": [
-            _word_to_dict(
-                word,
-                examples_per_word=examples_per_word,
-                zh_glossary=zh_glossary,
-                lexical_index=lexical_index,
-            )
-            for word in words
-        ],
+        "words": word_payloads,
     }
 
 
@@ -108,17 +116,87 @@ def write_corpus_json(
     return output
 
 
-def _export_words(analysis: CorpusAnalysis, *, level: int | None) -> list[WordStats]:
-    words_by_surface = dict(analysis.word_stats)
+def _export_words(
+    analysis: CorpusAnalysis,
+    *,
+    level: int | None,
+    lexical_index: LexicalResourceIndex | None = None,
+) -> list[WordStats]:
+    words_by_surface = {
+        surface: _copy_word_stats(stats)
+        for surface, stats in analysis.word_stats.items()
+    }
     for entry in analysis.jlpt_words.by_surface.values():
         if level is not None and entry.level != level:
             continue
         words_by_surface.setdefault(entry.surface, WordStats(entry=entry))
+    if level is None and lexical_index:
+        for surface, stats in analysis.candidate_word_stats.items():
+            if surface in analysis.word_stats or stats.count <= 0:
+                continue
+            if lexical_index.has_jmdict_entry(stats.entry.surface, stats.display_reading):
+                canonical_surface = lexical_index.canonical_surface(
+                    stats.entry.surface,
+                    stats.display_reading,
+                )
+                candidate = _copy_word_stats(
+                    stats,
+                    entry=WordEntry(
+                        surface=canonical_surface,
+                        reading=stats.display_reading,
+                        level=0,
+                    ),
+                )
+                existing = words_by_surface.get(canonical_surface)
+                if existing:
+                    _merge_word_stats(existing, candidate)
+                else:
+                    words_by_surface[canonical_surface] = candidate
     words = list(words_by_surface.values())
     if level is not None:
         words = [word for word in words if word.entry.level == level]
-    words.sort(key=lambda item: (-item.count, item.entry.level, item.entry.surface))
+    words.sort(key=lambda item: (-item.count, _level_sort_value(item), item.entry.surface))
     return words
+
+
+def _lexical_target_words(analysis: CorpusAnalysis, *, level: int | None) -> list[WordStats]:
+    targets = _export_words(analysis, level=level)
+    if level is None:
+        seen = {word.entry.surface for word in targets}
+        targets.extend(
+            stats
+            for surface, stats in analysis.candidate_word_stats.items()
+            if surface not in seen and stats.count > 0
+        )
+    return targets
+
+
+def _level_sort_value(word: WordStats) -> int:
+    return word.entry.level if word.entry.level > 0 else 9
+
+
+def _copy_word_stats(stats: WordStats, *, entry: WordEntry | None = None) -> WordStats:
+    return WordStats(
+        entry=entry or stats.entry,
+        count=stats.count,
+        sources=stats.sources.copy(),
+        source_type_counts=stats.source_type_counts.copy(),
+        readings=stats.readings.copy(),
+        examples=list(stats.examples),
+    )
+
+
+def _merge_word_stats(target: WordStats, source: WordStats) -> None:
+    target.count += source.count
+    target.sources.update(source.sources)
+    target.source_type_counts.update(source.source_type_counts)
+    target.readings.update(source.readings)
+    seen = {example.sentence for example in target.examples}
+    for example in source.examples:
+        if example.sentence in seen:
+            continue
+        seen.add(example.sentence)
+        target.examples.append(example)
 
 
 def _word_to_dict(
@@ -128,12 +206,20 @@ def _word_to_dict(
     zh_glossary: ChineseGlossary | None,
     lexical_index: LexicalResourceIndex | None,
 ) -> dict[str, Any]:
+    notes = None
+    if lexical_index:
+        notes = lexical_index.notes_for(
+            word.entry.surface,
+            word.display_reading,
+            meaning_hint=word.entry.meaning,
+        )
+    meaning = word.entry.meaning or _meaning_from_lexical_notes(notes)
     payload = {
         "word": word.entry.surface,
         "reading": word.display_reading,
-        "level": f"N{word.entry.level}",
-        "level_number": word.entry.level,
-        "meaning": word.entry.meaning,
+        "level": f"N{word.entry.level}" if word.entry.level > 0 else None,
+        "level_number": word.entry.level if word.entry.level > 0 else None,
+        "meaning": meaning,
         "meaning_zh": _meaning_zh(word, zh_glossary),
         "count": word.count,
         "source_type_counts": dict(word.source_type_counts),
@@ -148,15 +234,59 @@ def _word_to_dict(
             for example in _select_examples(word.examples, limit=examples_per_word)
         ],
     }
-    if lexical_index:
-        notes = lexical_index.notes_for(
-            word.entry.surface,
-            word.display_reading,
-            meaning_hint=word.entry.meaning,
-        )
-        if notes:
-            payload["lexical_notes"] = notes
+    if notes:
+        payload["lexical_notes"] = notes
     return payload
+
+
+def _meaning_from_lexical_notes(notes: dict[str, object] | None) -> str | None:
+    if not notes:
+        return None
+    glosses: list[str] = []
+    for sense in notes.get("senses", []):
+        if not isinstance(sense, dict):
+            continue
+        for gloss in sense.get("glosses", []):
+            if isinstance(gloss, str) and gloss:
+                glosses.append(gloss)
+            if len(glosses) >= 3:
+                break
+        if len(glosses) >= 3:
+            break
+    return "; ".join(glosses) if glosses else None
+
+
+def _word_source_coverage(
+    analysis: CorpusAnalysis,
+    *,
+    word_payloads: list[dict[str, Any]],
+    lexical_index: LexicalResourceIndex | None,
+) -> dict[str, int]:
+    corpus_candidates = [
+        stats for stats in analysis.candidate_word_stats.values() if stats.count > 0
+    ]
+    corpus_jmdict_matches = 0
+    if lexical_index:
+        corpus_jmdict_matches = sum(
+            1
+            for stats in corpus_candidates
+            if lexical_index.has_jmdict_entry(stats.entry.surface, stats.display_reading)
+        )
+    return {
+        "corpus_candidate_word_count": len(corpus_candidates),
+        "corpus_jmdict_match_count": corpus_jmdict_matches,
+        "corpus_unmatched_word_count": max(len(corpus_candidates) - corpus_jmdict_matches, 0),
+        "exported_word_count": len(word_payloads),
+        "exported_jmdict_word_count": sum(
+            1 for word in word_payloads if word.get("lexical_notes", {}).get("senses")
+        ),
+        "exported_zh_meaning_word_count": sum(1 for word in word_payloads if word.get("meaning_zh")),
+        "exported_english_only_word_count": sum(
+            1
+            for word in word_payloads
+            if word.get("meaning") and not word.get("meaning_zh")
+        ),
+    }
 
 
 def _select_examples(examples: list[WordExample], *, limit: int) -> list[WordExample]:

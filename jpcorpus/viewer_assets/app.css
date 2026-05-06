@@ -322,6 +322,21 @@ select {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.load-more-words {
+  flex: 0 0 auto;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font-weight: 720;
+}
+
+.load-more-words:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .word-main,
 .word-meta,
 .word-meaning {

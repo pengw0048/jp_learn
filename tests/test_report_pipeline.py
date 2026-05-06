@@ -12,6 +12,7 @@ from jpcorpus.analysis import (
 from jpcorpus.anki_export import export_anki_deck
 from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
+from jpcorpus.lexical_notes import LexicalResourceIndex
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
@@ -88,7 +89,7 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 10
+    assert payload["schema_version"] == 11
     assert payload["summary"]["lyric_file_count"] == 0
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
@@ -108,6 +109,68 @@ def test_export_corpus_json(tmp_path: Path):
     assert payload["words"][1]["count"] == 0
     assert payload["words"][1]["examples"] == []
     assert output.exists()
+
+
+def test_export_corpus_json_can_include_jmdict_matched_corpus_words(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n猫を見る。\n",
+        encoding="utf-8",
+    )
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<k_ele><keb>猫</keb><ke_pri>news1</ke_pri></k_ele>"
+        "<r_ele><reb>ねこ</reb><re_pri>news1</re_pri></r_ele>"
+        "<sense><pos>noun (common) (futsuumeishi)</pos><gloss>cat</gloss></sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(analysis, examples_per_word=2, jmdict_path=jmdict)
+    cat = next(word for word in payload["words"] if word["word"] == "猫")
+
+    assert cat["level"] is None
+    assert cat["level_number"] is None
+    assert cat["reading"] == "ねこ"
+    assert cat["meaning"] == "cat"
+    assert cat["count"] == 1
+    assert cat["lexical_notes"]["senses"][0]["glosses"] == ["cat"]
+    assert payload["summary"]["word_source_coverage"]["corpus_jmdict_match_count"] >= 1
+
+
+def test_level_export_does_not_include_ungraded_corpus_words(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n猫を見る。\n",
+        encoding="utf-8",
+    )
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<k_ele><keb>猫</keb></k_ele>"
+        "<r_ele><reb>ねこ</reb></r_ele>"
+        "<sense><gloss>cat</gloss></sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(analysis, level=5, examples_per_word=2, jmdict_path=jmdict)
+
+    assert "猫" not in {word["word"] for word in payload["words"]}
+    assert "見る" in {word["word"] for word in payload["words"]}
 
 
 def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
@@ -184,6 +247,37 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
     assert notes["kanji"][0]["literal"] == "約"
     assert notes["kanji"][0]["on_readings"] == ["ヤク"]
     assert notes["kanji"][0]["meanings"] == ["promise"]
+
+
+def test_jmdict_notes_prefer_common_entry_over_exact_kana_suffix(tmp_path: Path):
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<r_ele><reb>とき</reb></r_ele>"
+        "<sense><pos>suffix</pos><gloss>please do</gloss></sense>"
+        "</entry>"
+        "<entry>"
+        "<ent_seq>2</ent_seq>"
+        "<k_ele><keb>時</keb><ke_pri>news1</ke_pri></k_ele>"
+        "<r_ele><reb>とき</reb><re_pri>news1</re_pri></r_ele>"
+        "<sense><pos>noun (common) (futsuumeishi)</pos><gloss>time</gloss></sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+
+    index = LexicalResourceIndex.load_optional(
+        jmdict_path=jmdict,
+        kanjidic2_path=None,
+        target_keys={"とき"},
+    )
+    notes = index.notes_for("とき", "とき")
+
+    assert notes is not None
+    assert notes["senses"][0]["glosses"] == ["time"]
+    assert index.canonical_surface("とき", "とき") == "時"
 
 
 def test_example_context_and_reference_format(tmp_path: Path):
@@ -311,6 +405,7 @@ def test_study_candidate_filter_removes_function_words():
     assert not is_study_candidate("と", "助詞")
     assert not is_study_candidate("何", "代名詞")
     assert not is_study_candidate("する", "動詞")
+    assert not is_study_candidate("朋", "名詞", "名詞-固有名詞-人名-名")
     assert is_study_candidate("約束", "名詞")
 
 
@@ -349,6 +444,18 @@ def test_jlpt_duplicate_surface_prefers_basic_level_reading():
     assert entry is not None
     assert entry.level == 5
     assert entry.reading == "くる"
+
+
+def test_jlpt_lookup_can_use_safe_reading_index(tmp_path: Path):
+    path = tmp_path / "jlpt.json"
+    path.write_text(
+        '[{"word":"言う","reading":"いう","level":"N5","meaning":"to say"}]',
+        encoding="utf-8",
+    )
+
+    words = load_jlpt_words(path)
+
+    assert words.lookup_reading("いう").surface == "言う"
 
 
 def test_jlpt_common_greeting_overrides_are_beginner_level(tmp_path: Path):

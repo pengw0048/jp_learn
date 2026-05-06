@@ -3,6 +3,7 @@ const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
 const STORAGE_STUDY_COUNTS = "jpcorpus.viewer.studyCounts.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
+const WORD_LIST_PAGE_SIZE = 600;
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 const MODE_VALUES = new Set(["browse", "study"]);
 const STUDY_TARGET_COUNT = 7;
@@ -91,6 +92,7 @@ const text = {
     allLevels: "全部",
     wordsFound: "{count} 个词",
     studyWordsFound: "{count} 个可复习词",
+    showMoreWords: "再显示 {count} 个",
     noWords: "没有匹配的词",
     noStudyWords: "当前筛选下没有带例句的可复习词",
     count: "频次",
@@ -196,6 +198,7 @@ const text = {
     allLevels: "All",
     wordsFound: "{count} words",
     studyWordsFound: "{count} review words",
+    showMoreWords: "Show {count} more",
     noWords: "No matching words",
     noStudyWords: "No reviewable words with examples in the current filter",
     count: "Count",
@@ -294,6 +297,7 @@ const app = {
   sort: "count",
   status: "all",
   source: "all",
+  listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
   mode: readMode(),
@@ -371,22 +375,26 @@ async function init() {
 function bindControls() {
   refs.searchInput.addEventListener("input", (event) => {
     app.query = event.target.value.trim();
+    resetWordListLimit();
     app.selectedWord = chooseInitialWord(currentWordSet());
     app.study.showAnswer = false;
     render();
   });
   refs.sortSelect.addEventListener("change", (event) => {
     app.sort = event.target.value;
+    resetWordListLimit();
     render();
   });
   refs.statusFilter.addEventListener("change", (event) => {
     app.status = event.target.value;
+    resetWordListLimit();
     app.selectedWord = chooseInitialWord(currentWordSet());
     app.study.showAnswer = false;
     render();
   });
   refs.sourceFilter.addEventListener("change", (event) => {
     app.source = event.target.value;
+    resetWordListLimit();
     app.selectedWord = chooseInitialWord(currentWordSet());
     app.study.showAnswer = false;
     render();
@@ -544,6 +552,7 @@ function renderLevelFilter() {
       button.classList.toggle("active", app.level === level);
       button.addEventListener("click", () => {
         app.level = level;
+        resetWordListLimit();
         app.selectedWord = chooseInitialWord(currentWordSet());
         app.study.showAnswer = false;
         render();
@@ -566,7 +575,36 @@ function renderWordList() {
   if (!app.selectedWord || !words.some((word) => word.word === app.selectedWord.word)) {
     app.selectedWord = words[0];
   }
-  refs.wordList.replaceChildren(...words.map(renderWordRow));
+  const selectedIndex = words.findIndex((word) => word.word === app.selectedWord?.word);
+  if (selectedIndex >= app.listLimit) {
+    app.listLimit = Math.ceil((selectedIndex + 1) / WORD_LIST_PAGE_SIZE) * WORD_LIST_PAGE_SIZE;
+  }
+  const scrollTop = refs.wordList.scrollTop;
+  const visibleWords = words.slice(0, app.listLimit);
+  const nodes = visibleWords.map(renderWordRow);
+  if (visibleWords.length < words.length) {
+    nodes.push(renderLoadMoreWords(words.length - visibleWords.length));
+  }
+  refs.wordList.replaceChildren(...nodes);
+  refs.wordList.scrollTop = scrollTop;
+}
+
+function resetWordListLimit() {
+  app.listLimit = WORD_LIST_PAGE_SIZE;
+  refs.wordList.scrollTop = 0;
+}
+
+function renderLoadMoreWords(remaining) {
+  const button = el("button", "load-more-words");
+  button.type = "button";
+  button.textContent = t("showMoreWords", {
+    count: formatNumber(Math.min(WORD_LIST_PAGE_SIZE, remaining)),
+  });
+  button.addEventListener("click", () => {
+    app.listLimit += WORD_LIST_PAGE_SIZE;
+    renderWordList();
+  });
+  return button;
 }
 
 function renderWordRow(word) {
@@ -580,7 +618,9 @@ function renderWordRow(word) {
   const main = el("div", "word-main");
   const wordText = el("div", "word-text", word.word || "");
   const badges = el("div", "word-badges");
-  badges.append(badge(word.level || ""));
+  if (word.level) {
+    badges.append(badge(word.level));
+  }
   const checks = renderStudyCountBadge(word);
   if (checks) {
     badges.append(checks);
@@ -643,7 +683,7 @@ function renderDetailHeader(word) {
   const stats = el("div", "detail-stats");
   const examples = examplesForWord(word);
   stats.append(
-    statChip(word.level || ""),
+    ...(word.level ? [statChip(word.level)] : []),
     statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
     statChip(`${t("examples")} ${formatNumber(examples.length)}`),
     statChip(studyCheckLabel(word)),
@@ -677,7 +717,7 @@ function renderStudyCard(word, index, total) {
   title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
   const stats = el("div", "detail-stats");
   stats.append(
-    statChip(word.level || ""),
+    ...(word.level ? [statChip(word.level)] : []),
     statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
     statChip(`${t("examples")} ${formatNumber(examplesForWord(word).length)}`),
     statChip(studyCheckLabel(word)),
@@ -1455,7 +1495,7 @@ function compareWords(left, right) {
     return compareKana(left, right);
   }
   if (app.sort === "level") {
-    return (left.level_number || 0) - (right.level_number || 0) || (right.count || 0) - (left.count || 0);
+    return (left.level_number || 999) - (right.level_number || 999) || (right.count || 0) - (left.count || 0);
   }
   return (right.count || 0) - (left.count || 0) || compareKana(left, right);
 }

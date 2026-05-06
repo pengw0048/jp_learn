@@ -18,6 +18,11 @@ LEVEL_KEYS = ("level", "jlpt", "jlpt_level")
 TAG_KEYS = ("tags", "tag")
 MEANING_KEYS = ("meaning", "translation", "gloss", "english", "zh")
 JLPT_ENTRY_OVERRIDES: dict[str, dict[str, object]] = {
+    "言う": {"level": 5, "reading": "いう", "meaning": "to say"},
+    "行く": {"level": 5, "reading": "いく; ゆく", "meaning": "to go"},
+    "見る": {"level": 5, "reading": "みる", "meaning": "to see; to watch"},
+    "来る": {"level": 5, "reading": "くる", "meaning": "to come"},
+    "良い": {"level": 5, "reading": "よい; いい", "meaning": "good"},
     "ありがとう": {"level": 5, "meaning": "thank you"},
     "おはよう": {"level": 5, "meaning": "good morning"},
     "こんにちは": {"level": 5, "meaning": "hello, good day"},
@@ -27,6 +32,15 @@ JLPT_ENTRY_OVERRIDES: dict[str, dict[str, object]] = {
     "いただきます": {"level": 5, "meaning": "said before eating"},
     "ごちそうさま": {"level": 5, "meaning": "thank you for the meal"},
     "お休み": {"level": 5, "meaning": "good night"},
+}
+JLPT_READING_OVERRIDES = {
+    "いう": "言う",
+    "いく": "行く",
+    "ゆく": "行く",
+    "みる": "見る",
+    "くる": "来る",
+    "よい": "良い",
+    "いい": "良い",
 }
 
 
@@ -40,6 +54,7 @@ class JLPTWords:
             if existing is None or entry.level > existing.level:
                 self.by_surface[entry.surface] = entry
             self.by_level.setdefault(entry.level, []).append(entry)
+        self.by_reading = self._build_reading_index()
 
     def lookup(self, *surfaces: str | None) -> WordEntry | None:
         for surface in surfaces:
@@ -47,8 +62,30 @@ class JLPTWords:
                 return self.by_surface[surface]
         return None
 
+    def lookup_reading(self, *readings: str | None) -> WordEntry | None:
+        for reading in readings:
+            if not reading:
+                continue
+            override_surface = JLPT_READING_OVERRIDES.get(reading)
+            if override_surface and override_surface in self.by_surface:
+                return self.by_surface[override_surface]
+            if reading in self.by_reading:
+                return self.by_reading[reading]
+        return None
+
     def total_by_level(self, level: int) -> int:
         return len({entry.surface for entry in self.by_level.get(level, [])})
+
+    def _build_reading_index(self) -> dict[str, WordEntry]:
+        entries_by_reading: dict[str, list[WordEntry]] = {}
+        for entry in self.by_surface.values():
+            for reading in split_readings(entry.reading):
+                entries_by_reading.setdefault(reading, []).append(entry)
+        return {
+            reading: entries[0]
+            for reading, entries in entries_by_reading.items()
+            if len({entry.surface for entry in entries}) == 1
+        }
 
 
 def load_jlpt_words(path: Path) -> JLPTWords:
@@ -58,9 +95,25 @@ def load_jlpt_words(path: Path) -> JLPTWords:
         )
     if path.suffix.casefold() == ".csv":
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            return JLPTWords(_entry_from_mapping(row) for row in csv.DictReader(handle))
+            return JLPTWords(_entries_with_overrides(_entry_from_mapping(row) for row in csv.DictReader(handle)))
     payload = json.loads(path.read_text(encoding="utf-8"))
-    return JLPTWords(_entries_from_json(payload))
+    return JLPTWords(_entries_with_overrides(_entries_from_json(payload)))
+
+
+def _entries_with_overrides(entries: Iterable[WordEntry]) -> Iterable[WordEntry]:
+    seen: set[str] = set()
+    for entry in entries:
+        seen.add(entry.surface)
+        yield entry
+    for surface, override in JLPT_ENTRY_OVERRIDES.items():
+        if surface in seen:
+            continue
+        yield WordEntry(
+            surface=surface,
+            reading=str(override.get("reading") or surface),
+            level=int(override.get("level", 5)),
+            meaning=str(override.get("meaning") or ""),
+        )
 
 
 def _entries_from_json(payload: Any) -> Iterable[WordEntry]:
@@ -96,6 +149,7 @@ def _entry_from_mapping(mapping: dict[str, Any], default_level: int | None = Non
     override = JLPT_ENTRY_OVERRIDES.get(surface_text)
     if override:
         level = int(override.get("level", level))
+        reading = str(override.get("reading") or reading or "")
         meaning = str(override.get("meaning") or meaning or "")
     return WordEntry(
         surface=surface_text,
@@ -137,6 +191,16 @@ def parse_level(value: Any) -> int | None:
     if 1 <= number <= 5:
         return number
     return None
+
+
+def split_readings(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [
+        part.strip()
+        for part in str(value).replace("；", ";").replace("、", ";").replace(",", ";").split(";")
+        if part.strip()
+    ]
 
 
 def download_jlpt_words(

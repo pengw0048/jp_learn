@@ -93,6 +93,7 @@ class Token:
     base: str
     reading: str | None = None
     pos: str | None = None
+    pos_detail: str | None = None
     start: int | None = None
     end: int | None = None
 

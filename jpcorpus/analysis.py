@@ -11,7 +11,7 @@ from .subtitle import parse_subtitle
 from .tokenize import JapaneseTokenizer
 
 
-EXCLUDED_POS = {"助詞", "助動詞", "補助記号", "代名詞", "接続詞"}
+EXCLUDED_POS = {"助詞", "助動詞", "補助記号", "代名詞", "接続詞", "接頭辞", "接尾辞", "感動詞", "連体詞"}
 KATAKANA_EXTENSION_MARKS = {"ー", "ヽ", "ヾ"}
 STUDY_STOPWORDS = {
     "ある",
@@ -40,8 +40,25 @@ STUDY_STOPWORDS = {
     "ずっと",
     "もっと",
     "とても",
+    "こと",
+    "もの",
+    "よう",
+    "ため",
+    "はず",
+    "わけ",
+    "つもり",
+    "お",
+    "ご",
+    "さん",
+    "ちゃん",
+    "くん",
+    "たち",
     "うん",
     "ああ",
+    "あ",
+    "え",
+    "ん",
+    "あっ",
     "まあ",
 }
 
@@ -125,6 +142,7 @@ class CorpusAnalysis:
     total_tokens: int
     unique_token_count: int
     word_stats: dict[str, WordStats]
+    candidate_word_stats: dict[str, WordStats]
     show_stats: dict[str, ShowStats]
     seen_by_level: dict[int, set[str]]
     jlpt_words: JLPTWords
@@ -183,6 +201,7 @@ def analyze_media(
 ) -> CorpusAnalysis:
     tokenizer = JapaneseTokenizer()
     word_stats: dict[str, WordStats] = {}
+    candidate_word_stats: dict[str, WordStats] = {}
     show_stats: dict[str, ShowStats] = {}
     seen_by_level: dict[int, set[str]] = defaultdict(set)
     unique_tokens: set[str] = set()
@@ -211,55 +230,71 @@ def analyze_media(
                 source_type_counts[source_type] += 1
                 source.total_tokens += 1
                 unique_tokens.add(token.base)
-                if not is_study_candidate(token.base, token.pos):
+                if not is_study_candidate(token.base, token.pos, token.pos_detail):
                     continue
-                entry = jlpt_words.lookup(token.base, token.surface)
+                reading = to_hiragana(token.reading) if token.reading else None
+                entry = jlpt_words.lookup(token.base, token.surface) or jlpt_words.lookup_reading(
+                    token.base,
+                    reading,
+                )
+                candidate_entry = entry or WordEntry(
+                    surface=token.base,
+                    reading=reading,
+                    level=0,
+                )
+                if is_embedded_katakana_match(line.text, token, candidate_entry):
+                    continue
+                stats = candidate_word_stats.setdefault(
+                    candidate_entry.surface,
+                    WordStats(entry=candidate_entry),
+                )
+                record_word_stats(
+                    stats,
+                    token=token,
+                    line=line,
+                    lines=lines,
+                    line_index=line_index,
+                    source_type=source_type,
+                    source_title=source_title,
+                    source_file=source_file,
+                    source_artist=source_artist,
+                    source_album=source_album,
+                    episode=episode,
+                    show_summary=show_summary,
+                    show_characters=show_characters or [],
+                    context_lines=context_lines,
+                    context_min_chars=context_min_chars,
+                    context_max_lines=context_max_lines,
+                    max_examples_per_word=max_examples_per_word,
+                )
                 if entry is None:
-                    continue
-                if is_embedded_katakana_match(line.text, token, entry):
                     continue
                 seen_by_level[entry.level].add(entry.surface)
                 source.jlpt_counts[entry.level] += 1
                 source.unique_words.add(entry.surface)
-                stats = word_stats.setdefault(entry.surface, WordStats(entry=entry))
-                stats.count += 1
-                stats.sources[source_title] += 1
-                stats.source_type_counts[source_type] += 1
-                if token.reading:
-                    stats.readings[to_hiragana(token.reading)] += 1
-                stats.add_example(
-                    WordExample(
-                        sentence=line.text,
-                        source_title=source_title,
-                        subtitle_file=source_file,
-                        matched_text=token.surface,
+                if stats.entry.surface == entry.surface:
+                    word_stats[entry.surface] = stats
+                else:
+                    jlpt_stats = word_stats.setdefault(entry.surface, WordStats(entry=entry))
+                    record_word_stats(
+                        jlpt_stats,
+                        token=token,
+                        line=line,
+                        lines=lines,
+                        line_index=line_index,
                         source_type=source_type,
+                        source_title=source_title,
+                        source_file=source_file,
                         source_artist=source_artist,
                         source_album=source_album,
                         episode=episode,
-                        start_ms=line.start_ms,
-                        end_ms=line.end_ms,
-                        context_before=collect_context(
-                            lines,
-                            line_index=line_index,
-                            direction="before",
-                            preferred_lines=context_lines,
-                            min_chars=context_min_chars,
-                            max_lines=context_max_lines,
-                        ),
-                        context_after=collect_context(
-                            lines,
-                            line_index=line_index,
-                            direction="after",
-                            preferred_lines=context_lines,
-                            min_chars=context_min_chars,
-                            max_lines=context_max_lines,
-                        ),
                         show_summary=show_summary,
                         show_characters=show_characters or [],
-                    ),
-                    limit=max_examples_per_word,
-                )
+                        context_lines=context_lines,
+                        context_min_chars=context_min_chars,
+                        context_max_lines=context_max_lines,
+                        max_examples_per_word=max_examples_per_word,
+                    )
 
     for subtitle_file in subtitle_files:
         if not subtitle_file.path.exists():
@@ -295,12 +330,73 @@ def analyze_media(
         total_tokens=total_tokens,
         unique_token_count=len(unique_tokens),
         word_stats=word_stats,
+        candidate_word_stats=candidate_word_stats,
         show_stats=show_stats,
         seen_by_level=dict(seen_by_level),
         jlpt_words=jlpt_words,
         music_track_count=music_track_count,
         lyric_file_count=len(existing_lyric_files),
         source_type_counts=source_type_counts,
+    )
+
+
+def record_word_stats(
+    stats: WordStats,
+    *,
+    token: Token,
+    line: SubtitleLine,
+    lines: list[SubtitleLine],
+    line_index: int,
+    source_type: str,
+    source_title: str,
+    source_file: str,
+    source_artist: str | None,
+    source_album: str | None,
+    episode: int | None,
+    show_summary: str | None,
+    show_characters: list[str],
+    context_lines: int,
+    context_min_chars: int,
+    context_max_lines: int | None,
+    max_examples_per_word: int,
+) -> None:
+    stats.count += 1
+    stats.sources[source_title] += 1
+    stats.source_type_counts[source_type] += 1
+    if token.reading:
+        stats.readings[to_hiragana(token.reading)] += 1
+    stats.add_example(
+        WordExample(
+            sentence=line.text,
+            source_title=source_title,
+            subtitle_file=source_file,
+            matched_text=token.surface,
+            source_type=source_type,
+            source_artist=source_artist,
+            source_album=source_album,
+            episode=episode,
+            start_ms=line.start_ms,
+            end_ms=line.end_ms,
+            context_before=collect_context(
+                lines,
+                line_index=line_index,
+                direction="before",
+                preferred_lines=context_lines,
+                min_chars=context_min_chars,
+                max_lines=context_max_lines,
+            ),
+            context_after=collect_context(
+                lines,
+                line_index=line_index,
+                direction="after",
+                preferred_lines=context_lines,
+                min_chars=context_min_chars,
+                max_lines=context_max_lines,
+            ),
+            show_summary=show_summary,
+            show_characters=show_characters,
+        ),
+        limit=max_examples_per_word,
     )
 
 
@@ -340,8 +436,10 @@ def collect_context(
     return selected
 
 
-def is_study_candidate(base: str, pos: str | None) -> bool:
+def is_study_candidate(base: str, pos: str | None, pos_detail: str | None = None) -> bool:
     if pos in EXCLUDED_POS:
+        return False
+    if pos_detail and "固有名詞" in pos_detail:
         return False
     if base in STUDY_STOPWORDS:
         return False
