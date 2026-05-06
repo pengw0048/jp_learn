@@ -1,9 +1,11 @@
 const STORAGE_LANG = "jpcorpus.viewer.lang";
 const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
 const STORAGE_STUDY_COUNTS = "jpcorpus.viewer.studyCounts.v1";
+const STORAGE_STUDY_SESSION = "jpcorpus.viewer.studySession.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
 const WORD_LIST_PAGE_SIZE = 600;
+const DAILY_STUDY_LIMIT = 30;
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 const MODE_VALUES = new Set(["browse", "study"]);
 const STUDY_TARGET_COUNT = 7;
@@ -91,10 +93,10 @@ const text = {
     loadErrorBody: "先运行导出命令，再重新打开 viewer。",
     allLevels: "全部",
     wordsFound: "{count} 个词",
-    studyWordsFound: "{count} 个可复习词",
+    studyWordsFound: "今日 {count} 个词",
     showMoreWords: "再显示 {count} 个",
     noWords: "没有匹配的词",
-    noStudyWords: "当前筛选下没有带例句的可复习词",
+    noStudyWords: "当前筛选下没有可加入今日学习的词",
     count: "频次",
     examples: "例句",
     exampleColumns: "列数",
@@ -114,18 +116,19 @@ const text = {
     usageNote: "用法",
     reannotateExample: "刷新标注",
     reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
-    studyMode: "学习",
+    studyMode: "今日",
     browseMode: "浏览",
-    studyProgress: "第 {current} / {total} 个",
+    studyProgress: "今日 {current} / {total}",
     revealAnswer: "看答案",
-    hideAnswer: "先不看答案",
-    nextWord: "跳过",
+    hideAnswer: "收起答案",
+    nextWord: "下一个",
     studyUnsure: "模糊",
+    studyAgain: "还不熟",
     studyKnown: "已经会了",
     studyMastered: "已记住",
     studyChecks: "勾 {count}/{target}",
-    studyCheckButton: "不熟，记一勾",
-    studyHint: "先读例句，想一下意思；不会就打一个勾，满 7 勾算记住。",
+    studyCheckButton: "记一勾 +1",
+    studyHint: "读例句，想一下意思；今天见过就打勾，满 7 勾算记住。",
     shows: "作品",
     subtitles: "字幕",
     lyrics: "歌词",
@@ -197,10 +200,10 @@ const text = {
     loadErrorBody: "Export the corpus first, then reload the viewer.",
     allLevels: "All",
     wordsFound: "{count} words",
-    studyWordsFound: "{count} review words",
+    studyWordsFound: "Today {count} words",
     showMoreWords: "Show {count} more",
     noWords: "No matching words",
-    noStudyWords: "No reviewable words with examples in the current filter",
+    noStudyWords: "No words can be added to today's study set in the current filter",
     count: "Count",
     examples: "Examples",
     exampleColumns: "Columns",
@@ -220,18 +223,19 @@ const text = {
     usageNote: "Usage",
     reannotateExample: "Refresh annotation",
     reannotateExampleTitle: "Regenerate this example translation and usage note",
-    studyMode: "Study",
+    studyMode: "Today",
     browseMode: "Browse",
-    studyProgress: "{current} / {total}",
+    studyProgress: "Today {current} / {total}",
     revealAnswer: "Reveal",
     hideAnswer: "Hide answer",
-    nextWord: "Skip",
+    nextWord: "Next",
     studyUnsure: "Unsure",
+    studyAgain: "Still shaky",
     studyKnown: "Already know it",
     studyMastered: "Mastered",
     studyChecks: "{count}/{target} checks",
-    studyCheckButton: "Not solid, add a check",
-    studyHint: "Read first and guess; add a check when it is not solid. Seven checks means mastered.",
+    studyCheckButton: "Add check +1",
+    studyHint: "Read examples and guess first; add one check after today's exposure. Seven checks means mastered.",
     shows: "Shows",
     subtitles: "Subtitles",
     lyrics: "Lyrics",
@@ -305,6 +309,7 @@ const app = {
   studyCounts: readStudyCounts(),
   study: {
     showAnswer: false,
+    session: readStudySession(),
   },
   maintenance: {
     enabled: false,
@@ -733,56 +738,40 @@ function renderStudyCard(word, index, total) {
     card.append(renderLexicalNotes(word));
   }
 
+  card.append(renderStudyActions(word));
   card.append(renderExamples(word, {
     revealAnnotations: app.study.showAnswer,
     allowActions: app.study.showAnswer,
   }));
-  card.append(renderStudyActions(word));
   return card;
 }
 
 function renderStudyActions(word) {
   const actions = el("div", "study-actions");
-  const reveal = el(
-    "button",
-    "study-primary-action",
-    t(app.study.showAnswer ? "hideAnswer" : "revealAnswer"),
-  );
+  const check = el("button", "study-primary-action", t("studyCheckButton"));
+  check.type = "button";
+  check.addEventListener("click", () => {
+    addStudyCheck(word);
+  });
+
+  const shaky = el("button", "study-secondary-action", t("studyAgain"));
+  shaky.type = "button";
+  shaky.addEventListener("click", () => {
+    markStudyWord("learning");
+  });
+
+  const reveal = el("button", "study-answer-action", t(app.study.showAnswer ? "hideAnswer" : "revealAnswer"));
   reveal.type = "button";
   reveal.addEventListener("click", () => {
     app.study.showAnswer = !app.study.showAnswer;
     renderDetail();
   });
 
-  const statusActions = el("div", "study-status-actions");
-  if (app.study.showAnswer) {
-    [
-      ["check", t("studyCheckButton")],
-      ["known", t("studyKnown")],
-    ].forEach(([action, label]) => {
-      const button = el("button", "", label);
-      button.type = "button";
-      button.classList.toggle("active", action !== "check" && statusFor(word) === action);
-      button.addEventListener("click", () => {
-        if (action === "check") {
-          addStudyCheck(word);
-        } else {
-          markStudyWord(action);
-        }
-      });
-      statusActions.append(button);
-    });
-  }
-
   const next = el("button", "study-next-action", t("nextWord"));
   next.type = "button";
   next.addEventListener("click", nextStudyWord);
 
-  actions.append(reveal);
-  if (app.study.showAnswer) {
-    actions.append(statusActions);
-  }
-  actions.append(next);
+  actions.append(check, shaky, reveal, next);
   return actions;
 }
 
@@ -1452,19 +1441,50 @@ function currentWordSet() {
 }
 
 function studyQueue() {
-  const words = filteredWords().filter((word) => {
-    const status = statusFor(word);
-    if (app.status === "all" && (status === "ignored" || status === "known")) {
-      return false;
+  const eligible = filteredWords().filter(isStudyEligibleWord);
+  const today = todayKey();
+  const session = app.study.session?.date === today
+    ? app.study.session
+    : { date: today, words: [] };
+  const byWord = new Map(eligible.map((word) => [word.word, word]));
+  const queued = [];
+  const seen = new Set();
+  session.words.forEach((wordText) => {
+    const word = byWord.get(wordText);
+    if (!word || seen.has(word.word)) {
+      return;
     }
-    return examplesForWord(word).length > 0;
+    queued.push(word);
+    seen.add(word.word);
   });
-  words.sort(compareStudyWords);
-  return words;
+
+  const candidates = [...eligible].sort(compareStudyWords);
+  candidates.forEach((word) => {
+    if (queued.length >= DAILY_STUDY_LIMIT || seen.has(word.word)) {
+      return;
+    }
+    queued.push(word);
+    seen.add(word.word);
+  });
+
+  const nextSession = { date: today, words: queued.map((word) => word.word) };
+  if (!sameStudySession(app.study.session, nextSession)) {
+    app.study.session = nextSession;
+    writeStudySession(nextSession);
+  }
+  return queued;
+}
+
+function isStudyEligibleWord(word) {
+  const status = statusFor(word);
+  return status !== "ignored"
+    && status !== "known"
+    && examplesForWord(word).length > 0;
 }
 
 function compareStudyWords(left, right) {
   return studyPriority(left) - studyPriority(right)
+    || studyCountFor(left) - studyCountFor(right)
     || (right.count || 0) - (left.count || 0)
     || compareKana(left, right);
 }
@@ -2180,6 +2200,47 @@ function readStudyCounts() {
   } catch {
     return {};
   }
+}
+
+function todayKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function readStudySession() {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_SESSION) || "{}");
+    if (!value || typeof value !== "object") {
+      return { date: todayKey(), words: [] };
+    }
+    const date = typeof value.date === "string" ? value.date : todayKey();
+    const words = asArray(value.words)
+      .map((word) => String(word || "").trim())
+      .filter(Boolean)
+      .slice(0, DAILY_STUDY_LIMIT);
+    return { date, words };
+  } catch {
+    return { date: todayKey(), words: [] };
+  }
+}
+
+function writeStudySession(session) {
+  localStorage.setItem(STORAGE_STUDY_SESSION, JSON.stringify({
+    date: session.date,
+    words: asArray(session.words).slice(0, DAILY_STUDY_LIMIT),
+  }));
+}
+
+function sameStudySession(left, right) {
+  if (!left || !right || left.date !== right.date) {
+    return false;
+  }
+  const leftWords = asArray(left.words);
+  const rightWords = asArray(right.words);
+  return leftWords.length === rightWords.length
+    && leftWords.every((word, index) => word === rightWords[index]);
 }
 
 function readExampleColumns() {

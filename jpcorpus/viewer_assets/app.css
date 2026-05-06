@@ -751,11 +751,11 @@ select {
 
 .study-actions {
   position: sticky;
-  bottom: 0;
+  top: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
+  grid-template-columns: repeat(4, minmax(0, max-content));
+  align-items: stretch;
   gap: 10px;
   padding: 12px 0 0;
   background: var(--bg);
@@ -778,6 +778,11 @@ select {
   border-color: var(--accent) !important;
   background: var(--accent) !important;
   color: #ffffff !important;
+}
+
+.study-answer-action,
+.study-secondary-action {
+  background: color-mix(in srgb, var(--panel), var(--bg) 30%) !important;
 }
 
 .study-status-actions {
@@ -1217,7 +1222,7 @@ mark {
   }
 
   .study-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .study-status-actions {
@@ -1247,5 +1252,9 @@ mark {
 
   .maintenance-grid {
     grid-template-columns: 1fr;
+  }
+
+  .study-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
