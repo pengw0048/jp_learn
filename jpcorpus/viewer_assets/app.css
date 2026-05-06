@@ -176,7 +176,10 @@ h1 {
   color: #ffffff;
 }
 
-.mode-toggle,
+.mode-segmented button {
+  min-width: 58px;
+}
+
 .maintenance-toggle {
   min-height: 34px;
   padding: 5px 10px;
@@ -185,18 +188,13 @@ h1 {
   background: var(--panel);
   color: var(--muted);
   font-weight: 720;
+  white-space: nowrap;
 }
 
-.mode-toggle.active,
-.mode-toggle:hover,
 .maintenance-toggle.active,
 .maintenance-toggle:hover {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.mode-toggle.active {
-  background: var(--accent-soft);
 }
 
 .workspace {

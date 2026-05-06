@@ -118,7 +118,7 @@ const text = {
     usageNote: "用法",
     reannotateExample: "刷新标注",
     reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
-    studyMode: "今日",
+    studyMode: "学习",
     browseMode: "浏览",
     studyProgress: "今日 {current} / {total}",
     revealAnswer: "看答案",
@@ -341,7 +341,7 @@ const refs = {
   wordList: $("#word-list"),
   emptyState: $("#empty-state"),
   wordDetail: $("#word-detail"),
-  studyToggle: $("#study-toggle"),
+  studyModeButtons: document.querySelectorAll("[data-mode]"),
   maintenanceToggle: $("#maintenance-toggle"),
   maintenancePanel: $("#maintenance-panel"),
   maintenanceClose: $("#maintenance-close"),
@@ -411,7 +411,11 @@ function bindControls() {
     app.study.showAnswer = false;
     render();
   });
-  refs.studyToggle.addEventListener("click", toggleStudyMode);
+  refs.studyModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setStudyMode(button.dataset.mode);
+    });
+  });
   document.querySelectorAll("[data-lang]").forEach((button) => {
     button.addEventListener("click", () => {
       app.lang = button.dataset.lang;
@@ -456,6 +460,7 @@ function applyLanguage() {
   document.querySelectorAll("[data-lang]").forEach((button) => {
     button.classList.toggle("active", button.dataset.lang === app.lang);
   });
+  updateStudyModeButtons();
 }
 
 function render() {
@@ -470,8 +475,7 @@ function render() {
 }
 
 function renderHeader() {
-  refs.studyToggle.textContent = t(app.mode === "study" ? "browseMode" : "studyMode");
-  refs.studyToggle.classList.toggle("active", app.mode === "study");
+  updateStudyModeButtons();
   refs.generatedAt.textContent = app.corpus.generated_at
     ? t("generatedAt", { date: app.corpus.generated_at })
     : "";
@@ -819,12 +823,21 @@ function selectWord(word, button) {
   renderMaintenance();
 }
 
-function toggleStudyMode() {
-  app.mode = app.mode === "study" ? "browse" : "study";
+function setStudyMode(mode) {
+  if (!MODE_VALUES.has(mode) || app.mode === mode) {
+    return;
+  }
+  app.mode = mode;
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.study.showAnswer = false;
   app.selectedWord = chooseInitialWord(currentWordSet());
   render();
+}
+
+function updateStudyModeButtons() {
+  refs.studyModeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.mode === app.mode);
+  });
 }
 
 function nextStudyWord() {
