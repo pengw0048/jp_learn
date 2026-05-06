@@ -1,11 +1,13 @@
 const STORAGE_LANG = "jpcorpus.viewer.lang";
 const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
 const STORAGE_STUDY_COUNTS = "jpcorpus.viewer.studyCounts.v1";
-const STORAGE_STUDY_SESSION = "jpcorpus.viewer.studySession.v1";
+const STORAGE_STUDY_SESSION = "jpcorpus.viewer.studySession.v2";
+const STORAGE_STUDY_SCHEDULE = "jpcorpus.viewer.studySchedule.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
 const WORD_LIST_PAGE_SIZE = 600;
 const DAILY_STUDY_LIMIT = 30;
+const STUDY_REVIEW_DELAY_DAYS = 1;
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 const MODE_VALUES = new Set(["browse", "study"]);
 const STUDY_TARGET_COUNT = 7;
@@ -93,7 +95,7 @@ const text = {
     loadErrorBody: "先运行导出命令，再重新打开 viewer。",
     allLevels: "全部",
     wordsFound: "{count} 个词",
-    studyWordsFound: "今日 {count} 个词",
+    studyWordsFound: "今日 {count} 个词（复习 {review} + 新词 {new}）",
     showMoreWords: "再显示 {count} 个",
     noWords: "没有匹配的词",
     noStudyWords: "当前筛选下没有可加入今日学习的词",
@@ -128,7 +130,9 @@ const text = {
     studyMastered: "已记住",
     studyChecks: "勾 {count}/{target}",
     studyCheckButton: "记一勾 +1",
-    studyHint: "读例句，想一下意思；今天见过就打勾，满 7 勾算记住。",
+    studyHint: "先复习到期的词，再补新词；今天见过就打勾，满 7 勾算记住。",
+    studyReview: "复习",
+    studyNew: "新词",
     shows: "作品",
     subtitles: "字幕",
     lyrics: "歌词",
@@ -200,7 +204,7 @@ const text = {
     loadErrorBody: "Export the corpus first, then reload the viewer.",
     allLevels: "All",
     wordsFound: "{count} words",
-    studyWordsFound: "Today {count} words",
+    studyWordsFound: "Today {count} words ({review} review + {new} new)",
     showMoreWords: "Show {count} more",
     noWords: "No matching words",
     noStudyWords: "No words can be added to today's study set in the current filter",
@@ -235,7 +239,9 @@ const text = {
     studyMastered: "Mastered",
     studyChecks: "{count}/{target} checks",
     studyCheckButton: "Add check +1",
-    studyHint: "Read examples and guess first; add one check after today's exposure. Seven checks means mastered.",
+    studyHint: "Review due words first, then fill with new words. Seven checks means mastered.",
+    studyReview: "Review",
+    studyNew: "New",
     shows: "Shows",
     subtitles: "Subtitles",
     lyrics: "Lyrics",
@@ -307,6 +313,7 @@ const app = {
   mode: readMode(),
   statuses: readStatuses(),
   studyCounts: readStudyCounts(),
+  studySchedule: readStudySchedule(),
   study: {
     showAnswer: false,
     session: readStudySession(),
@@ -569,9 +576,18 @@ function renderLevelFilter() {
 
 function renderWordList() {
   const words = currentWordSet();
-  refs.resultCount.textContent = t(app.mode === "study" ? "studyWordsFound" : "wordsFound", {
-    count: formatNumber(words.length),
-  });
+  if (app.mode === "study") {
+    const breakdown = studyQueueBreakdown(words);
+    refs.resultCount.textContent = t("studyWordsFound", {
+      count: formatNumber(words.length),
+      review: formatNumber(breakdown.review),
+      new: formatNumber(breakdown.new),
+    });
+  } else {
+    refs.resultCount.textContent = t("wordsFound", {
+      count: formatNumber(words.length),
+    });
+  }
   if (words.length === 0) {
     app.selectedWord = null;
     refs.wordList.replaceChildren(emptyMessage(t(app.mode === "study" ? "noStudyWords" : "noWords")));
@@ -725,6 +741,7 @@ function renderStudyCard(word, index, total) {
     ...(word.level ? [statChip(word.level)] : []),
     statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
     statChip(`${t("examples")} ${formatNumber(examplesForWord(word).length)}`),
+    statChip(studyKindLabel(word)),
     statChip(studyCheckLabel(word)),
   );
   titleRow.append(title, stats);
@@ -834,6 +851,9 @@ function markStudyWord(status) {
     setStudyCount(word, STUDY_TARGET_COUNT);
   }
   setStatus(word, status);
+  if (status === "learning" || status === "uncertain") {
+    scheduleStudyReview(word);
+  }
   advanceStudyQueue(previousQueue, word);
 }
 
@@ -842,6 +862,9 @@ function addStudyCheck(word) {
   const nextCount = Math.min(studyCountFor(word) + 1, STUDY_TARGET_COUNT);
   setStudyCount(word, nextCount);
   setStatus(word, nextCount >= STUDY_TARGET_COUNT ? "known" : "learning");
+  if (nextCount < STUDY_TARGET_COUNT) {
+    scheduleStudyReview(word);
+  }
   advanceStudyQueue(previousQueue, word);
 }
 
@@ -1441,7 +1464,9 @@ function currentWordSet() {
 }
 
 function studyQueue() {
-  const eligible = filteredWords().filter(isStudyEligibleWord);
+  const eligible = filteredWords()
+    .filter(isStudyEligibleWord)
+    .filter((word) => isStudyReviewDueWord(word) || isStudyNewWord(word));
   const today = todayKey();
   const session = app.study.session?.date === today
     ? app.study.session
@@ -1458,7 +1483,9 @@ function studyQueue() {
     seen.add(word.word);
   });
 
-  const candidates = [...eligible].sort(compareStudyWords);
+  const reviewCandidates = eligible.filter(isStudyReviewDueWord).sort(compareReviewStudyWords);
+  const newCandidates = eligible.filter(isStudyNewWord).sort(compareNewStudyWords);
+  const candidates = [...reviewCandidates, ...newCandidates];
   candidates.forEach((word) => {
     if (queued.length >= DAILY_STUDY_LIMIT || seen.has(word.word)) {
       return;
@@ -1482,32 +1509,47 @@ function isStudyEligibleWord(word) {
     && examplesForWord(word).length > 0;
 }
 
-function compareStudyWords(left, right) {
-  return studyPriority(left) - studyPriority(right)
+function isStudyReviewWord(word) {
+  const status = statusFor(word);
+  const count = studyCountFor(word);
+  return count > 0 && count < STUDY_TARGET_COUNT
+    || status === "learning"
+    || status === "uncertain";
+}
+
+function isStudyReviewDueWord(word) {
+  return isStudyReviewWord(word) && studyDueDateFor(word) <= todayKey();
+}
+
+function isStudyNewWord(word) {
+  return statusFor(word) === "none" && studyCountFor(word) === 0;
+}
+
+function compareReviewStudyWords(left, right) {
+  return studyDueDateFor(left).localeCompare(studyDueDateFor(right))
     || studyCountFor(left) - studyCountFor(right)
     || (right.count || 0) - (left.count || 0)
     || compareKana(left, right);
 }
 
-function studyPriority(word) {
-  const status = statusFor(word);
-  const count = studyCountFor(word);
-  if (status === "ignored") {
-    return 9;
-  }
-  if (count > 0 && count < STUDY_TARGET_COUNT) {
-    return 0;
-  }
-  if (status === "learning") {
-    return 1;
-  }
-  if (status === "uncertain" || status === "none") {
-    return 2;
-  }
-  if (status === "known") {
-    return 3;
-  }
-  return 4;
+function compareNewStudyWords(left, right) {
+  return (right.count || 0) - (left.count || 0)
+    || compareKana(left, right);
+}
+
+function studyQueueBreakdown(words) {
+  return words.reduce((counts, word) => {
+    if (isStudyReviewWord(word)) {
+      counts.review += 1;
+    } else {
+      counts.new += 1;
+    }
+    return counts;
+  }, { review: 0, new: 0 });
+}
+
+function studyKindLabel(word) {
+  return isStudyReviewWord(word) ? t("studyReview") : t("studyNew");
 }
 
 function compareWords(left, right) {
@@ -2128,10 +2170,14 @@ function setStatus(word, status) {
   if (status === "none") {
     delete app.statuses[word.word];
     setStudyCount(word, 0);
+    clearStudySchedule(word);
   } else {
     app.statuses[word.word] = status;
     if (status === "known") {
       setStudyCount(word, STUDY_TARGET_COUNT);
+    }
+    if (status === "known" || status === "ignored") {
+      clearStudySchedule(word);
     }
   }
   localStorage.setItem(STORAGE_STATUS, JSON.stringify(app.statuses));
@@ -2149,6 +2195,27 @@ function setStudyCount(word, count) {
     app.studyCounts[word.word] = normalized;
   }
   localStorage.setItem(STORAGE_STUDY_COUNTS, JSON.stringify(app.studyCounts));
+}
+
+function studyDueDateFor(word) {
+  const schedule = app.studySchedule[word.word] || {};
+  return typeof schedule.due_date === "string" ? schedule.due_date : todayKey();
+}
+
+function scheduleStudyReview(word) {
+  app.studySchedule[word.word] = {
+    last_seen: todayKey(),
+    due_date: addDaysKey(todayKey(), STUDY_REVIEW_DELAY_DAYS),
+  };
+  writeStudySchedule();
+}
+
+function clearStudySchedule(word) {
+  if (!app.studySchedule[word.word]) {
+    return;
+  }
+  delete app.studySchedule[word.word];
+  writeStudySchedule();
 }
 
 function clampStudyCount(value) {
@@ -2209,6 +2276,15 @@ function todayKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function addDaysKey(dateKey, days) {
+  const [year, month, day] = String(dateKey || todayKey()).split("-").map((part) => Number.parseInt(part, 10));
+  const date = Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)
+    ? new Date(year, month - 1, day)
+    : new Date();
+  date.setDate(date.getDate() + days);
+  return todayKey(date);
+}
+
 function readStudySession() {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_SESSION) || "{}");
@@ -2224,6 +2300,30 @@ function readStudySession() {
   } catch {
     return { date: todayKey(), words: [] };
   }
+}
+
+function readStudySchedule() {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_SCHEDULE) || "{}");
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([word, schedule]) => {
+          const lastSeen = typeof schedule?.last_seen === "string" ? schedule.last_seen : "";
+          const dueDate = typeof schedule?.due_date === "string" ? schedule.due_date : todayKey();
+          return [word, { last_seen: lastSeen, due_date: dueDate }];
+        })
+        .filter(([word]) => word),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeStudySchedule() {
+  localStorage.setItem(STORAGE_STUDY_SCHEDULE, JSON.stringify(app.studySchedule));
 }
 
 function writeStudySession(session) {
