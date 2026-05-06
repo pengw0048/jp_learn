@@ -329,6 +329,31 @@ def test_annotate_corpus_ignores_empty_cached_annotations(tmp_path):
     assert corpus["words"][0]["examples"][0]["translation_zh"] == "翻译: 明日行く。"
 
 
+def test_annotation_cache_key_ignores_show_context_unless_enabled():
+    word = {"word": "行く", "reading": "いく", "level": "N5"}
+    first = {
+        "sentence": "明日行く。",
+        "show_context": {"summary": "same", "characters": ["A"]},
+    }
+    second = {
+        "sentence": "明日行く。",
+        "show_context": {"summary": "same", "characters": ["B"]},
+    }
+    base_context = {"provider": "test", "model": "fake", "use_show_context": False}
+    show_context = {"provider": "test", "model": "fake", "use_show_context": True}
+
+    assert annotation_cache_key(word, first, base_context) == annotation_cache_key(
+        word,
+        second,
+        base_context,
+    )
+    assert annotation_cache_key(word, first, show_context) != annotation_cache_key(
+        word,
+        second,
+        show_context,
+    )
+
+
 def test_apply_cached_annotations_materializes_partial_cache(tmp_path):
     corpus = {
         "schema_version": 6,

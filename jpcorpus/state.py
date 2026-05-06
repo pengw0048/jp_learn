@@ -59,6 +59,20 @@ class State:
                 CREATE INDEX IF NOT EXISTS watched_shows_anilist_idx
                   ON watched_shows(anilist_id);
 
+                CREATE TABLE IF NOT EXISTS show_characters (
+                  bangumi_id INTEGER NOT NULL,
+                  character_id INTEGER NOT NULL,
+                  name TEXT NOT NULL,
+                  relation TEXT,
+                  raw_json TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  PRIMARY KEY (bangumi_id, character_id),
+                  FOREIGN KEY (bangumi_id) REFERENCES watched_shows(bangumi_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS show_characters_bangumi_idx
+                  ON show_characters(bangumi_id);
+
                 CREATE TABLE IF NOT EXISTS subtitle_files (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
                   bangumi_id INTEGER NOT NULL,
@@ -226,6 +240,30 @@ class State:
                 ),
             )
 
+    def save_show_characters(self, bangumi_id: int, characters: list[dict[str, Any]]) -> None:
+        now = utc_now()
+        with self.connect() as conn:
+            conn.execute("DELETE FROM show_characters WHERE bangumi_id = ?", (bangumi_id,))
+            conn.executemany(
+                """
+                INSERT INTO show_characters
+                  (bangumi_id, character_id, name, relation, raw_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        bangumi_id,
+                        int(character.get("id") or 0),
+                        str(character.get("name") or "").strip(),
+                        _string_or_none(character.get("relation")),
+                        json.dumps(character, ensure_ascii=False),
+                        now,
+                    )
+                    for character in characters
+                    if character.get("id") and str(character.get("name") or "").strip()
+                ],
+            )
+
     def list_watched_shows(self, limit: int | None = None) -> list[WatchedShow]:
         sql = "SELECT * FROM watched_shows ORDER BY updated_at DESC, bangumi_id"
         params: tuple[Any, ...] = ()
@@ -310,18 +348,26 @@ class State:
                 ORDER BY ws.title_jp, sf.name
                 """
             ).fetchall()
+            character_rows = conn.execute(
+                "SELECT bangumi_id, name FROM show_characters ORDER BY bangumi_id, name"
+            ).fetchall()
+        character_names_by_show: dict[int, list[str]] = {}
+        for row in character_rows:
+            character_names_by_show.setdefault(int(row["bangumi_id"]), []).append(row["name"])
         subtitle_files = []
         for row in rows:
             subject = json.loads(row["subject_json"])
+            bangumi_id = int(row["bangumi_id"])
             subtitle_files.append(
                 SubtitleFile(
-                    bangumi_id=int(row["bangumi_id"]),
+                    bangumi_id=bangumi_id,
                     show_title=row["title_zh"] or row["title_jp"],
                     path=Path(row["local_path"]),
                     name=row["name"],
                     episode=row["episode"],
                     url=row["url"],
                     show_summary=clean_show_summary(subject),
+                    show_characters=character_names_by_show.get(bangumi_id, []),
                 )
             )
         return subtitle_files
@@ -593,4 +639,11 @@ def clean_show_summary(subject: dict[str, Any]) -> str | None:
     if not value:
         return None
     text = " ".join(str(value).split())
+    return text or None
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
     return text or None

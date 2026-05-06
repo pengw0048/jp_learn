@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -223,6 +224,7 @@ def analyze_media(
         nonlocal total_tokens
         source = show_stats.setdefault(source_title, ShowStats(title=source_title))
         source.file_count += 1
+        character_aliases = build_character_aliases(show_characters or [], tokenizer)
         for line_index, line in enumerate(lines):
             tokens = tokenizer.tokenize(line.text)
             for token in tokens:
@@ -242,6 +244,8 @@ def analyze_media(
                     reading=reading,
                     level=0,
                 )
+                if is_character_name_token(token, character_aliases, candidate_entry.surface):
+                    continue
                 if is_embedded_katakana_match(line.text, token, candidate_entry):
                     continue
                 stats = candidate_word_stats.setdefault(
@@ -444,6 +448,61 @@ def is_study_candidate(base: str, pos: str | None, pos_detail: str | None = None
     if base in STUDY_STOPWORDS:
         return False
     return True
+
+
+def build_character_aliases(character_names: list[str], tokenizer: JapaneseTokenizer) -> set[str]:
+    aliases: set[str] = set()
+    for name in character_names:
+        for part in character_name_parts(name):
+            add_character_alias(aliases, part)
+            if len(part) >= 4 and is_cjk_text(part[-2:]):
+                add_character_alias(aliases, part[-2:])
+            for token in tokenizer.tokenize(part):
+                if is_character_name_part_token(token):
+                    add_character_alias(aliases, token.surface)
+                    add_character_alias(aliases, token.base)
+    return aliases
+
+
+def character_name_parts(name: str) -> list[str]:
+    return [
+        part
+        for part in re.split(r"[\s　・･/／、，,（）()\[\]【】]+", str(name))
+        if part and has_japanese_text(part)
+    ]
+
+
+def is_character_name_part_token(token: Token) -> bool:
+    if token.pos_detail and "固有名詞" in token.pos_detail:
+        return True
+    return len(token.surface) >= 2 and has_japanese_text(token.surface)
+
+
+def add_character_alias(aliases: set[str], value: str) -> None:
+    alias = value.strip()
+    if not alias or alias in STUDY_STOPWORDS:
+        return
+    if len(alias) == 1 and not has_japanese_text(alias):
+        return
+    aliases.add(alias)
+
+
+def is_character_name_token(token: Token, aliases: set[str], *resolved_surfaces: str | None) -> bool:
+    if not aliases:
+        return False
+    return any(
+        value in aliases
+        for value in (token.surface, token.base, *resolved_surfaces)
+        if value
+    )
+
+
+def has_japanese_text(value: str) -> bool:
+    return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff々〆ヵヶ]", value))
+
+
+def is_cjk_text(value: str) -> bool:
+    return bool(value) and all("\u3400" <= char <= "\u9fff" or char in {"々"} for char in value)
 
 
 def is_embedded_katakana_match(text: str, token: Token, entry: WordEntry) -> bool:

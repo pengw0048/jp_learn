@@ -535,6 +535,21 @@ def annotation_cache_key(
     example: dict[str, Any],
     context: dict[str, Any],
 ) -> str:
+    example_payload: dict[str, Any] = {
+        "source_type": example.get("source_type") or "",
+        "matched_text": example.get("matched_text") or "",
+        "sentence": example.get("sentence") or "",
+        "context_before": example.get("context_before") or [],
+        "context_after": example.get("context_after") or [],
+    }
+    show_context = example.get("show_context") or {}
+    if context.get("use_show_context"):
+        example_payload["show_context"] = show_context
+    else:
+        example_payload["show_context"] = {
+            "summary": show_context.get("summary"),
+            "characters": [],
+        }
     payload = {
         "context": context,
         "word": {
@@ -544,14 +559,7 @@ def annotation_cache_key(
             "meaning_zh": word.get("meaning_zh") or "",
             "meaning": word.get("meaning") or "",
         },
-        "example": {
-            "source_type": example.get("source_type") or "",
-            "matched_text": example.get("matched_text") or "",
-            "sentence": example.get("sentence") or "",
-            "context_before": example.get("context_before") or [],
-            "context_after": example.get("context_after") or [],
-            "show_context": example.get("show_context") or {},
-        },
+        "example": example_payload,
     }
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")

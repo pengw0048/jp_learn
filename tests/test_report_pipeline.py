@@ -5,6 +5,7 @@ from jpcorpus.analysis import (
     WordStats,
     analyze_media,
     analyze_paths,
+    build_character_aliases,
     collect_context,
     is_study_candidate,
     to_hiragana,
@@ -425,6 +426,46 @@ def test_analysis_skips_katakana_word_embedded_in_longer_katakana_name(tmp_path:
     stats = analysis.word_stats["ベルト"]
     assert stats.count == 1
     assert [example.sentence for example in stats.examples] == ["ベルトを締める。"]
+
+
+def test_analysis_skips_bangumi_character_name_aliases(tmp_path: Path):
+    words = load_jlpt_words_from_entries(
+        [WordEntry(surface="武士", reading="ぶし", level=2, meaning="samurai")]
+    )
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n（武士）何だよ あの演奏\n\n"
+        "2\n00:00:04,000 --> 00:00:06,000\n（武士(たけし)）頼むよ 冗談だろ？\n\n"
+        "3\n00:00:07,000 --> 00:00:09,000\nあれ？ 相座… ブ… ブシ…\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_media(
+        watched_show_count=1,
+        music_track_count=0,
+        subtitle_files=[
+            SubtitleFile(
+                bangumi_id=1,
+                show_title="四月是你的谎言",
+                path=subtitle,
+                name=subtitle.name,
+                show_characters=["相座武士"],
+            )
+        ],
+        lyric_files=[],
+        jlpt_words=words,
+    )
+
+    assert "武士" not in analysis.word_stats
+
+
+def test_build_character_aliases_includes_given_name_suffix():
+    from jpcorpus.tokenize import JapaneseTokenizer
+
+    aliases = build_character_aliases(["相座武士", "宮園かをり"], JapaneseTokenizer())
+
+    assert "武士" in aliases
+    assert "かをり" in aliases
 
 
 def test_to_hiragana():

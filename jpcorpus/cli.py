@@ -185,6 +185,18 @@ def sync(
     for item in collections:
         state.save_watched_show(collection_to_show(item))
     typer.echo(f"Saved {len(collections)} watched anime from Bangumi.")
+    character_shows = 0
+    character_count = 0
+    for show in state.list_watched_shows(limit=max_shows):
+        try:
+            characters = client.subject_characters(show.bangumi_id)
+        except Exception as exc:
+            typer.echo(f"Bangumi character miss for {show.display_title}: {exc}")
+            continue
+        state.save_show_characters(show.bangumi_id, characters)
+        character_shows += 1
+        character_count += len(characters)
+    typer.echo(f"Saved {character_count} Bangumi character names for {character_shows} shows.")
 
     index: AnimeOfflineIndex | None = None
     if anime_db.exists():

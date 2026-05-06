@@ -148,6 +148,16 @@ class BangumiClient:
             response.raise_for_status()
             return response.json()
 
+    def subject_characters(self, subject_id: int) -> list[dict[str, Any]]:
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(
+                f"{API_BASE}/v0/subjects/{subject_id}/characters",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return payload if isinstance(payload, list) else []
+
     def token_from_code(
         self,
         *,
