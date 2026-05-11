@@ -6,11 +6,13 @@ const STORAGE_STUDY_SCHEDULE = "jpcorpus.viewer.studySchedule.v1";
 const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
 const STORAGE_SPLIT_RATIOS = "jpcorpus.viewer.splitRatios.v1";
+const STORAGE_READER_WORD_LIST = "jpcorpus.viewer.readerWordList.v1";
 const WORD_LIST_PAGE_SIZE = 600;
 const DAILY_STUDY_LIMIT = 30;
 const STUDY_REVIEW_DELAY_DAYS = 1;
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 const MODE_VALUES = new Set(["browse", "study", "read"]);
+const READER_WORD_LIST_VALUES = new Set(["all", "study", "N5", "N4", "N3", "N2", "N1"]);
 const SPLIT_DEFAULT_RATIOS = {
   browse: 0.28,
   study: 0.28,
@@ -189,6 +191,9 @@ const text = {
     sourceReaderEmpty: "这个来源还没有可显示的阅读内容",
     readerSourcesFound: "{count} 个来源",
     readerSourceChoice: "阅读来源",
+    readerWordListChoice: "高亮词表",
+    readerWordListAll: "全部词",
+    readerWordListStudy: "今日学习",
     readerCurrentHint: "点高亮词或右侧词 chip 查看解释",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
@@ -335,6 +340,9 @@ const text = {
     sourceReaderEmpty: "No readable content for this source yet",
     readerSourcesFound: "{count} sources",
     readerSourceChoice: "Reading source",
+    readerWordListChoice: "Highlighted words",
+    readerWordListAll: "All words",
+    readerWordListStudy: "Today",
     readerCurrentHint: "Click highlighted words or right-side chips to inspect them",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
@@ -398,6 +406,7 @@ const app = {
   reader: {
     sourceType: "all",
     groupKey: null,
+    wordList: readReaderWordList(),
   },
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
@@ -1355,7 +1364,7 @@ function renderSourceReader(source, options = {}) {
     return reader;
   }
   documents.forEach((document, index) => {
-    reader.append(renderReaderDocument(document, index === 0 || documents.length === 1));
+    reader.append(renderReaderDocument(document, index === 0 || documents.length === 1, options));
   });
   return reader;
 }
@@ -1470,7 +1479,7 @@ function normalizeReaderMatches(text, matches) {
     .filter((match) => match.word && match.matched_text);
 }
 
-function renderReaderDocument(document, open) {
+function renderReaderDocument(document, open, options = {}) {
   const details = el("details", "reader-document");
   details.open = open;
   const summary = el("summary", "");
@@ -1481,7 +1490,7 @@ function renderReaderDocument(document, open) {
   details.append(summary);
   const lines = el("div", "reader-lines");
   document.lines.forEach((line) => {
-    lines.append(renderReaderLine(line));
+    lines.append(renderReaderLine(line, options));
   });
   details.append(lines);
   return details;
@@ -1498,14 +1507,14 @@ function readerDocumentLabel(document) {
   return cleanSourceFileLabel(document.source_file || document.source_title);
 }
 
-function renderReaderLine(line) {
+function renderReaderLine(line, options = {}) {
   const row = el("div", "reader-line");
   const time = Number.isInteger(line.start_ms) ? formatTimestamp(line.start_ms) : "";
   row.append(el("span", "reader-line-time", time));
   const textLine = el("div", "reader-line-text");
-  appendReaderHighlighted(textLine, line.text, line.matches);
+  appendReaderHighlighted(textLine, line.text, line.matches, options);
   row.append(textLine);
-  const words = uniqueReaderWords(line.matches);
+  const words = uniqueReaderWords(line.matches, options);
   if (words.length > 0) {
     const wordList = el("div", "reader-line-words");
     words.forEach((match) => {
@@ -1524,8 +1533,9 @@ function renderReaderLine(line) {
   return row;
 }
 
-function appendReaderHighlighted(target, text, matches) {
+function appendReaderHighlighted(target, text, matches, options = {}) {
   const validMatches = asArray(matches)
+    .filter((match) => readerWordAllowed(match.word, options.wordSet))
     .filter((match) => Number.isInteger(match.start) && Number.isInteger(match.end))
     .filter((match) => match.start >= 0 && match.end > match.start && match.end <= text.length)
     .sort((left, right) => left.start - right.start || right.end - left.end);
@@ -1553,11 +1563,11 @@ function appendReaderHighlighted(target, text, matches) {
   }
 }
 
-function uniqueReaderWords(matches) {
+function uniqueReaderWords(matches, options = {}) {
   const seen = new Set();
   const result = [];
   matches.forEach((match) => {
-    if (!match.word || seen.has(match.word) || !findWord(match.word)) {
+    if (!match.word || seen.has(match.word) || !readerWordAllowed(match.word, options.wordSet) || !findWord(match.word)) {
       return;
     }
     seen.add(match.word);
@@ -1752,6 +1762,7 @@ function renderWordList() {
 
 function renderReadingPane() {
   renderLevelFilter();
+  const readerWords = readerWordSet();
   const sourceType = app.reader.sourceType === "all" ? null : app.reader.sourceType;
   const groups = buildSourceGroups(sourceType);
   if (groups.length === 0) {
@@ -1764,7 +1775,7 @@ function renderReadingPane() {
     app.reader.groupKey = groups[0].key;
   }
   const selected = groups.find((group) => group.key === app.reader.groupKey) || groups[0];
-  syncSelectedWordToReaderSource(selected);
+  syncSelectedWordToReaderSource(selected, readerWords);
   refs.resultCount.textContent = [
     t("readerSourcesFound", { count: formatNumber(groups.length) }),
     selected.title,
@@ -1773,20 +1784,24 @@ function renderReadingPane() {
   const pane = el("div", "reader-mode-pane");
   pane.append(renderReaderModeToolbar(groups, selected));
   const scroller = el("div", "reader-mode-scroll");
-  scroller.append(renderReaderModeSummary(selected), renderSourceReader(selected, { full: true }));
+  scroller.append(renderReaderModeSummary(selected), renderSourceReader(selected, { full: true, wordSet: readerWords }));
   pane.append(scroller);
   refs.wordList.replaceChildren(pane);
   updateReaderActiveTokens();
 }
 
-function syncSelectedWordToReaderSource(source) {
-  if (source.words.has(app.selectedWord?.word)) {
+function syncSelectedWordToReaderSource(source, wordSet) {
+  if (source.words.has(app.selectedWord?.word) && readerWordAllowed(app.selectedWord.word, wordSet)) {
     return;
   }
-  const firstWord = [...source.words].map(findWord).find(Boolean);
+  const firstWord = [...source.words]
+    .map(findWord)
+    .find((word) => word && readerWordAllowed(word.word, wordSet));
   if (firstWord) {
     app.selectedWord = firstWord;
     app.study.showAnswer = false;
+  } else {
+    app.selectedWord = null;
   }
 }
 
@@ -1831,8 +1846,60 @@ function renderReaderModeToolbar(groups, selected) {
     sourceList.append(button);
   });
   sourcePicker.append(sourceList);
-  toolbar.append(tabs, sourcePicker);
+  toolbar.append(tabs, renderReaderWordListPicker(), sourcePicker);
   return toolbar;
+}
+
+function renderReaderWordListPicker() {
+  const picker = el("div", "reader-word-list-picker");
+  picker.append(el("span", "reader-source-picker-label", t("readerWordListChoice")));
+  const options = el("div", "reader-word-list-tabs");
+  [
+    ["all", t("readerWordListAll")],
+    ["study", t("readerWordListStudy")],
+    ["N5", "N5"],
+    ["N4", "N4"],
+    ["N3", "N3"],
+    ["N2", "N2"],
+    ["N1", "N1"],
+  ].forEach(([value, label]) => {
+    const button = el("button", "", label);
+    button.type = "button";
+    button.classList.toggle("active", app.reader.wordList === value);
+    button.addEventListener("click", () => {
+      app.reader.wordList = value;
+      localStorage.setItem(STORAGE_READER_WORD_LIST, value);
+      render();
+    });
+    options.append(button);
+  });
+  picker.append(options);
+  return picker;
+}
+
+function readerWordSet() {
+  if (app.reader.wordList === "all") {
+    return null;
+  }
+  if (app.reader.wordList === "study") {
+    return new Set(readerStudyWords().map((word) => word.word));
+  }
+  return new Set(
+    app.words
+      .filter((word) => word.level === app.reader.wordList)
+      .map((word) => word.word),
+  );
+}
+
+function readerStudyWords() {
+  const sessionWords = app.study.session?.date === todayKey()
+    ? asArray(app.study.session.words).map(findWord).filter(Boolean)
+    : [];
+  return sessionWords.length ? sessionWords : studyQueue();
+}
+
+function readerWordAllowed(wordText, wordSet) {
+  return !wordSet || wordSet.has(wordText);
 }
 
 function renderReaderModeSummary(source) {
@@ -3683,6 +3750,11 @@ function readSplitRatios() {
 function readMode() {
   const value = localStorage.getItem(STORAGE_MODE) || "browse";
   return MODE_VALUES.has(value) ? value : "browse";
+}
+
+function readReaderWordList() {
+  const value = localStorage.getItem(STORAGE_READER_WORD_LIST) || "all";
+  return READER_WORD_LIST_VALUES.has(value) ? value : "all";
 }
 
 function statusDot(status) {

@@ -1309,7 +1309,21 @@ mark {
   gap: 6px;
 }
 
-.reader-source-tabs button {
+.reader-word-list-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.reader-word-list-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reader-source-tabs button,
+.reader-word-list-tabs button {
   min-height: 32px;
   padding: 5px 10px;
   border: 1px solid var(--line);
@@ -1319,7 +1333,8 @@ mark {
   font-weight: 720;
 }
 
-.reader-source-tabs button.active {
+.reader-source-tabs button.active,
+.reader-word-list-tabs button.active {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
