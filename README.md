@@ -10,13 +10,13 @@ The MVP intentionally stays local-first and file-backed. It does not include hos
 uv sync
 ```
 
-After installing, launch the app with `uv run jpcorpus view`. The viewer opens at <http://127.0.0.1:8767/> by default. If `corpus.json` does not exist yet, the command creates a small starter file so the UI can open.
+After installing, launch the app with `uv run jpcorpus`. The viewer opens at <http://127.0.0.1:8767/> by default. If `corpus.json` does not exist yet, the command creates a small starter file so the UI can open.
 
 From the viewer, open Maintenance:
 
 1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
 2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
-3. Later, run `uv run jpcorpus view` again and use Refresh for new media/local text changes. Use LLM annotation only when you want paid/local model annotation.
+3. Later, run `uv run jpcorpus` again and use Refresh for new media/local text changes. Use LLM annotation only when you want paid/local model annotation.
 
 The only normal working corpus file is `corpus.json`. Extra input/output paths are for debugging or experiments.
 
@@ -42,49 +42,28 @@ Shell environment variables take precedence over `.env`.
 Normal UI path:
 
 ```bash
-uv run jpcorpus view
+uv run jpcorpus
 ```
 
 Then use the Maintenance panel. Day to day, this is still the only command you need.
 
-Advanced command-line equivalent:
-
-```bash
-uv run jpcorpus data fetch-anime-db
-uv run jpcorpus data fetch-jlpt-words
-uv run jpcorpus data fetch-zh-dict
-uv run jpcorpus data fetch-lexical-resources
-uv run jpcorpus link bangumi
-uv run jpcorpus sync
-uv run jpcorpus lyrics sync
-uv run jpcorpus lyrics fetch
-uv run jpcorpus export corpus-json --output corpus.json
-uv run jpcorpus view
-```
-
-Optional debug/export commands:
-
-```bash
-uv run jpcorpus report --level 3 --output report.md
-uv run jpcorpus report --language en --level 3 --output report.en.md
-uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
-```
+Developer/debug CLI subcommands still exist for tests and automation, but they are not part of the normal app flow.
 
 `jpcorpus data fetch-jlpt-words` downloads and normalizes the MIT-licensed `elzup/jlpt-word-list` CSV data, which is based on community JLPT decks originally derived from Tanos-style lists. `jpcorpus data fetch-zh-dict` downloads the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary for Chinese report definitions. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 
-The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for LLM annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future prompt context; `jpcorpus annotate` keeps prompts source-text-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can add example-level `translation_zh` and `usage_note_zh` fields through Anthropic Claude, any OpenAI-compatible endpoint, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, source filters, examples, and browser-local study status.
+The Markdown report is a POC/debug view. The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for LLM annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future prompt context; LLM annotation keeps prompts source-text-only by default, and can opt into those summaries with `--use-show-context`. LLM annotation can add example-level `translation_zh` and `usage_note_zh` fields through Anthropic Claude, any OpenAI-compatible endpoint, or a local Apple Foundation Models wrapper.
 
 Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` reads Bangumi music collections and splits album subjects into track rows through Bangumi episodes. `jpcorpus lyrics fetch` searches LRCLIB and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated fetches skip BGM/OST misses by default; use `jpcorpus lyrics fetch --force` after matching logic changes or when you want to retry old misses. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 
 Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/` and `jpcorpus export corpus-json` will import them automatically as `source_type: text`, using the file name as the title. You can also pass one-off files with `--text path/to/book.epub`; those examples appear in the viewer under the Text source filter.
 
-Optional LLM annotation can be run from the viewer Maintenance panel. The CLI equivalent is:
+Optional LLM annotation can be run from the viewer Maintenance panel. The advanced CLI equivalent is:
 
 ```bash
 uv run jpcorpus annotate --provider apple --limit 20
-uv run jpcorpus view
+uv run jpcorpus
 ```
 
 Use `--provider anthropic` to try Claude Haiku through `ANTHROPIC_API_KEY`; it defaults to `claude-haiku-4-5-20251001` when `--model` and `ANTHROPIC_MODEL` are omitted, and uses `ANTHROPIC_BASE_URL` for custom Anthropic-compatible gateways. Add `--concurrency 4` for parallel remote annotation requests, or use `--rpm 40` to stay under a provider request-per-minute limit; successful annotations are written to the versioned state-database cache as each request completes, and failed requests are reported without stopping the batch. Use `--provider openai-compatible --model your-model` or `JPCORPUS_LLM_MODEL` instead for OpenAI, LiteLLM, Ollama/Open WebUI, or any compatible local server. LLM annotations are keyed by source text and provider context, so repeated annotation runs reuse existing results until the annotation cache version changes.

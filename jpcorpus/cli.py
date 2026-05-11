@@ -64,15 +64,34 @@ from .zh_dict import ChineseGlossary, download_zh_dict
 
 load_dotenv()
 
-app = typer.Typer(help="Build a personal JLPT corpus from watched Japanese media.")
+DEFAULT_VIEWER_CORPUS = Path("corpus.json")
+DEFAULT_VIEWER_HOST = "127.0.0.1"
+DEFAULT_VIEWER_PORT = 8767
+
+app = typer.Typer(
+    help="Open the local jpcorpus app. Subcommands are advanced maintenance/debug tools.",
+    invoke_without_command=True,
+)
 link_app = typer.Typer(help="Link external accounts.")
 export_app = typer.Typer(help="Export study artifacts.")
 data_app = typer.Typer(help="Manage local cache files.")
 lyrics_app = typer.Typer(help="Sync music tracks and cache lyric files.")
-app.add_typer(link_app, name="link")
-app.add_typer(export_app, name="export")
-app.add_typer(data_app, name="data")
-app.add_typer(lyrics_app, name="lyrics")
+app.add_typer(link_app, name="link", hidden=True)
+app.add_typer(export_app, name="export", hidden=True)
+app.add_typer(data_app, name="data", hidden=True)
+app.add_typer(lyrics_app, name="lyrics", hidden=True)
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Open the local viewer when no advanced subcommand is provided."""
+    if ctx.invoked_subcommand is None:
+        launch_viewer(
+            DEFAULT_VIEWER_CORPUS,
+            host=DEFAULT_VIEWER_HOST,
+            port=DEFAULT_VIEWER_PORT,
+            open_browser=True,
+        )
 
 
 def user_agent() -> str:
@@ -184,7 +203,7 @@ def link_bangumi(
     typer.echo(f"Linked Bangumi user: {me.get('username') or me.get('nickname') or me.get('id')}")
 
 
-@app.command()
+@app.command(hidden=True)
 def sync(
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
     anime_db: Path = typer.Option(DEFAULT_ANIME_DB, help="Anime Offline Database JSON path."),
@@ -602,7 +621,7 @@ def remove_cached_lyric(state: State, cached_paths: dict[str, Path], track_key: 
         path.unlink(missing_ok=True)
 
 
-@app.command()
+@app.command(hidden=True)
 def report(
     output: Path = typer.Option(Path("report.md"), help="Markdown report output path."),
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
@@ -792,19 +811,23 @@ def ensure_viewer_corpus(corpus: Path) -> None:
     typer.echo(f"Created starter corpus: {corpus}")
 
 
-@app.command()
-def view(
-    corpus: Path = typer.Option(Path("corpus.json"), help="Structured corpus JSON file."),
-    host: str = typer.Option("127.0.0.1", help="Host to bind."),
-    port: int = typer.Option(8767, min=0, max=65535, help="Port to bind. Use 0 for a random port."),
-    open_browser: bool = typer.Option(True, help="Open the viewer in a browser."),
-) -> None:
-    """Serve the local corpus web viewer."""
+def launch_viewer(corpus: Path, *, host: str, port: int, open_browser: bool) -> None:
     ensure_viewer_corpus(corpus)
     serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=typer.echo)
 
 
-@app.command()
+@app.command(hidden=True)
+def view(
+    corpus: Path = typer.Option(DEFAULT_VIEWER_CORPUS, help="Structured corpus JSON file."),
+    host: str = typer.Option(DEFAULT_VIEWER_HOST, help="Host to bind."),
+    port: int = typer.Option(DEFAULT_VIEWER_PORT, min=0, max=65535, help="Port to bind. Use 0 for a random port."),
+    open_browser: bool = typer.Option(True, help="Open the viewer in a browser."),
+) -> None:
+    """Serve the local corpus web viewer."""
+    launch_viewer(corpus, host=host, port=port, open_browser=open_browser)
+
+
+@app.command(hidden=True)
 def annotate(
     input: Path = typer.Option(Path("corpus.json"), help="Input corpus JSON path."),
     output: Path | None = typer.Option(None, help="Annotated corpus JSON output path. Defaults to the input path."),
