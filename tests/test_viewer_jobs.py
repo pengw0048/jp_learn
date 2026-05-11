@@ -68,6 +68,14 @@ def test_selected_examples_annotation_scope_matches_exact_example():
     assert not include_example({"word": "届ける", "level": "N4"}, target)
 
 
+def test_annotation_spec_uses_configured_provider_when_request_omits_provider(monkeypatch):
+    monkeypatch.setenv("JPCORPUS_LLM_PROVIDER", "anthropic")
+
+    spec = normalize_annotation_spec({"scope": "first_unannotated"})
+
+    assert spec["provider"] == "anthropic"
+
+
 def test_selected_examples_annotation_scope_requires_examples():
     with pytest.raises(ValueError, match="requires at least one example"):
         normalize_annotation_spec(

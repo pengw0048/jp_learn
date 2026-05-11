@@ -154,7 +154,7 @@ const text = {
     configLlmApiKey: "LLM API Key",
     quickActionsTitle: "常用操作",
     quickActionsHelp: "平时点“刷新”就够了；词典或词表需要重拉时再用“完整刷新”。",
-    llmHelp: "会先查本地缓存；缺失时才调用模型。",
+    llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
     maintenanceLimit: "上限",
@@ -275,7 +275,7 @@ const text = {
     configLlmApiKey: "LLM API key",
     quickActionsTitle: "Common actions",
     quickActionsHelp: "Use Refresh day to day; use Full refresh only when dictionaries or word lists need refetching.",
-    llmHelp: "Local cache is checked first; the model is called only for misses.",
+    llmHelp: "Uses the configured provider; local cache is checked before model calls.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
     maintenanceLimit: "Limit",
@@ -386,7 +386,6 @@ const refs = {
   configLlmModel: $("#config-llm-model"),
   configLlmApiKey: $("#config-llm-api-key"),
   maintenanceScope: $("#maintenance-scope"),
-  maintenanceProvider: $("#maintenance-provider"),
   maintenanceLimitLabel: $("#maintenance-limit-label"),
   maintenanceLimit: $("#maintenance-limit"),
   maintenanceConcurrency: $("#maintenance-concurrency"),
@@ -479,17 +478,8 @@ function bindControls() {
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
   });
-  refs.configLlmProvider.addEventListener("change", () => {
-    refs.maintenanceProvider.value = refs.configLlmProvider.value;
-    renderMaintenance();
-  });
-  refs.maintenanceProvider.addEventListener("change", () => {
-    refs.configLlmProvider.value = refs.maintenanceProvider.value;
-    renderMaintenance();
-  });
   [
     refs.maintenanceScope,
-    refs.maintenanceProvider,
     refs.configLlmProvider,
     refs.maintenanceLimit,
     refs.maintenanceConcurrency,
@@ -562,8 +552,7 @@ async function loadMaintenanceStatus() {
     app.maintenance.job = payload.job || null;
     app.maintenance.config = payload.config || null;
     app.maintenance.llm = payload.llm || null;
-    if (payload.llm?.provider && refs.maintenanceProvider) {
-      refs.maintenanceProvider.value = payload.llm.provider;
+    if (payload.llm?.provider) {
       refs.configLlmProvider.value = payload.llm.provider;
     }
     if (payload.llm?.base_url && refs.configLlmBaseUrl && !refs.configLlmBaseUrl.value) {
@@ -673,7 +662,6 @@ async function saveConfig() {
     app.maintenance.config = result.config || null;
     app.maintenance.llm = result.config?.llm || app.maintenance.llm;
     if (app.maintenance.llm?.provider) {
-      refs.maintenanceProvider.value = app.maintenance.llm.provider;
       refs.configLlmProvider.value = app.maintenance.llm.provider;
     }
     [refs.configBangumiClientSecret, refs.configJimakuApiKey, refs.configLlmApiKey].forEach((input) => {
@@ -1064,7 +1052,6 @@ async function startExampleAnnotationJob(word, example, button) {
   refs.maintenanceToggle.classList.add("active");
   const spec = {
     scope: "selected_examples",
-    provider: refs.maintenanceProvider.value,
     words: [word.word].filter(Boolean),
     examples: [exampleAnnotationSelector(example)],
     source: "all",
@@ -2032,7 +2019,6 @@ function annotationJobSpec() {
   }
   return {
     scope,
-    provider: refs.maintenanceProvider.value,
     words,
     source: app.source,
     level: app.level,
