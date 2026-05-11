@@ -1241,6 +1241,13 @@ mark {
   background: var(--panel);
 }
 
+.source-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .source-card-lyrics {
   border-left-color: var(--lyrics);
 }
@@ -1296,6 +1303,85 @@ mark {
 
 .source-metric strong {
   color: var(--text);
+}
+
+.source-view-button,
+.source-back-button,
+.source-word-button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.source-view-button:hover,
+.source-back-button:hover,
+.source-word-button:hover {
+  border-color: var(--accent);
+}
+
+.source-child-list,
+.source-snippets {
+  display: grid;
+  gap: 6px;
+}
+
+.source-child-row,
+.source-snippet {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f7f9f9;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-child-row {
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+
+.source-child-row strong {
+  color: var(--text);
+}
+
+.source-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.source-detail-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.source-detail-heading h3,
+.source-snippets h4 {
+  font-size: 14px;
+}
+
+.source-snippet {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+
+.source-snippet .reference {
+  grid-column: 2;
+}
+
+.source-snippet-text {
+  color: var(--text);
+  font-family: var(--font-ja);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .checkbox-label {

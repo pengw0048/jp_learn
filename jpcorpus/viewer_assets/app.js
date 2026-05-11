@@ -163,6 +163,11 @@ const text = {
     sourceInventoryTokens: "词形",
     sourceInventoryAnnotated: "标注",
     sourceInventoryUnknown: "未知来源",
+    sourceInventoryView: "查看",
+    sourceInventoryBack: "返回",
+    sourceInventoryEpisodes: "集",
+    sourceInventoryTracks: "曲",
+    sourceInventorySnippets: "片段",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
@@ -293,6 +298,11 @@ const text = {
     sourceInventoryTokens: "Tokens",
     sourceInventoryAnnotated: "Annotated",
     sourceInventoryUnknown: "Unknown source",
+    sourceInventoryView: "View",
+    sourceInventoryBack: "Back",
+    sourceInventoryEpisodes: "Episodes",
+    sourceInventoryTracks: "Tracks",
+    sourceInventorySnippets: "Snippets",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
@@ -350,6 +360,7 @@ const app = {
   status: "all",
   source: "all",
   sourcePanelType: null,
+  sourcePanelGroupKey: null,
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
@@ -552,7 +563,6 @@ function renderHeader() {
     : "";
   const summary = app.corpus.summary || {};
   const items = [
-    { label: t("shows"), value: summary.watched_show_count },
     { label: t("subtitles"), value: summary.subtitle_file_count, sourceType: "subtitle" },
     { label: t("lyrics"), value: summary.lyric_file_count, sourceType: "lyrics" },
     { label: t("texts"), value: summary.text_file_count, sourceType: "text" },
@@ -579,6 +589,9 @@ function toggleSourcePanel(sourceType) {
     hideSourcePanel();
     return;
   }
+  if (app.sourcePanelType !== sourceType) {
+    app.sourcePanelGroupKey = null;
+  }
   app.sourcePanelType = sourceType;
   refs.sourcePanel.hidden = false;
   refs.maintenancePanel.hidden = true;
@@ -590,6 +603,7 @@ function toggleSourcePanel(sourceType) {
 function hideSourcePanel() {
   refs.sourcePanel.hidden = true;
   app.sourcePanelType = null;
+  app.sourcePanelGroupKey = null;
   updateSummaryPillStates();
 }
 
@@ -704,17 +718,23 @@ function renderSourceInventory() {
   if (!refs.sourceInventory) {
     return;
   }
-  const sources = buildSourceInventory().filter((source) => (
-    !app.sourcePanelType || source.type === app.sourcePanelType
-  ));
-  if (sources.length === 0) {
+  if (refs.sourcePanel.hidden) {
+    return;
+  }
+  const groups = buildSourceGroups(app.sourcePanelType);
+  const selected = groups.find((group) => group.key === app.sourcePanelGroupKey);
+  if (selected) {
+    refs.sourceInventory.replaceChildren(renderSourceGroupDetail(selected));
+    return;
+  }
+  if (groups.length === 0) {
     refs.sourceInventory.replaceChildren(emptyMessage(t("sourceInventoryEmpty")));
     return;
   }
-  refs.sourceInventory.replaceChildren(...sources.map(renderSourceInventoryItem));
+  refs.sourceInventory.replaceChildren(...groups.map(renderSourceGroupItem));
 }
 
-function buildSourceInventory() {
+function buildSourceItems() {
   const sourceStats = new Map(
     asArray(app.corpus?.shows).map((item) => [normalizedTextTitle(item.title), item]),
   );
@@ -735,14 +755,16 @@ function buildSourceInventory() {
           album,
           files: new Set(),
           words: new Set(),
-          examples: 0,
+          exampleCount: 0,
+          exampleItems: [],
           annotated: 0,
           fileCount: Number(stats.subtitle_file_count) || 0,
           tokens: Number(stats.total_tokens) || 0,
         });
       }
       const entry = sources.get(key);
-      entry.examples += 1;
+      entry.exampleCount += 1;
+      entry.exampleItems.push({ word, example });
       if (word.word) {
         entry.words.add(word.word);
       }
@@ -758,6 +780,102 @@ function buildSourceInventory() {
   return [...sources.values()].sort(compareSourceInventoryItems);
 }
 
+function buildSourceGroups(sourceType) {
+  const groups = new Map();
+  buildSourceItems()
+    .filter((source) => !sourceType || source.type === sourceType)
+    .forEach((source) => {
+      const groupKey = sourceGroupKey(source);
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, createSourceGroup(source, groupKey));
+      }
+      addSourceToGroup(groups.get(groupKey), source);
+    });
+  return [...groups.values()].sort(compareSourceInventoryItems);
+}
+
+function sourceGroupKey(source) {
+  if (source.type === "lyrics") {
+    return [source.type, source.album || source.artist || source.title].join("\u0000");
+  }
+  return [source.type, source.title].join("\u0000");
+}
+
+function createSourceGroup(source, key) {
+  const title = source.type === "lyrics"
+    ? (source.album || source.artist || source.title)
+    : source.title;
+  const meta = source.type === "lyrics" && source.album
+    ? source.artist
+    : "";
+  return {
+    key,
+    type: source.type,
+    title,
+    meta,
+    files: new Set(),
+    words: new Set(),
+    children: [],
+    exampleItems: [],
+    exampleCount: 0,
+    annotated: 0,
+    fileCount: 0,
+    tokens: 0,
+  };
+}
+
+function addSourceToGroup(group, source) {
+  source.files.forEach((file) => group.files.add(file));
+  source.words.forEach((word) => group.words.add(word));
+  group.exampleItems.push(...source.exampleItems);
+  group.exampleCount += source.exampleCount;
+  group.annotated += source.annotated;
+  group.fileCount += source.fileCount || source.files.size;
+  group.tokens += source.tokens;
+  group.children.push(...sourceChildren(source));
+}
+
+function sourceChildren(source) {
+  if (source.type === "subtitle") {
+    return [...source.files].sort().map((file) => ({
+      label: subtitleChildLabel(source, file),
+      meta: file,
+      examples: countExamplesForFile(source, file),
+    }));
+  }
+  if (source.type === "lyrics") {
+    return [{
+      label: source.title,
+      meta: [source.artist, source.album && source.album !== source.title ? source.album : ""]
+        .filter(Boolean)
+        .join(" · "),
+      examples: source.exampleCount,
+    }];
+  }
+  return [...source.files].sort().map((file) => ({
+    label: source.title,
+    meta: file,
+    examples: countExamplesForFile(source, file),
+  }));
+}
+
+function subtitleChildLabel(source, file) {
+  const match = source.exampleItems.find(({ example }) => (
+    (example.reference?.source_file || example.subtitle_file) === file
+    && Number.isInteger(example.episode)
+  ));
+  if (match) {
+    return `EP${String(match.example.episode).padStart(2, "0")}`;
+  }
+  return fileStem(file);
+}
+
+function countExamplesForFile(source, file) {
+  return source.exampleItems.filter(({ example }) => (
+    (example.reference?.source_file || example.subtitle_file) === file
+  )).length;
+}
+
 function compareSourceInventoryItems(left, right) {
   const typeOrder = { subtitle: 0, lyrics: 1, text: 2 };
   const typeDiff = (typeOrder[left.type] ?? 9) - (typeOrder[right.type] ?? 9);
@@ -767,38 +885,125 @@ function compareSourceInventoryItems(left, right) {
   return left.title.localeCompare(right.title, app.lang === "zh" ? "zh-CN" : "ja-JP");
 }
 
-function renderSourceInventoryItem(source) {
+function renderSourceGroupItem(source) {
   const item = el("article", `source-card source-card-${source.type || "unknown"}`);
   const heading = el("div", "source-card-heading");
   const kind = el("span", "source-kind", sourceLabel(source.type));
   const title = el("strong", "source-title", source.title || t("sourceInventoryUnknown"));
   heading.append(kind, title);
-  if (source.artist) {
-    heading.append(el("span", "source-meta", source.artist));
-  }
-  if (source.album && source.album !== source.title) {
-    heading.append(el("span", "source-meta", source.album));
+  if (source.meta) {
+    heading.append(el("span", "source-meta", source.meta));
   }
 
+  const action = el("button", "source-view-button", t("sourceInventoryView"));
+  action.type = "button";
+  action.addEventListener("click", () => {
+    app.sourcePanelGroupKey = source.key;
+    renderSourceInventory();
+  });
+
+  const top = el("div", "source-card-top");
+  top.append(heading, action);
+  item.append(top, renderSourceMetrics(source));
+
+  const childList = renderSourceChildren(source.children.slice(0, 6), source.type);
+  if (childList) {
+    item.append(childList);
+  }
+  return item;
+}
+
+function renderSourceGroupDetail(source) {
+  const detail = el("article", `source-detail source-card-${source.type || "unknown"}`);
+  const back = el("button", "source-back-button", `‹ ${t("sourceInventoryBack")}`);
+  back.type = "button";
+  back.addEventListener("click", () => {
+    app.sourcePanelGroupKey = null;
+    renderSourceInventory();
+  });
+  const heading = el("div", "source-detail-heading");
+  heading.append(back, el("h3", "", source.title || t("sourceInventoryUnknown")));
+  if (source.meta) {
+    heading.append(el("span", "source-meta", source.meta));
+  }
+  detail.append(heading, renderSourceMetrics(source));
+
+  const children = renderSourceChildren(source.children, source.type);
+  if (children) {
+    detail.append(children);
+  }
+
+  const snippets = el("div", "source-snippets");
+  snippets.append(el("h4", "", t("sourceInventorySnippets")));
+  source.exampleItems.slice(0, 60).forEach((item) => {
+    snippets.append(renderSourceSnippet(item));
+  });
+  detail.append(snippets);
+  return detail;
+}
+
+function renderSourceMetrics(source) {
   const metrics = el("div", "source-metrics");
-  const fileCount = source.fileCount || source.files.size;
+  const childLabel = source.type === "lyrics" ? t("sourceInventoryTracks") : t("sourceInventoryEpisodes");
   [
-    [t("sourceInventoryFiles"), fileCount],
+    [source.type === "text" ? t("sourceInventoryFiles") : childLabel, source.children?.length || 0],
+    [t("sourceInventoryFiles"), source.fileCount || source.files.size],
     [t("sourceInventoryTokens"), source.tokens],
     [t("sourceInventoryWords"), source.words.size],
-    [t("sourceInventoryExamples"), source.examples],
-    [t("sourceInventoryAnnotated"), `${formatNumber(source.annotated)}/${formatNumber(source.examples)}`],
-  ].forEach(([label, value]) => {
-    if (value === 0) {
+    [t("sourceInventoryExamples"), source.exampleCount],
+    [t("sourceInventoryAnnotated"), `${formatNumber(source.annotated)}/${formatNumber(source.exampleCount)}`],
+  ].forEach(([label, value], index) => {
+    if ((value === 0 || value === "0/0") || (index === 1 && source.type === "text")) {
       return;
     }
     const metric = el("span", "source-metric");
     metric.append(el("span", "", label), strong(value));
     metrics.append(metric);
   });
+  return metrics;
+}
 
-  item.append(heading, metrics);
-  return item;
+function renderSourceChildren(children, sourceType) {
+  if (!children || children.length === 0 || sourceType === "text") {
+    return null;
+  }
+  const list = el("div", "source-child-list");
+  children.forEach((child) => {
+    const row = el("div", "source-child-row");
+    row.append(strong(child.label));
+    if (child.meta) {
+      row.append(el("span", "", child.meta));
+    }
+    if (child.examples) {
+      row.append(el("small", "", `${formatNumber(child.examples)} ${t("sourceInventoryExamples")}`));
+    }
+    list.append(row);
+  });
+  return list;
+}
+
+function renderSourceSnippet(item) {
+  const row = el("div", "source-snippet");
+  const wordButton = el("button", "source-word-button", item.word.word || item.example.matched_text || "");
+  wordButton.type = "button";
+  wordButton.addEventListener("click", () => openWordFromSource(item.word.word));
+  const textLine = el("div", "source-snippet-text");
+  appendHighlighted(textLine, item.example.sentence || "", item.example.matched_text || item.word.word);
+  const reference = el("small", `reference reference-${exampleSourceClass(item.example)}`, formatReference(item.example));
+  row.append(wordButton, textLine, reference);
+  return row;
+}
+
+function openWordFromSource(wordText) {
+  const word = app.words.find((item) => item.word === wordText);
+  if (!word) {
+    return;
+  }
+  app.mode = "browse";
+  localStorage.setItem(STORAGE_MODE, app.mode);
+  app.selectedWord = word;
+  hideSourcePanel();
+  render();
 }
 
 function hasExampleAnnotations(example) {
