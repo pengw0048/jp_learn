@@ -20,7 +20,7 @@
 
 最初讨论是探索一个"专精领域"——希望是 niche 但能做到顶尖的方向。经过几轮探讨：
 
-1. **lumaverse 工作衍生方向**：MultiKueue / Lance 邻接 / 对象存储调优 / Flyte debugging / Ray Data — 都太接近本职，缺乏"业余领域"的味道
+1. **工作衍生方向**：MultiKueue / Lance 邻接 / 对象存储调优 / Flyte debugging / Ray Data — 都太接近本职，缺乏"业余领域"的味道
 2. **GitHub 历史信号**：作者 GitHub 真正持续投入的主线是「中国互联网生态闭源协议 / 移动取证」
    - WechatExport-iOS 783⭐（2026-04 仍在维护）
    - BaiduOldDriver 263⭐（2026-04 仍在维护）
@@ -31,7 +31,7 @@
 
 **为何选这个方向**：
 
-- 跟 lumaverse 主业平行不冲突
+- 跟主业平行不冲突
 - 用到全部技能栈（RE 字幕协议 + 数据 pipeline + LLM 应用 + 中日双语）
 - 跟 GitHub 老本行（中文应用 RE）一脉相承
 - 有真实的、可量化的产品空缺
