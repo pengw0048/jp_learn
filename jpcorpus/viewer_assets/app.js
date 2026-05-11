@@ -170,6 +170,10 @@ const text = {
     sourceInventorySnippets: "片段",
     sourceInventoryExpand: "展开 {count} 集",
     sourceInventoryCollapse: "收起",
+    sourceInventoryLines: "行",
+    sourceReaderTitle: "阅读器",
+    sourceReaderFallback: "当前 corpus 还没有完整阅读数据，先显示已抽取的例句片段；点“刷新”后会生成完整来源行。",
+    sourceReaderEmpty: "这个来源还没有可显示的阅读内容",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
@@ -307,6 +311,10 @@ const text = {
     sourceInventorySnippets: "Snippets",
     sourceInventoryExpand: "Show {count} more",
     sourceInventoryCollapse: "Collapse",
+    sourceInventoryLines: "Lines",
+    sourceReaderTitle: "Reader",
+    sourceReaderFallback: "This corpus has no full reader data yet, so extracted examples are shown for now. Refresh to generate full source lines.",
+    sourceReaderEmpty: "No readable content for this source yet",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
@@ -744,30 +752,62 @@ function buildSourceItems() {
     asArray(app.corpus?.shows).map((item) => [normalizedTextTitle(item.title), item]),
   );
   const sources = new Map();
+
+  function ensureSource(type, title, artist = "", album = "") {
+    const key = [type, title, artist, album].join("\u0000");
+    if (!sources.has(key)) {
+      const stats = sourceStats.get(normalizedTextTitle(title)) || {};
+      sources.set(key, {
+        type,
+        title,
+        artist,
+        album,
+        hasStats: Boolean(stats.total_tokens),
+        files: new Set(),
+        words: new Set(),
+        sourceDocuments: [],
+        readerLineCount: 0,
+        exampleCount: 0,
+        exampleItems: [],
+        annotated: 0,
+        fileCount: Number(stats.subtitle_file_count) || 0,
+        tokens: Number(stats.total_tokens) || 0,
+      });
+    }
+    return sources.get(key);
+  }
+
+  asArray(app.corpus?.sources).forEach((document) => {
+    const type = document.source_type || "subtitle";
+    const title = String(document.source_title || document.source_file || t("sourceInventoryUnknown")).trim();
+    const artist = String(document.source_artist || "").trim();
+    const album = String(document.source_album || "").trim();
+    const entry = ensureSource(type, title, artist, album);
+    entry.sourceDocuments.push(document);
+    entry.readerLineCount += asArray(document.lines).length;
+    if (!entry.hasStats) {
+      entry.tokens += Number(document.token_count) || 0;
+    }
+    const file = document.source_file || document.subtitle_file;
+    if (file) {
+      entry.files.add(file);
+    }
+    asArray(document.lines).forEach((line) => {
+      asArray(line.matches).forEach((match) => {
+        if (match.word) {
+          entry.words.add(match.word);
+        }
+      });
+    });
+  });
+
   app.words.forEach((word) => {
     asArray(word.examples).forEach((example) => {
       const type = example.source_type || "subtitle";
       const title = String(example.source_title || example.subtitle_file || t("sourceInventoryUnknown")).trim();
       const artist = String(example.source_artist || "").trim();
       const album = String(example.source_album || "").trim();
-      const key = [type, title, artist, album].join("\u0000");
-      if (!sources.has(key)) {
-        const stats = sourceStats.get(normalizedTextTitle(title)) || {};
-        sources.set(key, {
-          type,
-          title,
-          artist,
-          album,
-          files: new Set(),
-          words: new Set(),
-          exampleCount: 0,
-          exampleItems: [],
-          annotated: 0,
-          fileCount: Number(stats.subtitle_file_count) || 0,
-          tokens: Number(stats.total_tokens) || 0,
-        });
-      }
-      const entry = sources.get(key);
+      const entry = ensureSource(type, title, artist, album);
       entry.exampleCount += 1;
       entry.exampleItems.push({ word, example });
       if (word.word) {
@@ -781,6 +821,9 @@ function buildSourceItems() {
         entry.annotated += 1;
       }
     });
+  });
+  sources.forEach((entry) => {
+    entry.fileCount = Math.max(entry.fileCount, entry.files.size);
   });
   return [...sources.values()].sort(compareSourceInventoryItems);
 }
@@ -820,7 +863,9 @@ function createSourceGroup(source, key) {
     meta,
     files: new Set(),
     words: new Set(),
+    sourceDocuments: [],
     children: [],
+    readerLineCount: 0,
     exampleItems: [],
     exampleCount: 0,
     annotated: 0,
@@ -832,6 +877,8 @@ function createSourceGroup(source, key) {
 function addSourceToGroup(group, source) {
   source.files.forEach((file) => group.files.add(file));
   source.words.forEach((word) => group.words.add(word));
+  group.sourceDocuments.push(...source.sourceDocuments);
+  group.readerLineCount += source.readerLineCount;
   group.exampleItems.push(...source.exampleItems);
   group.exampleCount += source.exampleCount;
   group.annotated += source.annotated;
@@ -841,6 +888,9 @@ function addSourceToGroup(group, source) {
 }
 
 function sourceChildren(source) {
+  if (source.sourceDocuments?.length) {
+    return sourceDocumentChildren(source);
+  }
   if (source.type === "subtitle") {
     return subtitleEpisodeChildren(source);
   }
@@ -858,6 +908,56 @@ function sourceChildren(source) {
     meta: file,
     examples: countExamplesForFile(source, file),
   }));
+}
+
+function sourceDocumentChildren(source) {
+  if (source.type === "subtitle") {
+    return subtitleDocumentChildren(source);
+  }
+  return source.sourceDocuments
+    .map((document) => ({
+      label: source.type === "lyrics"
+        ? (document.source_title || source.title)
+        : cleanSourceFileLabel(document.source_file || document.source_title || source.title),
+      meta: source.type === "lyrics"
+        ? [document.source_artist, document.source_album && document.source_album !== document.source_title ? document.source_album : ""]
+          .filter(Boolean)
+          .join(" · ")
+        : "",
+      lines: asArray(document.lines).length,
+      files: [document.source_file].filter(Boolean),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, app.lang === "zh" ? "zh-CN" : "ja-JP"));
+}
+
+function subtitleDocumentChildren(source) {
+  const episodes = new Map();
+  source.sourceDocuments.forEach((document) => {
+    const file = document.source_file || "";
+    const episode = Number.isInteger(document.episode) ? document.episode : null;
+    const key = episode === null ? `file:${file || source.title}` : `episode:${episode}`;
+    if (!episodes.has(key)) {
+      episodes.set(key, {
+        episode,
+        files: new Set(),
+        lines: 0,
+        label: episode === null ? cleanSourceFileLabel(file || source.title) : formatEpisodeLabel(episode),
+      });
+    }
+    const entry = episodes.get(key);
+    if (file) {
+      entry.files.add(file);
+    }
+    entry.lines += asArray(document.lines).length;
+  });
+  return [...episodes.values()]
+    .sort(compareSubtitleChildren)
+    .map((entry) => ({
+      label: entry.label,
+      meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryFiles")}` : "",
+      lines: entry.lines,
+      files: [...entry.files].sort(),
+    }));
 }
 
 function subtitleEpisodeChildren(source) {
@@ -1006,12 +1106,7 @@ function renderSourceGroupDetail(source) {
     detail.append(children);
   }
 
-  const snippets = el("div", "source-snippets");
-  snippets.append(el("h4", "", t("sourceInventorySnippets")));
-  source.exampleItems.slice(0, 60).forEach((item) => {
-    snippets.append(renderSourceSnippet(item));
-  });
-  detail.append(snippets);
+  detail.append(renderSourceReader(source));
   return detail;
 }
 
@@ -1023,6 +1118,7 @@ function renderSourceMetrics(source) {
     [t("sourceInventoryFiles"), source.fileCount || source.files.size],
     [t("sourceInventoryTokens"), source.tokens],
     [t("sourceInventoryWords"), source.words.size],
+    [t("sourceInventoryLines"), source.readerLineCount],
     [t("sourceInventoryExamples"), source.exampleCount],
     [t("sourceInventoryAnnotated"), `${formatNumber(source.annotated)}/${formatNumber(source.exampleCount)}`],
   ].forEach(([label, value], index) => {
@@ -1046,8 +1142,10 @@ function renderSourceChildren(children, sourceType, options = {}) {
     const row = el("div", "source-child-row");
     row.append(strong(child.label));
     row.append(el("span", "", child.meta || ""));
-    if (child.examples) {
-      row.append(el("small", "", `${formatNumber(child.examples)} ${t("sourceInventoryExamples")}`));
+    if (child.examples || child.lines) {
+      const count = child.examples || child.lines;
+      const label = child.examples ? t("sourceInventoryExamples") : t("sourceInventoryLines");
+      row.append(el("small", "", `${formatNumber(count)} ${label}`));
     }
     list.append(row);
     if (showFileDetails && child.files?.length > 0) {
@@ -1059,6 +1157,260 @@ function renderSourceChildren(children, sourceType, options = {}) {
     }
   });
   return list;
+}
+
+function renderSourceReader(source) {
+  const reader = el("section", "source-reader");
+  const heading = el("div", "source-reader-heading");
+  heading.append(el("h4", "", t("sourceReaderTitle")));
+  const documents = readerDocumentsForSource(source);
+  if (!source.sourceDocuments?.length && source.exampleItems.length > 0) {
+    heading.append(el("span", "", t("sourceReaderFallback")));
+  }
+  reader.append(heading);
+  if (documents.length === 0) {
+    reader.append(emptyMessage(t("sourceReaderEmpty")));
+    return reader;
+  }
+  documents.forEach((document, index) => {
+    reader.append(renderReaderDocument(document, index === 0 || documents.length === 1));
+  });
+  return reader;
+}
+
+function readerDocumentsForSource(source) {
+  if (source.sourceDocuments?.length) {
+    return source.sourceDocuments
+      .map(normalizeReaderDocument)
+      .sort(compareReaderDocuments);
+  }
+  return fallbackReaderDocuments(source).sort(compareReaderDocuments);
+}
+
+function normalizeReaderDocument(document) {
+  return {
+    source_type: document.source_type || "subtitle",
+    source_title: document.source_title || document.source_file || "",
+    source_artist: document.source_artist || "",
+    source_album: document.source_album || "",
+    source_file: document.source_file || "",
+    episode: Number.isInteger(document.episode) ? document.episode : null,
+    lines: asArray(document.lines).map((line) => ({
+      text: line.text || "",
+      start_ms: Number.isInteger(line.start_ms) ? line.start_ms : null,
+      end_ms: Number.isInteger(line.end_ms) ? line.end_ms : null,
+      matches: normalizeReaderMatches(line.text || "", line.matches),
+    })),
+  };
+}
+
+function fallbackReaderDocuments(source) {
+  const documents = new Map();
+  source.exampleItems.forEach(({ word, example }) => {
+    const file = example.reference?.source_file || example.subtitle_file || "";
+    const key = [
+      example.source_type || source.type,
+      example.source_title || source.title,
+      example.source_artist || "",
+      example.source_album || "",
+      file,
+      Number.isInteger(example.episode) ? example.episode : "",
+    ].join("\u0000");
+    if (!documents.has(key)) {
+      documents.set(key, {
+        source_type: example.source_type || source.type,
+        source_title: example.source_title || source.title,
+        source_artist: example.source_artist || "",
+        source_album: example.source_album || "",
+        source_file: file,
+        episode: Number.isInteger(example.episode) ? example.episode : null,
+        lines: [],
+      });
+    }
+    const document = documents.get(key);
+    const text = example.sentence || "";
+    const lineKey = [example.start_ms ?? "", text].join("\u0000");
+    let line = document.lines.find((item) => item.key === lineKey);
+    if (!line) {
+      line = {
+        key: lineKey,
+        text,
+        start_ms: Number.isInteger(example.start_ms) ? example.start_ms : null,
+        end_ms: Number.isInteger(example.end_ms) ? example.end_ms : null,
+        matches: [],
+      };
+      document.lines.push(line);
+    }
+    const matchedText = example.matched_text || word.word || "";
+    const start = matchedText ? text.indexOf(matchedText) : -1;
+    line.matches.push({
+      word: word.word || matchedText,
+      matched_text: matchedText,
+      reading: word.reading || "",
+      level: Number.isInteger(word.level_number) ? word.level_number : null,
+      start: start >= 0 ? start : null,
+      end: start >= 0 ? start + matchedText.length : null,
+    });
+  });
+  return [...documents.values()].map((document) => ({
+    ...document,
+    lines: document.lines
+      .map(({ key, ...line }) => ({
+        ...line,
+        matches: normalizeReaderMatches(line.text, line.matches),
+      }))
+      .sort(compareReaderLines),
+  }));
+}
+
+function normalizeReaderMatches(text, matches) {
+  return asArray(matches)
+    .map((match) => {
+      const word = String(match.word || match.matched_text || "").trim();
+      const matchedText = String(match.matched_text || word).trim();
+      let start = Number.isInteger(match.start) ? match.start : null;
+      let end = Number.isInteger(match.end) ? match.end : null;
+      if ((start === null || end === null) && matchedText) {
+        const index = text.indexOf(matchedText);
+        if (index >= 0) {
+          start = index;
+          end = index + matchedText.length;
+        }
+      }
+      return {
+        ...match,
+        word,
+        matched_text: matchedText,
+        start,
+        end,
+      };
+    })
+    .filter((match) => match.word && match.matched_text);
+}
+
+function renderReaderDocument(document, open) {
+  const details = el("details", "reader-document");
+  details.open = open;
+  const summary = el("summary", "");
+  summary.append(
+    strong(readerDocumentLabel(document)),
+    el("span", "", `${formatNumber(document.lines.length)} ${t("sourceInventoryLines")}`),
+  );
+  details.append(summary);
+  const lines = el("div", "reader-lines");
+  document.lines.forEach((line) => {
+    lines.append(renderReaderLine(line));
+  });
+  details.append(lines);
+  return details;
+}
+
+function readerDocumentLabel(document) {
+  if (document.source_type === "subtitle") {
+    const episode = Number.isInteger(document.episode) ? `${formatEpisodeLabel(document.episode)} ` : "";
+    return `${episode}${cleanSourceFileLabel(document.source_file || document.source_title)}`;
+  }
+  if (document.source_type === "lyrics") {
+    return [document.source_title, document.source_artist].filter(Boolean).join(" · ");
+  }
+  return cleanSourceFileLabel(document.source_file || document.source_title);
+}
+
+function renderReaderLine(line) {
+  const row = el("div", "reader-line");
+  const time = Number.isInteger(line.start_ms) ? formatTimestamp(line.start_ms) : "";
+  row.append(el("span", "reader-line-time", time));
+  const textLine = el("div", "reader-line-text");
+  appendReaderHighlighted(textLine, line.text, line.matches);
+  row.append(textLine);
+  const words = uniqueReaderWords(line.matches);
+  if (words.length > 0) {
+    const wordList = el("div", "reader-line-words");
+    words.forEach((match) => {
+      const word = findWord(match.word);
+      const chip = el("button", "reader-word-chip", match.word);
+      chip.type = "button";
+      if (word?.level) {
+        chip.append(el("small", "", word.level));
+      }
+      chip.addEventListener("click", () => openWordFromSource(match.word));
+      wordList.append(chip);
+    });
+    row.append(wordList);
+  }
+  return row;
+}
+
+function appendReaderHighlighted(target, text, matches) {
+  const validMatches = asArray(matches)
+    .filter((match) => Number.isInteger(match.start) && Number.isInteger(match.end))
+    .filter((match) => match.start >= 0 && match.end > match.start && match.end <= text.length)
+    .sort((left, right) => left.start - right.start || right.end - left.end);
+  let cursor = 0;
+  validMatches.forEach((match) => {
+    if (match.start < cursor) {
+      return;
+    }
+    if (match.start > cursor) {
+      target.append(document.createTextNode(text.slice(cursor, match.start)));
+    }
+    const button = el("button", "reader-token", text.slice(match.start, match.end));
+    button.type = "button";
+    button.title = match.word;
+    button.addEventListener("click", () => openWordFromSource(match.word));
+    target.append(button);
+    cursor = match.end;
+  });
+  if (cursor < text.length) {
+    target.append(document.createTextNode(text.slice(cursor)));
+  }
+  if (target.childNodes.length === 0) {
+    target.textContent = text;
+  }
+}
+
+function uniqueReaderWords(matches) {
+  const seen = new Set();
+  const result = [];
+  matches.forEach((match) => {
+    if (!match.word || seen.has(match.word) || !findWord(match.word)) {
+      return;
+    }
+    seen.add(match.word);
+    result.push(match);
+  });
+  return result;
+}
+
+function compareReaderDocuments(left, right) {
+  const episodeDiff = compareNullableNumbers(left.episode, right.episode);
+  if (episodeDiff !== 0) {
+    return episodeDiff;
+  }
+  return readerDocumentLabel(left).localeCompare(readerDocumentLabel(right), app.lang === "zh" ? "zh-CN" : "ja-JP");
+}
+
+function compareReaderLines(left, right) {
+  const timeDiff = compareNullableNumbers(left.start_ms, right.start_ms);
+  if (timeDiff !== 0) {
+    return timeDiff;
+  }
+  return String(left.text || "").localeCompare(String(right.text || ""), "ja-JP");
+}
+
+function compareNullableNumbers(left, right) {
+  const leftNumber = Number.isFinite(left) ? left : null;
+  const rightNumber = Number.isFinite(right) ? right : null;
+  if (leftNumber !== null && rightNumber !== null) {
+    return leftNumber - rightNumber;
+  }
+  if (leftNumber !== null) {
+    return -1;
+  }
+  if (rightNumber !== null) {
+    return 1;
+  }
+  return 0;
 }
 
 function renderSourceSnippet(item) {
@@ -1074,7 +1426,7 @@ function renderSourceSnippet(item) {
 }
 
 function openWordFromSource(wordText) {
-  const word = app.words.find((item) => item.word === wordText);
+  const word = findWord(wordText);
   if (!word) {
     return;
   }
@@ -1083,6 +1435,10 @@ function openWordFromSource(wordText) {
   app.selectedWord = word;
   hideSourcePanel();
   render();
+}
+
+function findWord(wordText) {
+  return app.words.find((item) => item.word === wordText);
 }
 
 function hasExampleAnnotations(example) {

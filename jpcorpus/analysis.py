@@ -85,6 +85,36 @@ class WordExample:
 
 
 @dataclass
+class SourceLineMatch:
+    word: str
+    matched_text: str
+    reading: str | None = None
+    level: int | None = None
+    start: int | None = None
+    end: int | None = None
+
+
+@dataclass
+class SourceLine:
+    text: str
+    start_ms: int | None = None
+    end_ms: int | None = None
+    matches: list[SourceLineMatch] = field(default_factory=list)
+
+
+@dataclass
+class SourceDocument:
+    source_type: str
+    source_title: str
+    source_file: str
+    source_artist: str | None = None
+    source_album: str | None = None
+    episode: int | None = None
+    token_count: int = 0
+    lines: list[SourceLine] = field(default_factory=list)
+
+
+@dataclass
 class WordStats:
     entry: WordEntry
     count: int = 0
@@ -152,6 +182,7 @@ class CorpusAnalysis:
     music_track_count: int = 0
     lyric_file_count: int = 0
     source_type_counts: Counter[str] = field(default_factory=Counter)
+    source_documents: list[SourceDocument] = field(default_factory=list)
 
     def top_words(self, *, level: int | None = None, limit: int = 50) -> list[WordStats]:
         words = list(self.word_stats.values())
@@ -211,6 +242,7 @@ def analyze_media(
     seen_by_level: dict[int, set[str]] = defaultdict(set)
     unique_tokens: set[str] = set()
     source_type_counts: Counter[str] = Counter()
+    source_documents: list[SourceDocument] = []
     total_tokens = 0
     text_files = text_files or []
 
@@ -230,8 +262,18 @@ def analyze_media(
         source = show_stats.setdefault(source_title, ShowStats(title=source_title))
         source.file_count += 1
         character_aliases = build_character_aliases(show_characters or [], tokenizer)
+        document = SourceDocument(
+            source_type=source_type,
+            source_title=source_title,
+            source_file=source_file,
+            source_artist=source_artist,
+            source_album=source_album,
+            episode=episode,
+        )
         for line_index, line in enumerate(lines):
             tokens = tokenizer.tokenize(line.text)
+            document.token_count += len(tokens)
+            line_matches: list[SourceLineMatch] = []
             for token in tokens:
                 total_tokens += 1
                 source_type_counts[source_type] += 1
@@ -253,6 +295,16 @@ def analyze_media(
                     continue
                 if is_embedded_katakana_match(line.text, token, candidate_entry):
                     continue
+                line_matches.append(
+                    SourceLineMatch(
+                        word=candidate_entry.surface,
+                        matched_text=token.surface,
+                        reading=reading,
+                        level=candidate_entry.level if candidate_entry.level > 0 else None,
+                        start=token.start,
+                        end=token.end,
+                    )
+                )
                 stats = candidate_word_stats.setdefault(
                     candidate_entry.surface,
                     WordStats(entry=candidate_entry),
@@ -304,6 +356,15 @@ def analyze_media(
                         context_max_lines=context_max_lines,
                         max_examples_per_word=max_examples_per_word,
                     )
+            document.lines.append(
+                SourceLine(
+                    text=line.text,
+                    start_ms=line.start_ms,
+                    end_ms=line.end_ms,
+                    matches=line_matches,
+                )
+            )
+        source_documents.append(document)
 
     for subtitle_file in subtitle_files:
         if not subtitle_file.path.exists():
@@ -359,6 +420,7 @@ def analyze_media(
         music_track_count=music_track_count,
         lyric_file_count=len(existing_lyric_files),
         source_type_counts=source_type_counts,
+        source_documents=source_documents,
     )
 
 

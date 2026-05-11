@@ -92,8 +92,13 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 12
+    assert payload["schema_version"] == 13
     assert payload["summary"]["lyric_file_count"] == 0
+    assert payload["sources"][0]["source_type"] == "subtitle"
+    assert payload["sources"][0]["source_file"] == "sample.srt"
+    assert payload["sources"][0]["lines"][0]["text"] == "私は約束を見る。"
+    assert payload["sources"][0]["lines"][0]["matches"][0]["word"] == "約束"
+    assert payload["sources"][0]["lines"][0]["matches"][0]["matched_text"] == "約束"
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
     assert payload["words"][0]["source_type_counts"] == {"subtitle": 1}

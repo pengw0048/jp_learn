@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .analysis import CorpusAnalysis, WordExample, WordStats
+from .analysis import CorpusAnalysis, SourceDocument, SourceLine, SourceLineMatch, WordExample, WordStats
 from .lexical_notes import (
     LexicalResourceIndex,
     target_kanji_for_words,
@@ -18,7 +18,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def analysis_to_dict(
@@ -52,6 +52,7 @@ def analysis_to_dict(
         )
         for word in words
     ]
+    exported_words = {word["word"] for word in word_payloads if word.get("word")}
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -87,6 +88,10 @@ def analysis_to_dict(
                 },
             }
             for show in sorted(analysis.show_stats.values(), key=lambda item: item.title)
+        ],
+        "sources": [
+            _source_document_to_dict(document, exported_words=exported_words)
+            for document in analysis.source_documents
         ],
         "words": word_payloads,
     }
@@ -406,4 +411,48 @@ def _example_to_dict(example: WordExample) -> dict[str, Any]:
             "start_ms": example.start_ms,
             "end_ms": example.end_ms,
         },
+    }
+
+
+def _source_document_to_dict(
+    document: SourceDocument,
+    *,
+    exported_words: set[str],
+) -> dict[str, Any]:
+    return {
+        "source_type": document.source_type,
+        "source_title": document.source_title,
+        "source_artist": document.source_artist,
+        "source_album": document.source_album,
+        "source_file": document.source_file,
+        "episode": document.episode,
+        "token_count": document.token_count,
+        "lines": [
+            _source_line_to_dict(line, exported_words=exported_words)
+            for line in document.lines
+        ],
+    }
+
+
+def _source_line_to_dict(line: SourceLine, *, exported_words: set[str]) -> dict[str, Any]:
+    return {
+        "text": line.text,
+        "start_ms": line.start_ms,
+        "end_ms": line.end_ms,
+        "matches": [
+            _source_line_match_to_dict(match)
+            for match in line.matches
+            if match.word in exported_words
+        ],
+    }
+
+
+def _source_line_match_to_dict(match: SourceLineMatch) -> dict[str, Any]:
+    return {
+        "word": match.word,
+        "matched_text": match.matched_text,
+        "reading": match.reading,
+        "level": match.level,
+        "start": match.start,
+        "end": match.end,
     }

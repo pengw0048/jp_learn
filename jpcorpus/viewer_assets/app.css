@@ -1332,7 +1332,9 @@ mark {
 }
 
 .source-child-list,
-.source-snippets {
+.source-snippets,
+.source-reader,
+.reader-lines {
   display: grid;
   gap: 6px;
 }
@@ -1396,8 +1398,118 @@ mark {
 }
 
 .source-detail-heading h3,
-.source-snippets h4 {
+.source-snippets h4,
+.source-reader h4 {
   font-size: 14px;
+}
+
+.source-reader-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.source-reader-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reader-document {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.reader-document summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reader-document summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-document summary span {
+  white-space: nowrap;
+}
+
+.reader-lines {
+  padding: 0 10px 10px;
+}
+
+.reader-line {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(120px, 0.35fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-top: 1px solid #edf1f1;
+}
+
+.reader-line-time {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.reader-line-text {
+  color: var(--text);
+  font-family: var(--font-ja);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.reader-token {
+  display: inline;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: #ffe9a6;
+  color: var(--text);
+  font: inherit;
+  font-weight: 760;
+  line-height: inherit;
+}
+
+.reader-token:hover {
+  background: #ffd866;
+}
+
+.reader-line-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.reader-word-chip {
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.reader-word-chip small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .source-snippet {
@@ -1615,6 +1727,15 @@ mark {
 
   .study-next-action {
     justify-self: stretch;
+  }
+
+  .reader-line {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .reader-line-words {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 }
 
