@@ -142,7 +142,7 @@ const text = {
     studyKnown: "已经会了",
     studyMastered: "已记住",
     studyChecks: "勾 {count}/{target}",
-    studyCheckButton: "记一勾 +1",
+    studyCheckButton: "打勾 +1",
     studyHint: "先复习到期的词，再补新词；今天见过就打勾，满 7 勾算记住。",
     studyReview: "复习",
     studyNew: "新词",
