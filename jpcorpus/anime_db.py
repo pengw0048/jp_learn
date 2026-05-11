@@ -83,7 +83,7 @@ class AnimeOfflineIndex:
     def load(cls, path: Path) -> "AnimeOfflineIndex":
         if not path.exists():
             raise FileNotFoundError(
-                f"Anime Offline Database not found: {path}. Run `jpcorpus data fetch-anime-db`."
+                f"Anime Offline Database not found: {path}. Use Refresh all in the viewer first."
             )
         if path.suffix == ".jsonl":
             records = []
@@ -161,4 +161,3 @@ def download_latest_anime_db(target: Path, *, timeout: float = 120.0) -> Path:
         response.raise_for_status()
         target.write_bytes(response.content)
     return target
-

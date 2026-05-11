@@ -91,7 +91,7 @@ class JLPTWords:
 def load_jlpt_words(path: Path) -> JLPTWords:
     if not path.exists():
         raise FileNotFoundError(
-            f"JLPT word list not found: {path}. Run `jpcorpus data init-sample-jlpt` or place a real list there."
+            f"JLPT word list not found: {path}. Use Refresh all in the viewer or place a real list there."
         )
     if path.suffix.casefold() == ".csv":
         with path.open("r", encoding="utf-8-sig", newline="") as handle:

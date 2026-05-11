@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import threading
 import time
 import uuid
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -237,8 +237,7 @@ class ViewerJobRunner:
             elif spec["type"] == "export_corpus":
                 result = self._run_export_corpus(job)
             else:
-                command = maintenance_command(spec)
-                result = self._run_command(job, command)
+                result = self._run_maintenance_task(job, spec)
                 result["reload_corpus"] = spec["type"] in CORPUS_RELOAD_TASKS
             self._finish(job, "succeeded", result)
         except Exception as exc:
@@ -274,7 +273,7 @@ class ViewerJobRunner:
             if step_spec["type"] == "export_corpus":
                 step_result = self._run_export_corpus(job)
             else:
-                step_result = self._run_command(job, maintenance_command(step_spec))
+                step_result = self._run_maintenance_task(job, step_spec)
             completed_steps.append(
                 {
                     "type": step_spec["type"],
@@ -307,8 +306,7 @@ class ViewerJobRunner:
                 },
             )
         raw_path = Path("corpus.json")
-        command = jpcorpus_command() + ["export", "corpus-json", "--output", str(raw_path)]
-        self._run_command(job, command)
+        self._run_export_corpus_file(job, raw_path)
         served_path = self.corpus_path.resolve()
         if served_path == raw_path.resolve():
             if job.kind == "export_corpus":
@@ -360,25 +358,128 @@ class ViewerJobRunner:
             "reload_corpus": True,
         }
 
-    def _run_command(self, job: ViewerJob, command: list[str]) -> dict[str, Any]:
-        self._log(job, f"Running: {' '.join(command)}")
-        process = subprocess.Popen(
-            command,
-            cwd=Path.cwd(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
+    def _run_export_corpus_file(self, job: ViewerJob, output: Path) -> dict[str, Any]:
+        from . import cli as cli_tasks
+
+        return self._run_callable(
+            job,
+            "Export corpus",
+            cli_tasks.export_corpus_json,
+            output=output,
+            state_db=self.state_db,
+            jlpt_words=cli_tasks.DEFAULT_JLPT_WORDS,
+            level=None,
+            limit=None,
+            examples_per_word=5,
+            context_lines=2,
+            context_min_chars=40,
+            context_max_lines=4,
+            zh_dict=cli_tasks.DEFAULT_ZH_DICT,
+            jmdict=cli_tasks.DEFAULT_JMDICT,
+            kanjidic2=cli_tasks.DEFAULT_KANJIDIC2,
+            lexical_notes=True,
+            subtitles=None,
+            texts=None,
+            text_dir=cli_tasks.DEFAULT_TEXTS_DIR,
         )
-        assert process.stdout is not None
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:
-                self._log(job, line)
-        return_code = process.wait()
-        if return_code != 0:
-            raise RuntimeError(f"Command exited with status {return_code}.")
-        return {"return_code": return_code}
+
+    def _run_maintenance_task(self, job: ViewerJob, spec: dict[str, Any]) -> dict[str, Any]:
+        from . import cli as cli_tasks
+
+        task_type = spec["type"]
+        if task_type == "sync_anime":
+            return self._run_callable(
+                job,
+                "Sync Bangumi anime and subtitles",
+                cli_tasks.sync,
+                state_db=self.state_db,
+                anime_db=cli_tasks.DEFAULT_ANIME_DB,
+                cache_dir=cli_tasks.DEFAULT_JIMAKU_CACHE,
+                max_shows=None,
+                max_files_per_show=24,
+                download_subtitles=True,
+            )
+        if task_type == "sync_music":
+            return self._run_callable(
+                job,
+                "Sync Bangumi music tracks",
+                cli_tasks.sync_lyrics,
+                state_db=self.state_db,
+                max_albums=None,
+                max_tracks=None,
+            )
+        if task_type == "fetch_lyrics":
+            return self._run_callable(
+                job,
+                "Fetch missing LRCLIB lyrics",
+                cli_tasks.fetch_lyrics,
+                state_db=self.state_db,
+                cache_dir=cli_tasks.DEFAULT_LYRICS_CACHE,
+                limit=spec["limit"],
+                overwrite=spec["overwrite"],
+                force=False,
+                concurrency=spec["concurrency"],
+            )
+        if task_type == "fetch_anime_db":
+            return self._run_callable(
+                job,
+                "Update Anime Offline Database",
+                cli_tasks.fetch_anime_db,
+                output=cli_tasks.DEFAULT_ANIME_DB,
+            )
+        if task_type == "fetch_zh_dict":
+            return self._run_callable(
+                job,
+                "Update Japanese-Chinese dictionary",
+                cli_tasks.fetch_zh_dict,
+                output=cli_tasks.DEFAULT_ZH_DICT,
+                source_url="https://raw.githubusercontent.com/lxl66566/Japanese-Chinese-thesaurus/main/final.json",
+            )
+        if task_type == "fetch_jlpt_words":
+            return self._run_callable(
+                job,
+                "Update JLPT word list",
+                cli_tasks.fetch_jlpt_words,
+                output=cli_tasks.DEFAULT_JLPT_WORDS,
+                source_url="https://raw.githubusercontent.com/elzup/jlpt-word-list/master/out/all.csv",
+            )
+        if task_type == "fetch_jmdict":
+            return self._run_callable(
+                job,
+                "Update JMdict",
+                cli_tasks.fetch_jmdict,
+                output=cli_tasks.DEFAULT_JMDICT,
+                source_url="http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz",
+            )
+        if task_type == "fetch_kanjidic2":
+            return self._run_callable(
+                job,
+                "Update KANJIDIC2",
+                cli_tasks.fetch_kanjidic2,
+                output=cli_tasks.DEFAULT_KANJIDIC2,
+                source_url="http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz",
+            )
+        if task_type == "fetch_lexical_resources":
+            return self._run_callable(
+                job,
+                "Update lexical resources",
+                cli_tasks.fetch_lexical_resources,
+                jmdict_output=cli_tasks.DEFAULT_JMDICT,
+                kanjidic2_output=cli_tasks.DEFAULT_KANJIDIC2,
+            )
+        raise ValueError(f"Unsupported maintenance task: {task_type}")
+
+    def _run_callable(self, job: ViewerJob, label: str, func: Any, **kwargs: Any) -> dict[str, Any]:
+        self._log(job, f"Running: {label}")
+        stdout = StringIO()
+        stderr = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            func(**kwargs)
+        for output in (stdout.getvalue(), stderr.getvalue()):
+            for line in output.splitlines():
+                if line:
+                    self._log(job, line)
+        return {"ok": True}
 
     def _log(self, job: ViewerJob, message: str) -> None:
         timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -760,35 +861,6 @@ def write_corpus_atomic(path: Path, payload: dict[str, Any]) -> None:
     temp_path.replace(path)
 
 
-def maintenance_command(spec: dict[str, Any]) -> list[str]:
-    command = jpcorpus_command()
-    task_type = spec["type"]
-    if task_type == "sync_anime":
-        return command + ["sync"]
-    if task_type == "sync_music":
-        return command + ["lyrics", "sync"]
-    if task_type == "fetch_lyrics":
-        args = command + ["lyrics", "fetch", "--concurrency", str(spec["concurrency"])]
-        if spec["limit"] is not None:
-            args.extend(["--limit", str(spec["limit"])])
-        if spec["overwrite"]:
-            args.append("--overwrite")
-        return args
-    if task_type == "fetch_anime_db":
-        return command + ["data", "fetch-anime-db"]
-    if task_type == "fetch_zh_dict":
-        return command + ["data", "fetch-zh-dict"]
-    if task_type == "fetch_jlpt_words":
-        return command + ["data", "fetch-jlpt-words"]
-    if task_type == "fetch_jmdict":
-        return command + ["data", "fetch-jmdict"]
-    if task_type == "fetch_kanjidic2":
-        return command + ["data", "fetch-kanjidic2"]
-    if task_type == "fetch_lexical_resources":
-        return command + ["data", "fetch-lexical-resources"]
-    raise ValueError(f"Unsupported maintenance task: {task_type}")
-
-
 def composite_maintenance_steps(spec: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     lyric_spec = {
         "type": "fetch_lyrics",
@@ -813,14 +885,6 @@ def composite_maintenance_steps(spec: dict[str, Any]) -> list[tuple[str, dict[st
             *sync_steps,
         ]
     raise ValueError(f"Unsupported composite maintenance task: {spec['type']}")
-
-
-def jpcorpus_command() -> list[str]:
-    script_path = Path(sys.executable).with_name("jpcorpus")
-    if script_path.exists():
-        return [str(script_path)]
-    return ["jpcorpus"]
-
 
 def clamp_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
     try:

@@ -1,10 +1,11 @@
 import pytest
 
 from jpcorpus.viewer_jobs import (
+    ViewerJob,
+    ViewerJobRunner,
     build_annotation_predicate,
     composite_maintenance_steps,
     llm_config_status,
-    maintenance_command,
     normalize_annotation_spec,
     normalize_maintenance_spec,
     public_annotation_spec,
@@ -96,8 +97,16 @@ def test_normalize_maintenance_spec_accepts_simple_sync_action():
     assert spec["concurrency"] == 4
 
 
-def test_maintenance_command_builds_fixed_fetch_lyrics_command(monkeypatch):
-    monkeypatch.setattr("jpcorpus.viewer_jobs.jpcorpus_command", lambda: ["jpcorpus"])
+def test_maintenance_task_fetch_lyrics_calls_internal_function(monkeypatch, tmp_path):
+    calls = {}
+
+    def fake_fetch_lyrics(**kwargs):
+        calls.update(kwargs)
+        print("Fetched lyrics")
+
+    monkeypatch.setattr("jpcorpus.cli.fetch_lyrics", fake_fetch_lyrics)
+    runner = ViewerJobRunner(corpus_path=tmp_path / "corpus.json", state_db=tmp_path / "state.db")
+    job = ViewerJob(id="job", kind="fetch_lyrics")
     spec = normalize_maintenance_spec(
         {
             "type": "fetch_lyrics",
@@ -107,30 +116,45 @@ def test_maintenance_command_builds_fixed_fetch_lyrics_command(monkeypatch):
         }
     )
 
-    assert maintenance_command(spec) == [
-        "jpcorpus",
-        "lyrics",
-        "fetch",
-        "--concurrency",
-        "3",
-        "--limit",
-        "5",
-        "--overwrite",
-    ]
+    assert runner._run_maintenance_task(job, spec) == {"ok": True}
+    assert calls["state_db"] == tmp_path / "state.db"
+    assert calls["limit"] == 5
+    assert calls["concurrency"] == 3
+    assert calls["overwrite"] is True
+    assert calls["force"] is False
+    assert any("Fetched lyrics" in line for line in job.log)
 
 
-def test_maintenance_command_does_not_apply_limit_to_sync(monkeypatch):
-    monkeypatch.setattr("jpcorpus.viewer_jobs.jpcorpus_command", lambda: ["jpcorpus"])
+def test_maintenance_task_sync_anime_does_not_apply_limit(monkeypatch, tmp_path):
+    calls = {}
+
+    def fake_sync(**kwargs):
+        calls.update(kwargs)
+
+    monkeypatch.setattr("jpcorpus.cli.sync", fake_sync)
+    runner = ViewerJobRunner(corpus_path=tmp_path / "corpus.json", state_db=tmp_path / "state.db")
+    job = ViewerJob(id="job", kind="sync_anime")
     spec = normalize_maintenance_spec({"type": "sync_anime", "limit": 3})
 
-    assert maintenance_command(spec) == ["jpcorpus", "sync"]
+    assert runner._run_maintenance_task(job, spec) == {"ok": True}
+    assert calls["state_db"] == tmp_path / "state.db"
+    assert calls["max_shows"] is None
 
 
-def test_maintenance_command_can_fetch_lexical_resources(monkeypatch):
-    monkeypatch.setattr("jpcorpus.viewer_jobs.jpcorpus_command", lambda: ["jpcorpus"])
+def test_maintenance_task_can_fetch_lexical_resources(monkeypatch, tmp_path):
+    calls = {}
+
+    def fake_fetch_lexical_resources(**kwargs):
+        calls.update(kwargs)
+
+    monkeypatch.setattr("jpcorpus.cli.fetch_lexical_resources", fake_fetch_lexical_resources)
+    runner = ViewerJobRunner(corpus_path=tmp_path / "corpus.json", state_db=tmp_path / "state.db")
+    job = ViewerJob(id="job", kind="fetch_lexical_resources")
     spec = normalize_maintenance_spec({"type": "fetch_lexical_resources"})
 
-    assert maintenance_command(spec) == ["jpcorpus", "data", "fetch-lexical-resources"]
+    assert runner._run_maintenance_task(job, spec) == {"ok": True}
+    assert calls["jmdict_output"].name == "JMdict_e.gz"
+    assert calls["kanjidic2_output"].name == "kanjidic2.xml.gz"
 
 
 def test_composite_sync_media_finishes_with_corpus_export():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -67,31 +68,31 @@ load_dotenv()
 DEFAULT_VIEWER_CORPUS = Path("corpus.json")
 DEFAULT_VIEWER_HOST = "127.0.0.1"
 DEFAULT_VIEWER_PORT = 8767
+HELP_TEXT = """Usage: jpcorpus [OPTIONS]
 
-app = typer.Typer(
-    help="Open the local jpcorpus app. Subcommands are advanced maintenance/debug tools.",
-    invoke_without_command=True,
-)
-link_app = typer.Typer(help="Link external accounts.")
-export_app = typer.Typer(help="Export study artifacts.")
-data_app = typer.Typer(help="Manage local cache files.")
-lyrics_app = typer.Typer(help="Sync music tracks and cache lyric files.")
-app.add_typer(link_app, name="link", hidden=True)
-app.add_typer(export_app, name="export", hidden=True)
-app.add_typer(data_app, name="data", hidden=True)
-app.add_typer(lyrics_app, name="lyrics", hidden=True)
+Open the local jpcorpus app.
+
+Options:
+  -h, --help  Show this message and exit.
+"""
 
 
-@app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
-    """Open the local viewer when no advanced subcommand is provided."""
-    if ctx.invoked_subcommand is None:
-        launch_viewer(
-            DEFAULT_VIEWER_CORPUS,
-            host=DEFAULT_VIEWER_HOST,
-            port=DEFAULT_VIEWER_PORT,
-            open_browser=True,
-        )
+def main(argv: list[str] | None = None) -> None:
+    """Open the local viewer."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] in {"-h", "--help"}:
+        typer.echo(HELP_TEXT.rstrip())
+        return
+    if args:
+        typer.echo(f"Unknown argument: {args[0]}", err=True)
+        typer.echo("Usage: jpcorpus [OPTIONS]", err=True)
+        raise SystemExit(2)
+    launch_viewer(
+        DEFAULT_VIEWER_CORPUS,
+        host=DEFAULT_VIEWER_HOST,
+        port=DEFAULT_VIEWER_PORT,
+        open_browser=True,
+    )
 
 
 def user_agent() -> str:
@@ -160,7 +161,6 @@ def load_analysis(
     )
 
 
-@link_app.command("bangumi")
 def link_bangumi(
     client_id: str = typer.Option(
         None,
@@ -203,7 +203,6 @@ def link_bangumi(
     typer.echo(f"Linked Bangumi user: {me.get('username') or me.get('nickname') or me.get('id')}")
 
 
-@app.command(hidden=True)
 def sync(
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
     anime_db: Path = typer.Option(DEFAULT_ANIME_DB, help="Anime Offline Database JSON path."),
@@ -216,7 +215,7 @@ def sync(
     state = State(state_db)
     token = state.get_token("bangumi")
     if token is None:
-        raise typer.BadParameter("Bangumi is not linked. Run `jpcorpus link bangumi` first.")
+        raise typer.BadParameter("Bangumi is not linked. Save Bangumi credentials in the viewer first.")
     client = BangumiClient(access_token=token["access_token"], user_agent=user_agent())
     username = token.get("username")
     if not username:
@@ -301,7 +300,6 @@ def sync(
     typer.echo(f"Jimaku matched {matched} shows and cached {downloaded} subtitle files.")
 
 
-@lyrics_app.command("sync")
 def sync_lyrics(
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
     max_albums: int | None = typer.Option(None, help="Limit Bangumi music collections during development."),
@@ -311,7 +309,7 @@ def sync_lyrics(
     state = State(state_db)
     token = state.get_token("bangumi")
     if token is None:
-        raise typer.BadParameter("Bangumi is not linked. Run `jpcorpus link bangumi` first.")
+        raise typer.BadParameter("Bangumi is not linked. Save Bangumi credentials in the viewer first.")
     client = BangumiClient(access_token=token["access_token"], user_agent=user_agent())
     username = token.get("username")
     if not username:
@@ -351,7 +349,6 @@ def sync_lyrics(
     typer.echo(f"Saved {saved_tracks} tracks from {len(collections)} Bangumi music collections.")
 
 
-@lyrics_app.command("fetch")
 def fetch_lyrics(
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
     cache_dir: Path = typer.Option(DEFAULT_LYRICS_CACHE, help="LRCLIB lyric cache directory."),
@@ -364,7 +361,7 @@ def fetch_lyrics(
     state = State(state_db)
     tracks = state.list_music_tracks()
     if not tracks:
-        typer.echo("No Bangumi music tracks yet. Run `jpcorpus lyrics sync` first.")
+        typer.echo("No Bangumi music tracks yet. Use Refresh in the viewer first.")
         return
 
     cached = {
@@ -621,7 +618,6 @@ def remove_cached_lyric(state: State, cached_paths: dict[str, Path], track_key: 
         path.unlink(missing_ok=True)
 
 
-@app.command(hidden=True)
 def report(
     output: Path = typer.Option(Path("report.md"), help="Markdown report output path."),
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
@@ -678,7 +674,6 @@ def report(
     typer.echo(f"Wrote report: {output}")
 
 
-@export_app.command("anki")
 def export_anki(
     output: Path = typer.Option(Path("personal-jlpt.apkg"), help="Anki .apkg output path."),
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
@@ -719,7 +714,6 @@ def export_anki(
     typer.echo(f"Wrote Anki deck: {output}")
 
 
-@export_app.command("corpus-json")
 def export_corpus_json(
     output: Path = typer.Option(Path("corpus.json"), help="Structured corpus JSON output path."),
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
@@ -816,7 +810,6 @@ def launch_viewer(corpus: Path, *, host: str, port: int, open_browser: bool) -> 
     serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=typer.echo)
 
 
-@app.command(hidden=True)
 def view(
     corpus: Path = typer.Option(DEFAULT_VIEWER_CORPUS, help="Structured corpus JSON file."),
     host: str = typer.Option(DEFAULT_VIEWER_HOST, help="Host to bind."),
@@ -827,7 +820,6 @@ def view(
     launch_viewer(corpus, host=host, port=port, open_browser=open_browser)
 
 
-@app.command(hidden=True)
 def annotate(
     input: Path = typer.Option(Path("corpus.json"), help="Input corpus JSON path."),
     output: Path | None = typer.Option(None, help="Annotated corpus JSON output path. Defaults to the input path."),
@@ -967,7 +959,6 @@ def annotate(
         typer.echo(f"Annotated {count} examples: {output_path}")
 
 
-@data_app.command("fetch-anime-db")
 def fetch_anime_db(
     output: Path = typer.Option(DEFAULT_ANIME_DB, help="Output JSON path."),
 ) -> None:
@@ -976,7 +967,6 @@ def fetch_anime_db(
     typer.echo(f"Downloaded Anime Offline Database: {path}")
 
 
-@data_app.command("init-sample-jlpt")
 def init_sample_jlpt(
     output: Path = typer.Option(DEFAULT_JLPT_WORDS, help="Output JSON path."),
     overwrite: bool = typer.Option(False, help="Overwrite an existing file."),
@@ -989,7 +979,6 @@ def init_sample_jlpt(
     typer.echo(f"Wrote sample JLPT list: {output}")
 
 
-@data_app.command("fetch-jlpt-words")
 def fetch_jlpt_words(
     output: Path = typer.Option(DEFAULT_JLPT_WORDS, help="Output JSON path."),
     source_url: str = typer.Option(
@@ -1004,7 +993,6 @@ def fetch_jlpt_words(
     typer.echo(f"Wrote JLPT word list: {path} ({counts})")
 
 
-@data_app.command("fetch-jmdict")
 def fetch_jmdict(
     output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e_examp.gz-compatible path."),
     source_url: str = typer.Option(
@@ -1017,7 +1005,6 @@ def fetch_jmdict(
     typer.echo(f"Downloaded JMdict: {path}")
 
 
-@data_app.command("fetch-kanjidic2")
 def fetch_kanjidic2(
     output: Path = typer.Option(DEFAULT_KANJIDIC2, help="Output KANJIDIC2 XML/GZ path."),
     source_url: str = typer.Option(
@@ -1030,7 +1017,6 @@ def fetch_kanjidic2(
     typer.echo(f"Downloaded KANJIDIC2: {path}")
 
 
-@data_app.command("fetch-lexical-resources")
 def fetch_lexical_resources(
     jmdict_output: Path = typer.Option(DEFAULT_JMDICT, help="Output JMdict_e_examp.gz-compatible path."),
     kanjidic2_output: Path = typer.Option(DEFAULT_KANJIDIC2, help="Output KANJIDIC2 XML/GZ path."),
@@ -1041,7 +1027,6 @@ def fetch_lexical_resources(
     typer.echo(f"Downloaded lexical resources: {jmdict_path}, {kanjidic2_path}")
 
 
-@data_app.command("fetch-zh-dict")
 def fetch_zh_dict(
     output: Path = typer.Option(DEFAULT_ZH_DICT, help="Output JSON path."),
     source_url: str = typer.Option(
