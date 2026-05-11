@@ -910,30 +910,30 @@ select {
 }
 
 .examples-grid {
-  column-gap: 12px;
+  display: grid;
+  gap: 12px;
+  align-items: start;
 }
 
 .examples-grid.columns-auto {
-  column-width: 390px;
+  grid-template-columns: repeat(auto-fit, minmax(min(390px, 100%), 1fr));
 }
 
 .examples-grid.columns-1 {
-  column-count: 1;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .examples-grid.columns-2 {
-  column-count: 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .examples-grid.columns-3 {
-  column-count: 3;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .example {
+  min-width: 0;
   width: 100%;
-  display: inline-block;
-  break-inside: avoid;
-  margin: 0 0 12px;
   padding: 11px 13px;
   border: 1px solid var(--line);
   border-left-width: 3px;
@@ -1936,8 +1936,7 @@ mark {
   .examples-grid.columns-1,
   .examples-grid.columns-2,
   .examples-grid.columns-3 {
-    column-count: 1;
-    column-width: auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .detail-title-row,
