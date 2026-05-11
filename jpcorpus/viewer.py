@@ -9,7 +9,8 @@ from typing import Callable
 from urllib.parse import unquote, urlparse
 import webbrowser
 
-from .viewer_jobs import ViewerJobRunner, maintenance_status, save_viewer_config
+from .env import load_dotenv
+from .viewer_jobs import ViewerJobRunner, explain_reader_usage, maintenance_status, save_viewer_config
 
 
 ASSET_DIR = Path(__file__).with_name("viewer_assets")
@@ -60,7 +61,7 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request_path = unquote(urlparse(self.path).path)
-        if request_path not in {"/api/jobs/annotate", "/api/jobs/maintenance", "/api/config"}:
+        if request_path not in {"/api/jobs/annotate", "/api/jobs/maintenance", "/api/config", "/api/explain"}:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
         if self.job_runner is None:
@@ -71,6 +72,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             if request_path == "/api/config":
                 config = save_viewer_config(payload)
                 self._send_json({"config": config})
+                return
+            if request_path == "/api/explain":
+                self._send_json(explain_reader_usage(payload))
                 return
             if request_path == "/api/jobs/annotate":
                 job = self.job_runner.start_annotation(payload)
@@ -125,6 +129,7 @@ def serve_viewer(
     open_browser: bool,
     echo: Callable[[str], None] = print,
 ) -> None:
+    load_dotenv()
     corpus_path = corpus_path.resolve()
     if not corpus_path.exists():
         raise FileNotFoundError(f"Corpus JSON does not exist: {corpus_path}")

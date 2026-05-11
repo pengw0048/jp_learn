@@ -516,6 +516,72 @@ def maintenance_status(runner: ViewerJobRunner | None) -> dict[str, Any]:
     }
 
 
+def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
+    word = raw.get("word")
+    example = raw.get("example")
+    if not isinstance(word, dict) or not isinstance(example, dict):
+        raise ValueError("Explanation requires word and example objects.")
+
+    provider = str(raw.get("provider") or os.environ.get("JPCORPUS_LLM_PROVIDER") or "openai-compatible")
+    if provider not in ALLOWED_PROVIDERS:
+        raise ValueError(f"Unsupported provider: {provider}")
+    spec = {
+        "provider": provider,
+        "model": raw.get("model") or os.environ.get("JPCORPUS_LLM_MODEL") or os.environ.get("ANTHROPIC_MODEL"),
+        "cache_only": False,
+        "use_show_context": False,
+    }
+    _cache_context, client = resolve_annotation_runtime(spec)
+    if client is None:
+        raise ValueError("LLM client is not available for explanation.")
+    try:
+        explanation = client.annotate_example(compact_reader_word(word), compact_reader_example(example))
+    finally:
+        close_client = getattr(client, "close", None)
+        if callable(close_client):
+            close_client()
+    return {"explanation": explanation}
+
+
+def compact_reader_word(word: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "word": text_limit(word.get("word"), 80),
+        "reading": text_limit(word.get("reading"), 120),
+        "level": text_limit(word.get("level"), 12),
+        "meaning_zh": text_limit(word.get("meaning_zh"), 500),
+        "meaning": text_limit(word.get("meaning"), 500),
+    }
+
+
+def compact_reader_example(example: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_type": text_limit(example.get("source_type"), 24),
+        "source_title": text_limit(example.get("source_title"), 180),
+        "source_artist": text_limit(example.get("source_artist"), 180),
+        "source_album": text_limit(example.get("source_album"), 180),
+        "subtitle_file": text_limit(example.get("subtitle_file") or example.get("source_file"), 240),
+        "episode": example.get("episode") if isinstance(example.get("episode"), int) else None,
+        "start_ms": example.get("start_ms") if isinstance(example.get("start_ms"), int) else None,
+        "matched_text": text_limit(example.get("matched_text"), 80),
+        "sentence": text_limit(example.get("sentence"), 1600),
+        "context_before": text_list_limit(example.get("context_before"), item_limit=800, count_limit=4),
+        "context_after": text_list_limit(example.get("context_after"), item_limit=800, count_limit=4),
+    }
+
+
+def text_limit(value: Any, limit: int) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def text_list_limit(value: Any, *, item_limit: int, count_limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [text_limit(item, item_limit) for item in value[:count_limit] if str(item or "").strip()]
+
+
 def viewer_config_status() -> dict[str, Any]:
     bangumi_missing = [
         key

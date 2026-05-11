@@ -5,6 +5,7 @@ from jpcorpus.viewer_jobs import (
     ViewerJobRunner,
     build_annotation_predicate,
     composite_maintenance_steps,
+    explain_reader_usage,
     llm_config_status,
     normalize_annotation_spec,
     normalize_maintenance_spec,
@@ -183,6 +184,57 @@ def test_composite_refresh_all_updates_indexes_before_syncing():
         "fetch_lexical_resources",
     ]
     assert steps[-1][1]["type"] == "export_corpus"
+
+
+def test_explain_reader_usage_calls_llm_without_cache(monkeypatch):
+    calls = {}
+
+    class FakeClient:
+        def annotate_example(self, word, example):
+            calls["word"] = word
+            calls["example"] = example
+            return {
+                "translation_zh": "他要去。",
+                "usage_note_zh": "这里的「行く」表示移动到某处。",
+                "scene_description": "",
+            }
+
+        def close(self):
+            calls["closed"] = True
+
+    def fake_runtime(spec):
+        calls["spec"] = spec
+        return {}, FakeClient()
+
+    monkeypatch.setattr("jpcorpus.viewer_jobs.resolve_annotation_runtime", fake_runtime)
+
+    result = explain_reader_usage(
+        {
+            "provider": "apple",
+            "word": {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "meaning_zh": "去",
+                "meaning": "to go",
+            },
+            "example": {
+                "source_type": "text",
+                "source_title": "Book",
+                "matched_text": "行く",
+                "sentence": "学校へ行く。",
+                "context_before": ["朝だ。"],
+                "context_after": ["急いだ。"],
+            },
+        }
+    )
+
+    assert calls["spec"]["cache_only"] is False
+    assert calls["spec"]["provider"] == "apple"
+    assert calls["word"]["word"] == "行く"
+    assert calls["example"]["sentence"] == "学校へ行く。"
+    assert calls["closed"] is True
+    assert result["explanation"]["usage_note_zh"] == "这里的「行く」表示移动到某处。"
 
 
 def test_viewer_config_status_reports_missing_keys(monkeypatch):

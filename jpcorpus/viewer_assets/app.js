@@ -196,6 +196,14 @@ const text = {
     readerWordListAll: "全部词",
     readerWordListStudy: "今日学习",
     readerCurrentHint: "点高亮词或右侧词 chip 查看解释",
+    readerContextTitle: "当前阅读",
+    readerContextAddStudy: "加入学习",
+    readerContextCheck: "今天 +1",
+    readerExplain: "解释这里",
+    readerExplainLoading: "正在解释…",
+    readerExplainFailed: "解释失败：{error}",
+    readerTranslation: "这句意思",
+    readerUsage: "这里的用法",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
@@ -346,6 +354,14 @@ const text = {
     readerWordListAll: "All words",
     readerWordListStudy: "Today",
     readerCurrentHint: "Click highlighted words or right-side chips to inspect them",
+    readerContextTitle: "Current passage",
+    readerContextAddStudy: "Add to study",
+    readerContextCheck: "Today +1",
+    readerExplain: "Explain here",
+    readerExplainLoading: "Explaining…",
+    readerExplainFailed: "Explanation failed: {error}",
+    readerTranslation: "Meaning here",
+    readerUsage: "Usage here",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
@@ -410,6 +426,8 @@ const app = {
     groupKey: null,
     documentKey: null,
     wordList: readReaderWordList(),
+    selection: null,
+    explanation: null,
   },
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
@@ -1500,8 +1518,8 @@ function renderReaderDocument(document, open, options = {}) {
   );
   details.append(summary);
   const lines = el("div", "reader-lines");
-  document.lines.forEach((line) => {
-    lines.append(renderReaderLine(line, options));
+  document.lines.forEach((line, index) => {
+    lines.append(renderReaderLine(line, { ...options, document, lineIndex: index }));
   });
   details.append(lines);
   return details;
@@ -1523,7 +1541,7 @@ function renderReaderLine(line, options = {}) {
   const time = Number.isInteger(line.start_ms) ? formatTimestamp(line.start_ms) : "";
   row.append(el("span", "reader-line-time", time));
   const textLine = el("div", "reader-line-text");
-  appendReaderHighlighted(textLine, line.text, line.matches, options);
+  appendReaderHighlighted(textLine, line.text, line.matches, { ...options, line });
   row.append(textLine);
   const words = uniqueReaderWords(line.matches, options);
   if (words.length > 0) {
@@ -1536,7 +1554,7 @@ function renderReaderLine(line, options = {}) {
         chip.append(el("small", "", word.level));
       }
       chip.dataset.word = match.word;
-      chip.addEventListener("click", () => selectReaderWord(match.word));
+      chip.addEventListener("click", () => selectReaderWord(match.word, readerSelectionForLine(line, match, options)));
       wordList.append(chip);
     });
     row.append(wordList);
@@ -1562,7 +1580,7 @@ function appendReaderHighlighted(target, text, matches, options = {}) {
     button.type = "button";
     button.title = match.word;
     button.dataset.word = match.word;
-    button.addEventListener("click", () => selectReaderWord(match.word));
+    button.addEventListener("click", () => selectReaderWord(match.word, readerSelectionForLine(options.line || { text }, match, options)));
     target.append(button);
     cursor = match.end;
   });
@@ -1642,7 +1660,55 @@ function openWordFromSource(wordText) {
   render();
 }
 
-function selectReaderWord(wordText) {
+function readerSelectionForLine(line, match, options = {}) {
+  const document = options.document || {};
+  const lineIndex = Number.isInteger(options.lineIndex) ? options.lineIndex : -1;
+  const lines = asArray(document.lines);
+  const contextBefore = lineIndex >= 0
+    ? lines.slice(Math.max(0, lineIndex - 2), lineIndex).map((item) => item.text || "").filter(Boolean)
+    : [];
+  const contextAfter = lineIndex >= 0
+    ? lines.slice(lineIndex + 1, lineIndex + 3).map((item) => item.text || "").filter(Boolean)
+    : [];
+  const sourceFile = document.source_file || "";
+  const example = {
+    source_type: document.source_type || "subtitle",
+    source_title: document.source_title || "",
+    source_artist: document.source_artist || "",
+    source_album: document.source_album || "",
+    source_file: sourceFile,
+    subtitle_file: sourceFile,
+    episode: Number.isInteger(document.episode) ? document.episode : null,
+    start_ms: Number.isInteger(line.start_ms) ? line.start_ms : null,
+    end_ms: Number.isInteger(line.end_ms) ? line.end_ms : null,
+    matched_text: match.matched_text || match.word || "",
+    sentence: line.text || "",
+    context_before: contextBefore,
+    context_after: contextAfter,
+  };
+  return {
+    key: readerSelectionKey(match.word, example),
+    word: match.word || "",
+    example,
+  };
+}
+
+function readerSelectionKey(wordText, example) {
+  return [
+    wordText || "",
+    example.source_type || "",
+    example.source_title || "",
+    example.source_artist || "",
+    example.source_album || "",
+    example.source_file || "",
+    Number.isInteger(example.episode) ? example.episode : "",
+    Number.isInteger(example.start_ms) ? example.start_ms : "",
+    example.matched_text || "",
+    example.sentence || "",
+  ].join("\u0000");
+}
+
+function selectReaderWord(wordText, selection = null) {
   const word = findWord(wordText);
   if (!word) {
     return;
@@ -1652,6 +1718,10 @@ function selectReaderWord(wordText) {
     return;
   }
   app.selectedWord = word;
+  app.reader.selection = selection;
+  if (!selection || app.reader.explanation?.key !== selection.key) {
+    app.reader.explanation = null;
+  }
   app.study.showAnswer = false;
   renderDetail();
   renderMaintenance();
@@ -1830,6 +1900,12 @@ function syncSelectedWordToReaderSource(readingTarget, wordSet) {
   } else {
     app.selectedWord = null;
   }
+  clearReaderSelection();
+}
+
+function clearReaderSelection() {
+  app.reader.selection = null;
+  app.reader.explanation = null;
 }
 
 function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
@@ -1848,6 +1924,7 @@ function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
       app.reader.sourceType = value;
       app.reader.groupKey = null;
       app.reader.documentKey = null;
+      clearReaderSelection();
       render();
     });
     tabs.append(button);
@@ -1871,6 +1948,7 @@ function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
   select.addEventListener("change", () => {
     app.reader.groupKey = select.value;
     app.reader.documentKey = null;
+    clearReaderSelection();
     render();
   });
   sourcePicker.append(select);
@@ -1894,6 +1972,7 @@ function renderReaderUnitPicker(units, selectedUnit) {
   });
   select.addEventListener("change", () => {
     app.reader.documentKey = select.value;
+    clearReaderSelection();
     render();
   });
   picker.append(select);
@@ -1919,6 +1998,7 @@ function renderReaderWordListPicker() {
     button.addEventListener("click", () => {
       app.reader.wordList = value;
       localStorage.setItem(STORAGE_READER_WORD_LIST, value);
+      clearReaderSelection();
       render();
     });
     options.append(button);
@@ -2170,7 +2250,13 @@ function renderDetail() {
   }
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
-  refs.wordDetail.replaceChildren(renderDetailHeader(word), renderExamples(word));
+  const nodes = [renderDetailHeader(word)];
+  const readerContext = renderReaderContextPanel(word);
+  if (readerContext) {
+    nodes.push(readerContext);
+  }
+  nodes.push(renderExamples(word));
+  refs.wordDetail.replaceChildren(...nodes);
 }
 
 function renderStudyDetail() {
@@ -2214,6 +2300,134 @@ function renderDetailHeader(word) {
 
   header.append(titleRow, meanings, renderLexicalNotes(word), renderStatusActions(word));
   return header;
+}
+
+function renderReaderContextPanel(word) {
+  const selection = app.reader.selection;
+  if (app.mode !== "read" || !selection || selection.word !== word.word) {
+    return null;
+  }
+  const example = selection.example || {};
+  const sourceClass = exampleSourceClass(example);
+  const section = el("section", `reader-context-card example-${sourceClass}`);
+  const top = el("div", "reader-context-top");
+  top.append(el("h3", "section-title", t("readerContextTitle")));
+  const actions = el("div", "reader-context-actions");
+  const addStudy = el("button", "", t("readerContextAddStudy"));
+  addStudy.type = "button";
+  addStudy.addEventListener("click", () => {
+    setStatus(word, "learning");
+    scheduleStudyReview(word);
+    renderDetail();
+    updateReaderActiveTokens();
+  });
+  const check = el("button", "", t("readerContextCheck"));
+  check.type = "button";
+  check.addEventListener("click", () => addReaderStudyCheck(word));
+  const explain = el("button", "reader-explain-button", t("readerExplain"));
+  explain.type = "button";
+  explain.disabled = !app.maintenance.enabled || app.reader.explanation?.status === "loading";
+  explain.addEventListener("click", () => startReaderExplanation(word, selection));
+  actions.append(addStudy, check, explain);
+  top.append(actions);
+  section.append(top);
+
+  const lines = el("div", "reader-context-lines");
+  appendContextBlock(lines, example.context_before || [], "before");
+  const current = el("div", "reader-context-current");
+  appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
+  lines.append(current);
+  appendContextBlock(lines, example.context_after || [], "after");
+  lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
+  section.append(lines);
+
+  const explanation = renderReaderExplanation(selection);
+  if (explanation) {
+    section.append(explanation);
+  }
+  return section;
+}
+
+function renderReaderExplanation(selection) {
+  const explanation = app.reader.explanation;
+  if (!explanation || explanation.key !== selection.key) {
+    return null;
+  }
+  const block = el("div", `reader-explanation ${explanation.status || ""}`.trim());
+  if (explanation.status === "loading") {
+    block.append(el("div", "annotation-line", t("readerExplainLoading")));
+    return block;
+  }
+  if (explanation.status === "failed") {
+    block.append(el("div", "annotation-line", t("readerExplainFailed", { error: explanation.error || "" })));
+    return block;
+  }
+  const result = explanation.result || {};
+  if (result.translation_zh) {
+    block.append(el("div", "annotation-line translation-line", `${t("readerTranslation")}: ${result.translation_zh}`));
+  }
+  if (result.usage_note_zh) {
+    block.append(el("div", "annotation-line", `${t("readerUsage")}: ${result.usage_note_zh}`));
+  }
+  return block.childNodes.length ? block : null;
+}
+
+function addReaderStudyCheck(word) {
+  const nextCount = Math.min(studyCountFor(word) + 1, STUDY_TARGET_COUNT);
+  setStudyCount(word, nextCount);
+  setStatus(word, nextCount >= STUDY_TARGET_COUNT ? "known" : "learning");
+  if (nextCount < STUDY_TARGET_COUNT) {
+    scheduleStudyReview(word);
+  }
+  renderDetail();
+  updateReaderActiveTokens();
+}
+
+async function startReaderExplanation(word, selection) {
+  if (!selection) {
+    return;
+  }
+  app.reader.explanation = {
+    key: selection.key,
+    status: "loading",
+  };
+  renderDetail();
+  try {
+    const response = await fetch("/api/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word: explanationWordPayload(word),
+        example: selection.example,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    app.reader.explanation = {
+      key: selection.key,
+      status: "succeeded",
+      result: payload.explanation || {},
+    };
+  } catch (error) {
+    app.reader.explanation = {
+      key: selection.key,
+      status: "failed",
+      error: error.message || String(error),
+    };
+  }
+  renderDetail();
+}
+
+function explanationWordPayload(word) {
+  return {
+    word: word.word || "",
+    reading: word.reading || "",
+    level: word.level || "",
+    meaning_zh: word.meaning_zh || displayMeaningRaw(word) || "",
+    meaning: word.meaning || "",
+  };
 }
 
 function renderStudyCard(word, index, total) {
@@ -2326,6 +2540,7 @@ function setStudyMode(mode) {
     refs.maintenanceToggle.classList.remove("active");
     app.selectedWord = app.selectedWord || chooseInitialWord(filteredWords());
   } else {
+    clearReaderSelection();
     app.selectedWord = chooseInitialWord(currentWordSet());
   }
   render();

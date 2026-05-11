@@ -656,6 +656,88 @@ select {
   color: var(--accent);
 }
 
+.reader-context-card {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-2);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.reader-context-card.example-lyrics {
+  border-left-color: var(--lyrics);
+}
+
+.reader-context-card.example-text {
+  border-left-color: var(--text-source);
+}
+
+.reader-context-top {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.reader-context-top .section-title {
+  white-space: nowrap;
+}
+
+.reader-context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.reader-context-actions button {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.reader-context-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.reader-context-actions button:disabled {
+  opacity: 0.58;
+}
+
+.reader-context-lines {
+  display: grid;
+  gap: 4px;
+}
+
+.reader-context-current {
+  font-family: var(--font-ja);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.reader-explanation {
+  display: grid;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
 .lexical-notes {
   display: grid;
   gap: 8px;
