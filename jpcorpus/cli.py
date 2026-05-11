@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -766,21 +767,47 @@ def export_corpus_json(
     typer.echo(f"Wrote corpus JSON: {output}")
 
 
+def ensure_viewer_corpus(corpus: Path) -> None:
+    if corpus.exists():
+        return
+    if corpus.name != "corpus.json":
+        raise FileNotFoundError(f"Corpus JSON does not exist: {corpus}")
+    payload = {
+        "schema_version": 6,
+        "generated_at": None,
+        "summary": {
+            "show_count": 0,
+            "subtitle_file_count": 0,
+            "lyric_file_count": 0,
+            "text_file_count": 0,
+            "total_tokens": 0,
+            "unique_tokens": 0,
+        },
+        "shows": [],
+        "words": [],
+        "sources": [],
+    }
+    ensure_parent(corpus)
+    corpus.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"Created starter corpus: {corpus}")
+
+
 @app.command()
 def view(
     corpus: Path = typer.Option(Path("corpus.json"), help="Structured corpus JSON file."),
     host: str = typer.Option("127.0.0.1", help="Host to bind."),
-    port: int = typer.Option(8765, min=0, max=65535, help="Port to bind. Use 0 for a random port."),
+    port: int = typer.Option(8767, min=0, max=65535, help="Port to bind. Use 0 for a random port."),
     open_browser: bool = typer.Option(True, help="Open the viewer in a browser."),
 ) -> None:
     """Serve the local corpus web viewer."""
+    ensure_viewer_corpus(corpus)
     serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=typer.echo)
 
 
 @app.command()
 def annotate(
     input: Path = typer.Option(Path("corpus.json"), help="Input corpus JSON path."),
-    output: Path = typer.Option(Path("corpus.annotated.json"), help="Annotated corpus JSON output path."),
+    output: Path | None = typer.Option(None, help="Annotated corpus JSON output path. Defaults to the input path."),
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database for annotation cache."),
     model: str | None = typer.Option(
         None,
@@ -825,6 +852,7 @@ def annotate(
     ),
 ) -> None:
     """Annotate corpus examples with translation and usage notes."""
+    output_path = output or input
     if provider == "apple":
         resolved_model = "apple"
         resolved_base_url = ""
@@ -875,13 +903,13 @@ def annotate(
     if cache_only:
         count = apply_cached_annotations_file(
             input,
-            output,
+            output_path,
             cache_state=State(state_db),
             cache_context=cache_context,
             limit=limit,
             overwrite=overwrite,
         )
-        typer.echo(f"Applied {count} cached annotations: {output}")
+        typer.echo(f"Applied {count} cached annotations: {output_path}")
         return
 
     errors = []
@@ -896,7 +924,7 @@ def annotate(
     try:
         count = annotate_corpus_file(
             input,
-            output,
+            output_path,
             client=client,
             limit=limit,
             overwrite=overwrite,
@@ -911,9 +939,9 @@ def annotate(
         if callable(close_client):
             close_client()
     if errors:
-        typer.echo(f"Annotated {count} examples with {len(errors)} failures: {output}")
+        typer.echo(f"Annotated {count} examples with {len(errors)} failures: {output_path}")
     else:
-        typer.echo(f"Annotated {count} examples: {output}")
+        typer.echo(f"Annotated {count} examples: {output_path}")
 
 
 @data_app.command("fetch-anime-db")

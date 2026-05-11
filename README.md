@@ -10,7 +10,17 @@ The MVP intentionally stays local-first and file-backed. It does not include hos
 uv sync --extra japanese --extra dev
 ```
 
-Register the two external services by hand:
+After installing, launch the app with `uv run jpcorpus view`. The viewer opens at <http://127.0.0.1:8767/> by default. If `corpus.json` does not exist yet, the command creates a small starter file so the UI can open.
+
+From the viewer, open Maintenance:
+
+1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
+2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
+3. Later, run `uv run jpcorpus view` again and use Refresh for new media/local text changes. Use LLM annotation only when you want paid/local model annotation.
+
+The only normal working corpus file is `corpus.json`. Extra input/output paths are for debugging or experiments.
+
+External service setup:
 
 - Bangumi application: <https://bgm.tv/dev/app>
 - Jimaku API key: <https://jimaku.cc/api/docs>
@@ -29,23 +39,15 @@ Shell environment variables take precedence over `.env`.
 
 ## First Run
 
-Recommended UI path:
+Normal UI path:
 
 ```bash
-uv run jpcorpus data fetch-jlpt-words
-uv run jpcorpus export corpus-json --output corpus.json --no-lexical-notes
-uv run jpcorpus view --corpus corpus.json --port 8767
+uv run jpcorpus view
 ```
 
-Then open the Maintenance panel in the viewer:
+Then use the Maintenance panel. Day to day, this is still the only command you need.
 
-1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
-2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
-3. Later, use Sync for new Bangumi/media changes, Refresh corpus for local-only changes such as renamed books, and LLM annotations only when you want paid/local model annotation.
-
-If `data fetch-jlpt-words` is unavailable and you just want to bring up the viewer shell, use `uv run jpcorpus data init-sample-jlpt --overwrite` instead of the first command.
-
-Command-line equivalent:
+Advanced command-line equivalent:
 
 ```bash
 uv run jpcorpus data fetch-anime-db
@@ -57,7 +59,7 @@ uv run jpcorpus sync
 uv run jpcorpus lyrics sync
 uv run jpcorpus lyrics fetch
 uv run jpcorpus export corpus-json --output corpus.json
-uv run jpcorpus view --corpus corpus.json
+uv run jpcorpus view
 ```
 
 Optional debug/export commands:
@@ -81,11 +83,8 @@ Local text files are optional too. Put Japanese `.txt` or `.epub` files in `text
 Optional LLM annotation can be run from the viewer Maintenance panel. The CLI equivalent is:
 
 ```bash
-uv run jpcorpus annotate --provider apple \
-  --input corpus.json \
-  --output corpus.annotated.json \
-  --limit 20
-uv run jpcorpus view --corpus corpus.annotated.json
+uv run jpcorpus annotate --provider apple --limit 20
+uv run jpcorpus view
 ```
 
 Use `--provider anthropic` to try Claude Haiku through `ANTHROPIC_API_KEY`; it defaults to `claude-haiku-4-5-20251001` when `--model` and `ANTHROPIC_MODEL` are omitted, and uses `ANTHROPIC_BASE_URL` for custom Anthropic-compatible gateways. Add `--concurrency 4` for parallel remote annotation requests, or use `--rpm 40` to stay under a provider request-per-minute limit; successful annotations are written to the versioned state-database cache as each request completes, and failed requests are reported without stopping the batch. Use `--provider openai-compatible --model your-model` or `JPCORPUS_LLM_MODEL` instead for OpenAI, LiteLLM, Ollama/Open WebUI, or any compatible local server. LLM annotations are keyed by source text and provider context, so repeated annotation runs reuse existing results until the annotation cache version changes.
@@ -93,11 +92,10 @@ Use `--provider anthropic` to try Claude Haiku through `ANTHROPIC_API_KEY`; it d
 To preview only the annotations already stored in the local cache without making any LLM requests, add `--cache-only`. This is useful for partially annotated corpora:
 
 ```bash
-uv run jpcorpus annotate --cache-only \
-  --input corpus.json \
-  --output corpus.annotated.json \
-  --limit 10000
+uv run jpcorpus annotate --cache-only --limit 10000
 ```
+
+By default, annotation updates `corpus.json` in place. Use `--input` and `--output` only when you want a separate experimental file.
 
 The Apple provider compiles `jpcorpus/apple_fm_annotate.swift` into `~/.jpcorpus/apple_fm_annotate` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout during the annotation run.
 
