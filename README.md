@@ -7,7 +7,7 @@ The MVP intentionally stays local-first and file-backed. It does not include hos
 ## Setup
 
 ```bash
-uv sync --extra japanese --extra dev
+uv sync
 ```
 
 After installing, launch the app with `uv run jpcorpus view`. The viewer opens at <http://127.0.0.1:8767/> by default. If `corpus.json` does not exist yet, the command creates a small starter file so the UI can open.
