@@ -1678,22 +1678,28 @@ function renderReaderModeToolbar(groups, selected) {
     tabs.append(button);
   });
 
-  const pickerLabel = el("label", "reader-source-picker");
-  pickerLabel.append(el("span", "", t("readerSourceChoice")));
-  const picker = el("select", "");
+  const sourcePicker = el("div", "reader-source-picker");
+  sourcePicker.append(el("span", "reader-source-picker-label", t("readerSourceChoice")));
+  const sourceList = el("div", "reader-source-list");
   groups.forEach((group) => {
-    const option = document.createElement("option");
-    option.value = group.key;
-    option.textContent = readerSourceOptionLabel(group);
-    picker.append(option);
+    const button = el("button", "reader-source-choice");
+    button.type = "button";
+    button.classList.toggle("active", group.key === selected.key);
+    button.append(el("strong", "", group.title || t("sourceInventoryUnknown")));
+    const meta = [
+      sourceLabel(group.type),
+      group.meta,
+      `${formatNumber(group.readerLineCount || group.exampleCount)} ${group.readerLineCount ? t("sourceInventoryLines") : t("sourceInventoryExamples")}`,
+    ].filter(Boolean).join(" · ");
+    button.append(el("span", "", meta));
+    button.addEventListener("click", () => {
+      app.reader.groupKey = group.key;
+      render();
+    });
+    sourceList.append(button);
   });
-  picker.value = selected.key;
-  picker.addEventListener("change", () => {
-    app.reader.groupKey = picker.value;
-    render();
-  });
-  pickerLabel.append(picker);
-  toolbar.append(tabs, pickerLabel);
+  sourcePicker.append(sourceList);
+  toolbar.append(tabs, sourcePicker);
   return toolbar;
 }
 
@@ -2136,14 +2142,18 @@ function renderExamples(word, options = {}) {
   const allowActions = options.allowActions ?? true;
   const section = el("section", "examples");
   const header = el("div", "examples-header");
-  header.append(el("h3", "section-title", t("examples")), renderExampleColumnControl());
+  header.append(el("h3", "section-title", t("examples")));
+  if (app.mode !== "read") {
+    header.append(renderExampleColumnControl());
+  }
   section.append(header);
   const examples = examplesForWord(word);
   if (examples.length === 0) {
     section.append(emptyMessage(t("noExamples")));
     return section;
   }
-  const grid = el("div", `examples-grid columns-${app.exampleColumns}`);
+  const columns = app.mode === "read" ? "1" : app.exampleColumns;
+  const grid = el("div", `examples-grid columns-${columns}`);
   examples.forEach((example) => {
     const sourceClass = exampleSourceClass(example);
     const item = el("div", `example example-${sourceClass}`);
