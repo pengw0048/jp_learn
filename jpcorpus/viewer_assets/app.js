@@ -1547,12 +1547,8 @@ function renderReaderLine(line, options = {}) {
   if (words.length > 0) {
     const wordList = el("div", "reader-line-words");
     words.forEach((match) => {
-      const word = findWord(match.word);
       const chip = el("button", "reader-word-chip", match.word);
       chip.type = "button";
-      if (word?.level) {
-        chip.append(el("small", "", word.level));
-      }
       chip.dataset.word = match.word;
       chip.addEventListener("click", () => selectReaderWord(match.word, readerSelectionForLine(line, match, options)));
       wordList.append(chip);
@@ -2309,7 +2305,7 @@ function renderReaderContextPanel(word) {
   }
   const example = selection.example || {};
   const sourceClass = exampleSourceClass(example);
-  const section = el("section", `reader-context-card example-${sourceClass}`);
+  const section = el("section", "reader-context-card");
   const top = el("div", "reader-context-top");
   top.append(el("h3", "section-title", t("readerContextTitle")));
   const actions = el("div", "reader-context-actions");
