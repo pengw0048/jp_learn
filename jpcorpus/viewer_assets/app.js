@@ -191,6 +191,7 @@ const text = {
     sourceReaderEmpty: "这个来源还没有可显示的阅读内容",
     readerSourcesFound: "{count} 个来源",
     readerSourceChoice: "阅读来源",
+    readerItemChoice: "阅读内容",
     readerWordListChoice: "高亮词表",
     readerWordListAll: "全部词",
     readerWordListStudy: "今日学习",
@@ -340,6 +341,7 @@ const text = {
     sourceReaderEmpty: "No readable content for this source yet",
     readerSourcesFound: "{count} sources",
     readerSourceChoice: "Reading source",
+    readerItemChoice: "Reading item",
     readerWordListChoice: "Highlighted words",
     readerWordListAll: "All words",
     readerWordListStudy: "Today",
@@ -406,6 +408,7 @@ const app = {
   reader: {
     sourceType: "all",
     groupKey: null,
+    documentKey: null,
     wordList: readReaderWordList(),
   },
   listLimit: WORD_LIST_PAGE_SIZE,
@@ -1302,6 +1305,7 @@ function openSourceInReader(source) {
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.reader.sourceType = source.type || "all";
   app.reader.groupKey = source.key;
+  app.reader.documentKey = null;
   refs.maintenancePanel.hidden = true;
   refs.maintenanceToggle.classList.remove("active");
   hideSourcePanel();
@@ -1361,7 +1365,7 @@ function renderSourceReader(source, options = {}) {
   const reader = el("section", `source-reader${options.full ? " reader-full" : ""}`);
   const heading = el("div", "source-reader-heading");
   heading.append(el("h4", "", t("sourceReaderTitle")));
-  const documents = readerDocumentsForSource(source);
+  const documents = options.documents || readerDocumentsForSource(source);
   if (!source.sourceDocuments?.length && source.exampleItems.length > 0) {
     heading.append(el("span", "", t("sourceReaderFallback")));
   }
@@ -1774,34 +1778,50 @@ function renderReadingPane() {
   const groups = buildSourceGroups(sourceType);
   if (groups.length === 0) {
     app.reader.groupKey = null;
+    app.reader.documentKey = null;
     refs.resultCount.textContent = t("readerSourcesFound", { count: formatNumber(0) });
     refs.wordList.replaceChildren(emptyMessage(t("sourceReaderEmpty")));
     return;
   }
   if (!groups.some((group) => group.key === app.reader.groupKey)) {
     app.reader.groupKey = groups[0].key;
+    app.reader.documentKey = null;
   }
   const selected = groups.find((group) => group.key === app.reader.groupKey) || groups[0];
-  syncSelectedWordToReaderSource(selected, readerWords);
+  const units = readerUnitsForSource(selected);
+  if (!units.some((unit) => unit.key === app.reader.documentKey)) {
+    app.reader.documentKey = units[0]?.key || null;
+  }
+  const selectedUnit = units.find((unit) => unit.key === app.reader.documentKey) || units[0] || null;
+  syncSelectedWordToReaderSource(selectedUnit || selected, readerWords);
   refs.resultCount.textContent = [
     t("readerSourcesFound", { count: formatNumber(groups.length) }),
     selected.title,
+    selectedUnit?.label,
   ].filter(Boolean).join(" · ");
 
   const pane = el("div", "reader-mode-pane");
-  pane.append(renderReaderModeToolbar(groups, selected));
+  pane.append(renderReaderModeToolbar(groups, selected, units, selectedUnit));
   const scroller = el("div", "reader-mode-scroll");
-  scroller.append(renderReaderModeSummary(selected), renderSourceReader(selected, { full: true, wordSet: readerWords }));
+  scroller.append(
+    renderReaderModeSummary(selected, selectedUnit),
+    renderSourceReader(selected, {
+      full: true,
+      wordSet: readerWords,
+      documents: selectedUnit?.documents || [],
+    }),
+  );
   pane.append(scroller);
   refs.wordList.replaceChildren(pane);
   updateReaderActiveTokens();
 }
 
-function syncSelectedWordToReaderSource(source, wordSet) {
-  if (source.words.has(app.selectedWord?.word) && readerWordAllowed(app.selectedWord.word, wordSet)) {
+function syncSelectedWordToReaderSource(readingTarget, wordSet) {
+  const words = readingTarget?.words || new Set();
+  if (words.has(app.selectedWord?.word) && readerWordAllowed(app.selectedWord.word, wordSet)) {
     return;
   }
-  const firstWord = [...source.words]
+  const firstWord = [...words]
     .map(findWord)
     .find((word) => word && readerWordAllowed(word.word, wordSet));
   if (firstWord) {
@@ -1812,7 +1832,7 @@ function syncSelectedWordToReaderSource(source, wordSet) {
   }
 }
 
-function renderReaderModeToolbar(groups, selected) {
+function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
   const toolbar = el("div", "reader-mode-toolbar");
   const tabs = el("div", "reader-source-tabs");
   [
@@ -1827,6 +1847,7 @@ function renderReaderModeToolbar(groups, selected) {
     button.addEventListener("click", () => {
       app.reader.sourceType = value;
       app.reader.groupKey = null;
+      app.reader.documentKey = null;
       render();
     });
     tabs.append(button);
@@ -1849,11 +1870,34 @@ function renderReaderModeToolbar(groups, selected) {
   });
   select.addEventListener("change", () => {
     app.reader.groupKey = select.value;
+    app.reader.documentKey = null;
     render();
   });
   sourcePicker.append(select);
-  toolbar.append(tabs, renderReaderWordListPicker(), sourcePicker);
+  toolbar.append(tabs, sourcePicker, renderReaderUnitPicker(units, selectedUnit), renderReaderWordListPicker());
   return toolbar;
+}
+
+function renderReaderUnitPicker(units, selectedUnit) {
+  const picker = el("label", "reader-source-picker");
+  picker.append(el("span", "reader-source-picker-label", t("readerItemChoice")));
+  const select = el("select", "reader-source-select");
+  if (!units.length) {
+    select.disabled = true;
+    select.append(el("option", "", t("sourceReaderEmpty")));
+  }
+  units.forEach((unit) => {
+    const option = el("option", "", readerUnitOptionLabel(unit));
+    option.value = unit.key;
+    option.selected = unit.key === selectedUnit?.key;
+    select.append(option);
+  });
+  select.addEventListener("change", () => {
+    app.reader.documentKey = select.value;
+    render();
+  });
+  picker.append(select);
+  return picker;
 }
 
 function renderReaderWordListPicker() {
@@ -1908,26 +1952,156 @@ function readerWordAllowed(wordText, wordSet) {
   return !wordSet || wordSet.has(wordText);
 }
 
-function renderReaderModeSummary(source) {
+function readerUnitsForSource(source) {
+  const documents = readerDocumentsForSource(source);
+  if (source.type === "subtitle") {
+    return subtitleReaderUnits(documents);
+  }
+  return documents
+    .map((document) => {
+      const label = readerDocumentLabel(document);
+      const meta = readerDocumentMeta(document);
+      return createReaderUnit({
+        key: readerDocumentKey(document),
+        label,
+        meta,
+        documents: [document],
+      });
+    })
+    .sort(compareReaderUnits);
+}
+
+function subtitleReaderUnits(documents) {
+  const units = new Map();
+  documents.forEach((document) => {
+    const episode = Number.isInteger(document.episode) ? document.episode : null;
+    const key = episode === null ? readerDocumentKey(document) : `episode:${episode}`;
+    if (!units.has(key)) {
+      units.set(key, {
+        key,
+        episode,
+        label: episode === null ? readerDocumentLabel(document) : formatEpisodeLabel(episode),
+        metaParts: new Set(),
+        documents: [],
+      });
+    }
+    const unit = units.get(key);
+    const fileLabel = cleanSourceFileLabel(document.source_file || "");
+    if (fileLabel && episode === null) {
+      unit.metaParts.add(fileLabel);
+    }
+    unit.documents.push(document);
+  });
+  return [...units.values()]
+    .map((unit) => createReaderUnit({
+      key: unit.key,
+      episode: unit.episode,
+      label: unit.label,
+      meta: unit.documents.length > 1
+        ? `${formatNumber(unit.documents.length)} ${t("sourceInventoryFiles")}`
+        : [...unit.metaParts][0] || "",
+      documents: unit.documents.sort(compareReaderDocuments),
+    }))
+    .sort(compareReaderUnits);
+}
+
+function createReaderUnit({ key, episode = null, label, meta = "", documents }) {
+  const words = new Set();
+  const lineCount = documents.reduce((total, document) => {
+    asArray(document.lines).forEach((line) => {
+      asArray(line.matches).forEach((match) => {
+        if (match.word) {
+          words.add(match.word);
+        }
+      });
+    });
+    return total + asArray(document.lines).length;
+  }, 0);
+  return {
+    key,
+    episode,
+    label,
+    meta,
+    documents,
+    words,
+    lineCount,
+  };
+}
+
+function readerDocumentKey(document) {
+  return [
+    document.source_type || "subtitle",
+    document.source_title || "",
+    document.source_artist || "",
+    document.source_album || "",
+    document.source_file || "",
+    Number.isInteger(document.episode) ? document.episode : "",
+  ].join("\u0000");
+}
+
+function readerDocumentMeta(document) {
+  if (document.source_type === "lyrics") {
+    return [
+      document.source_artist,
+      document.source_album && document.source_album !== document.source_title ? document.source_album : "",
+    ].filter(Boolean).join(" · ");
+  }
+  if (document.source_type === "text") {
+    return [document.source_artist, cleanSourceFileLabel(document.source_file || "")]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return cleanSourceFileLabel(document.source_file || "");
+}
+
+function readerUnitOptionLabel(unit) {
+  const meta = [
+    unit.meta,
+    `${formatNumber(unit.lineCount)} ${t("sourceInventoryLines")}`,
+  ].filter(Boolean).join(" · ");
+  return [unit.label, meta].filter(Boolean).join(" · ");
+}
+
+function compareReaderUnits(left, right) {
+  const episodeDiff = compareNullableNumbers(left.episode, right.episode);
+  if (episodeDiff !== 0) {
+    return episodeDiff;
+  }
+  return String(left.label || "").localeCompare(String(right.label || ""), app.lang === "zh" ? "zh-CN" : "ja-JP");
+}
+
+function renderReaderModeSummary(source, unit) {
   const summary = el("div", `reader-mode-summary source-card-${source.type || "unknown"}`);
   const title = el("div", "reader-mode-title");
   title.append(el("span", "source-kind", sourceLabel(source.type)), el("strong", "", source.title));
   if (source.meta) {
     title.append(el("span", "source-meta", source.meta));
   }
+  if (unit) {
+    title.append(el("span", "source-meta", unit.label));
+  }
   const hint = !source.sourceDocuments?.length && source.exampleItems.length > 0
     ? t("sourceReaderFallback")
     : t("readerCurrentHint");
-  summary.append(title, renderSourceMetrics(source), el("p", "", hint));
+  if (unit) {
+    const metrics = el("div", "source-metrics reader-mode-metrics");
+    [
+      [t("sourceInventoryLines"), unit.lineCount],
+      [t("sourceInventoryWords"), unit.words.size],
+      [t("sourceInventoryFiles"), unit.documents.length],
+    ].forEach(([label, value], index) => {
+      if (index === 2 && value <= 1) {
+        return;
+      }
+      const metric = el("span", "source-metric");
+      metric.append(el("span", "", label), strong(value));
+      metrics.append(metric);
+    });
+    summary.append(title, metrics, el("p", "", hint));
+  } else {
+    summary.append(title, el("p", "", hint));
+  }
   return summary;
-}
-
-function readerSourceOptionLabel(source) {
-  return [
-    sourceLabel(source.type),
-    source.title,
-    source.meta,
-  ].filter(Boolean).join(" · ");
 }
 
 function resetWordListLimit() {
