@@ -9,7 +9,7 @@ const WORD_LIST_PAGE_SIZE = 600;
 const DAILY_STUDY_LIMIT = 30;
 const STUDY_REVIEW_DELAY_DAYS = 1;
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
-const MODE_VALUES = new Set(["browse", "study"]);
+const MODE_VALUES = new Set(["browse", "study", "read"]);
 const STUDY_TARGET_COUNT = 7;
 const EXAMPLE_SELECTION_FIELDS = [
   "source_type",
@@ -121,6 +121,7 @@ const text = {
     reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
     studyMode: "学习",
     browseMode: "浏览",
+    readMode: "阅读",
     studyProgress: "今日 {current} / {total}",
     revealAnswer: "看答案",
     hideAnswer: "收起答案",
@@ -164,6 +165,7 @@ const text = {
     sourceInventoryAnnotated: "标注",
     sourceInventoryUnknown: "未知来源",
     sourceInventoryView: "查看",
+    sourceInventoryRead: "阅读",
     sourceInventoryBack: "返回",
     sourceInventoryEpisodes: "集",
     sourceInventoryTracks: "曲",
@@ -174,6 +176,9 @@ const text = {
     sourceReaderTitle: "阅读器",
     sourceReaderFallback: "当前 corpus 还没有完整阅读数据，先显示已抽取的例句片段；点“刷新”后会生成完整来源行。",
     sourceReaderEmpty: "这个来源还没有可显示的阅读内容",
+    readerSourcesFound: "{count} 个来源",
+    readerSourceChoice: "阅读来源",
+    readerCurrentHint: "点高亮词或右侧词 chip 查看解释",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
@@ -260,8 +265,9 @@ const text = {
     usageNote: "Usage",
     reannotateExample: "Refresh annotation",
     reannotateExampleTitle: "Regenerate this example translation and usage note",
-    studyMode: "Today",
+    studyMode: "Study",
     browseMode: "Browse",
+    readMode: "Read",
     studyProgress: "Today {current} / {total}",
     revealAnswer: "Reveal",
     hideAnswer: "Hide answer",
@@ -305,6 +311,7 @@ const text = {
     sourceInventoryAnnotated: "Annotated",
     sourceInventoryUnknown: "Unknown source",
     sourceInventoryView: "View",
+    sourceInventoryRead: "Read",
     sourceInventoryBack: "Back",
     sourceInventoryEpisodes: "Episodes",
     sourceInventoryTracks: "Tracks",
@@ -315,6 +322,9 @@ const text = {
     sourceReaderTitle: "Reader",
     sourceReaderFallback: "This corpus has no full reader data yet, so extracted examples are shown for now. Refresh to generate full source lines.",
     sourceReaderEmpty: "No readable content for this source yet",
+    readerSourcesFound: "{count} sources",
+    readerSourceChoice: "Reading source",
+    readerCurrentHint: "Click highlighted words or right-side chips to inspect them",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
@@ -374,6 +384,10 @@ const app = {
   sourcePanelType: null,
   sourcePanelGroupKey: null,
   expandedSourceGroups: new Set(),
+  reader: {
+    sourceType: "all",
+    groupKey: null,
+  },
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
@@ -400,6 +414,8 @@ const searchIndexCache = new WeakMap();
 const $ = (selector) => document.querySelector(selector);
 
 const refs = {
+  workspace: $(".workspace"),
+  sidebar: $(".sidebar"),
   generatedAt: $("#generated-at"),
   summaryStrip: $("#summary-strip"),
   sourcePanel: $("#source-panel"),
@@ -561,12 +577,23 @@ function render() {
   if (!app.corpus) {
     return;
   }
+  updateWorkspaceMode();
   renderHeader();
   renderSourceInventory();
-  renderLevelFilter();
-  renderWordList();
+  if (app.mode === "read") {
+    renderReadingPane();
+  } else {
+    renderLevelFilter();
+    renderWordList();
+  }
   renderDetail();
   renderMaintenance();
+}
+
+function updateWorkspaceMode() {
+  const reading = app.mode === "read";
+  refs.workspace.classList.toggle("reader-workspace", reading);
+  refs.sidebar.classList.toggle("reader-sidebar", reading);
 }
 
 function renderHeader() {
@@ -1047,9 +1074,16 @@ function renderSourceGroupItem(source) {
     app.sourcePanelGroupKey = source.key;
     renderSourceInventory();
   });
+  const readAction = el("button", "source-read-button", t("sourceInventoryRead"));
+  readAction.type = "button";
+  readAction.addEventListener("click", () => {
+    openSourceInReader(source);
+  });
+  const actions = el("div", "source-card-actions");
+  actions.append(action, readAction);
 
   const top = el("div", "source-card-top");
-  top.append(heading, action);
+  top.append(heading, actions);
   item.append(top, renderSourceMetrics(source));
 
   const collapsedPreviewLimit = source.type === "subtitle" ? 4 : 6;
@@ -1097,6 +1131,12 @@ function renderSourceGroupDetail(source) {
   if (source.meta) {
     heading.append(el("span", "source-meta", source.meta));
   }
+  const readAction = el("button", "source-read-button", t("sourceInventoryRead"));
+  readAction.type = "button";
+  readAction.addEventListener("click", () => {
+    openSourceInReader(source);
+  });
+  heading.append(readAction);
   detail.append(heading, renderSourceMetrics(source));
 
   const children = renderSourceChildren(source.children, source.type, {
@@ -1106,8 +1146,18 @@ function renderSourceGroupDetail(source) {
     detail.append(children);
   }
 
-  detail.append(renderSourceReader(source));
   return detail;
+}
+
+function openSourceInReader(source) {
+  app.mode = "read";
+  localStorage.setItem(STORAGE_MODE, app.mode);
+  app.reader.sourceType = source.type || "all";
+  app.reader.groupKey = source.key;
+  refs.maintenancePanel.hidden = true;
+  refs.maintenanceToggle.classList.remove("active");
+  hideSourcePanel();
+  render();
 }
 
 function renderSourceMetrics(source) {
@@ -1159,8 +1209,8 @@ function renderSourceChildren(children, sourceType, options = {}) {
   return list;
 }
 
-function renderSourceReader(source) {
-  const reader = el("section", "source-reader");
+function renderSourceReader(source, options = {}) {
+  const reader = el("section", `source-reader${options.full ? " reader-full" : ""}`);
   const heading = el("div", "source-reader-heading");
   heading.append(el("h4", "", t("sourceReaderTitle")));
   const documents = readerDocumentsForSource(source);
@@ -1333,7 +1383,8 @@ function renderReaderLine(line) {
       if (word?.level) {
         chip.append(el("small", "", word.level));
       }
-      chip.addEventListener("click", () => openWordFromSource(match.word));
+      chip.dataset.word = match.word;
+      chip.addEventListener("click", () => selectReaderWord(match.word));
       wordList.append(chip);
     });
     row.append(wordList);
@@ -1357,7 +1408,8 @@ function appendReaderHighlighted(target, text, matches) {
     const button = el("button", "reader-token", text.slice(match.start, match.end));
     button.type = "button";
     button.title = match.word;
-    button.addEventListener("click", () => openWordFromSource(match.word));
+    button.dataset.word = match.word;
+    button.addEventListener("click", () => selectReaderWord(match.word));
     target.append(button);
     cursor = match.end;
   });
@@ -1435,6 +1487,32 @@ function openWordFromSource(wordText) {
   app.selectedWord = word;
   hideSourcePanel();
   render();
+}
+
+function selectReaderWord(wordText) {
+  const word = findWord(wordText);
+  if (!word) {
+    return;
+  }
+  if (app.mode !== "read") {
+    openWordFromSource(wordText);
+    return;
+  }
+  app.selectedWord = word;
+  app.study.showAnswer = false;
+  renderDetail();
+  renderMaintenance();
+  updateReaderActiveTokens();
+}
+
+function updateReaderActiveTokens() {
+  if (!refs.wordList) {
+    return;
+  }
+  const selected = app.selectedWord?.word || "";
+  refs.wordList.querySelectorAll(".reader-token, .reader-word-chip").forEach((node) => {
+    node.classList.toggle("active", Boolean(selected) && node.dataset.word === selected);
+  });
 }
 
 function findWord(wordText) {
@@ -1538,6 +1616,107 @@ function renderWordList() {
   }
   refs.wordList.replaceChildren(...nodes);
   refs.wordList.scrollTop = scrollTop;
+}
+
+function renderReadingPane() {
+  renderLevelFilter();
+  const sourceType = app.reader.sourceType === "all" ? null : app.reader.sourceType;
+  const groups = buildSourceGroups(sourceType);
+  if (groups.length === 0) {
+    app.reader.groupKey = null;
+    refs.resultCount.textContent = t("readerSourcesFound", { count: formatNumber(0) });
+    refs.wordList.replaceChildren(emptyMessage(t("sourceReaderEmpty")));
+    return;
+  }
+  if (!groups.some((group) => group.key === app.reader.groupKey)) {
+    app.reader.groupKey = groups[0].key;
+  }
+  const selected = groups.find((group) => group.key === app.reader.groupKey) || groups[0];
+  syncSelectedWordToReaderSource(selected);
+  refs.resultCount.textContent = [
+    t("readerSourcesFound", { count: formatNumber(groups.length) }),
+    selected.title,
+  ].filter(Boolean).join(" · ");
+
+  const pane = el("div", "reader-mode-pane");
+  pane.append(renderReaderModeToolbar(groups, selected));
+  const scroller = el("div", "reader-mode-scroll");
+  scroller.append(renderReaderModeSummary(selected), renderSourceReader(selected, { full: true }));
+  pane.append(scroller);
+  refs.wordList.replaceChildren(pane);
+  updateReaderActiveTokens();
+}
+
+function syncSelectedWordToReaderSource(source) {
+  if (source.words.has(app.selectedWord?.word)) {
+    return;
+  }
+  const firstWord = [...source.words].map(findWord).find(Boolean);
+  if (firstWord) {
+    app.selectedWord = firstWord;
+    app.study.showAnswer = false;
+  }
+}
+
+function renderReaderModeToolbar(groups, selected) {
+  const toolbar = el("div", "reader-mode-toolbar");
+  const tabs = el("div", "reader-source-tabs");
+  [
+    ["all", t("sourceAll")],
+    ["subtitle", t("sourceSubtitles")],
+    ["lyrics", t("sourceLyrics")],
+    ["text", t("sourceTexts")],
+  ].forEach(([value, label]) => {
+    const button = el("button", "", label);
+    button.type = "button";
+    button.classList.toggle("active", app.reader.sourceType === value);
+    button.addEventListener("click", () => {
+      app.reader.sourceType = value;
+      app.reader.groupKey = null;
+      render();
+    });
+    tabs.append(button);
+  });
+
+  const pickerLabel = el("label", "reader-source-picker");
+  pickerLabel.append(el("span", "", t("readerSourceChoice")));
+  const picker = el("select", "");
+  groups.forEach((group) => {
+    const option = document.createElement("option");
+    option.value = group.key;
+    option.textContent = readerSourceOptionLabel(group);
+    picker.append(option);
+  });
+  picker.value = selected.key;
+  picker.addEventListener("change", () => {
+    app.reader.groupKey = picker.value;
+    render();
+  });
+  pickerLabel.append(picker);
+  toolbar.append(tabs, pickerLabel);
+  return toolbar;
+}
+
+function renderReaderModeSummary(source) {
+  const summary = el("div", `reader-mode-summary source-card-${source.type || "unknown"}`);
+  const title = el("div", "reader-mode-title");
+  title.append(el("span", "source-kind", sourceLabel(source.type)), el("strong", "", source.title));
+  if (source.meta) {
+    title.append(el("span", "source-meta", source.meta));
+  }
+  const hint = !source.sourceDocuments?.length && source.exampleItems.length > 0
+    ? t("sourceReaderFallback")
+    : t("readerCurrentHint");
+  summary.append(title, renderSourceMetrics(source), el("p", "", hint));
+  return summary;
+}
+
+function readerSourceOptionLabel(source) {
+  return [
+    sourceLabel(source.type),
+    source.title,
+    source.meta,
+  ].filter(Boolean).join(" · ");
 }
 
 function resetWordListLimit() {
@@ -1756,7 +1935,14 @@ function setStudyMode(mode) {
   app.mode = mode;
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.study.showAnswer = false;
-  app.selectedWord = chooseInitialWord(currentWordSet());
+  if (app.mode === "read") {
+    hideSourcePanel();
+    refs.maintenancePanel.hidden = true;
+    refs.maintenanceToggle.classList.remove("active");
+    app.selectedWord = app.selectedWord || chooseInitialWord(filteredWords());
+  } else {
+    app.selectedWord = chooseInitialWord(currentWordSet());
+  }
   render();
 }
 

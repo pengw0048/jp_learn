@@ -215,6 +215,10 @@ button.summary-pill.active {
   overflow: hidden;
 }
 
+.workspace.reader-workspace {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+}
+
 .sidebar {
   height: 100%;
   min-height: 0;
@@ -225,6 +229,48 @@ button.summary-pill.active {
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
+}
+
+.reader-sidebar {
+  padding: 0;
+  gap: 0;
+}
+
+.reader-workspace .search-wrap,
+.reader-workspace .chip-row,
+.reader-workspace .toolbar-row {
+  display: none;
+}
+
+.reader-workspace .result-count {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.reader-workspace .word-list {
+  display: block;
+  padding: 0;
+}
+
+.reader-workspace .detail-pane {
+  border-left: 1px solid var(--line);
+  background: #fbfcfc;
+}
+
+.reader-workspace .word-detail {
+  gap: 16px;
+}
+
+.reader-workspace .detail-title-row {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.reader-workspace .detail-title h2 {
+  font-size: 34px;
 }
 
 .search-wrap input {
@@ -1220,6 +1266,87 @@ mark {
   line-height: 1.35;
 }
 
+.reader-mode-pane {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+
+.reader-mode-toolbar {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(240px, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.reader-source-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reader-source-tabs button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--muted);
+  font-weight: 720;
+}
+
+.reader-source-tabs button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.reader-source-picker {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.reader-mode-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 22px 28px;
+}
+
+.reader-mode-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reader-mode-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reader-mode-title strong {
+  font-size: 18px;
+}
+
+.reader-mode-summary p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .source-inventory {
   display: grid;
   gap: 8px;
@@ -1246,6 +1373,13 @@ mark {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+}
+
+.source-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .source-card-lyrics {
@@ -1306,6 +1440,7 @@ mark {
 }
 
 .source-view-button,
+.source-read-button,
 .source-back-button,
 .source-word-button,
 .source-expand-button {
@@ -1321,9 +1456,16 @@ mark {
 }
 
 .source-view-button:hover,
+.source-read-button:hover,
 .source-back-button:hover,
 .source-word-button:hover,
 .source-expand-button:hover {
+  border-color: var(--accent);
+}
+
+.source-read-button {
+  background: var(--accent);
+  color: #ffffff;
   border-color: var(--accent);
 }
 
@@ -1510,6 +1652,53 @@ mark {
   margin-left: 4px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.reader-full {
+  gap: 10px;
+}
+
+.reader-full .source-reader-heading {
+  display: none;
+}
+
+.reader-full .reader-document {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.reader-full .reader-document summary {
+  padding: 10px 0;
+  font-size: 13px;
+}
+
+.reader-full .reader-lines {
+  padding: 0 0 16px;
+}
+
+.reader-full .reader-line {
+  grid-template-columns: 54px minmax(0, 1fr) minmax(110px, 0.25fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-top-color: #edf1f1;
+}
+
+.reader-full .reader-line-time {
+  padding-top: 4px;
+  font-size: 11px;
+}
+
+.reader-full .reader-line-text {
+  font-size: 18px;
+  line-height: 1.9;
+}
+
+.reader-token.active,
+.reader-word-chip.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .source-snippet {
@@ -1733,9 +1922,17 @@ mark {
     grid-template-columns: 40px minmax(0, 1fr);
   }
 
+  .reader-full .reader-line {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
   .reader-line-words {
     grid-column: 2;
     justify-content: flex-start;
+  }
+
+  .reader-mode-toolbar {
+    grid-template-columns: 1fr;
   }
 }
 
