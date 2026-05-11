@@ -154,7 +154,16 @@ const text = {
     configLlmApiKey: "LLM API Key",
     quickActionsTitle: "常用操作",
     quickActionsHelp: "平时点“刷新”就够了；词典或词表需要重拉时再用“完整刷新”。",
-    llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。",
+    sourceInventoryTitle: "来源概览",
+    sourceInventoryHelp: "按当前页面语料统计，用来确认字幕、歌词、小说是否已经进库。",
+    sourceInventoryEmpty: "还没有来源数据",
+    sourceInventoryWords: "词",
+    sourceInventoryExamples: "例句",
+    sourceInventoryFiles: "文件",
+    sourceInventoryTokens: "词形",
+    sourceInventoryAnnotated: "标注",
+    sourceInventoryUnknown: "未知来源",
+    llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
     maintenanceLimit: "上限",
@@ -275,7 +284,16 @@ const text = {
     configLlmApiKey: "LLM API key",
     quickActionsTitle: "Common actions",
     quickActionsHelp: "Use Refresh day to day; use Full refresh only when dictionaries or word lists need refetching.",
-    llmHelp: "Uses the configured provider; local cache is checked before model calls.",
+    sourceInventoryTitle: "Sources",
+    sourceInventoryHelp: "Built from the current viewer corpus so you can confirm subtitles, lyrics, and texts were imported.",
+    sourceInventoryEmpty: "No source data yet",
+    sourceInventoryWords: "Words",
+    sourceInventoryExamples: "Examples",
+    sourceInventoryFiles: "Files",
+    sourceInventoryTokens: "Tokens",
+    sourceInventoryAnnotated: "Annotated",
+    sourceInventoryUnknown: "Unknown source",
+    llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
     maintenanceLimit: "Limit",
@@ -373,6 +391,7 @@ const refs = {
   maintenancePanel: $("#maintenance-panel"),
   maintenanceClose: $("#maintenance-close"),
   maintenanceActionButtons: document.querySelectorAll("[data-maintenance-task]"),
+  sourceInventory: $("#source-inventory"),
   configSave: $("#config-save"),
   configPath: $("#config-path"),
   configStatusList: $("#config-status-list"),
@@ -576,6 +595,7 @@ function renderMaintenance() {
     return;
   }
   renderConfigStatus();
+  renderSourceInventory();
   const task = maintenanceTask();
   const spec = annotationJobSpec();
   const estimate = estimateAnnotationJob(spec);
@@ -635,6 +655,109 @@ function renderConfigStatus() {
       return item;
     }),
   );
+}
+
+function renderSourceInventory() {
+  if (!refs.sourceInventory) {
+    return;
+  }
+  const sources = buildSourceInventory();
+  if (sources.length === 0) {
+    refs.sourceInventory.replaceChildren(emptyMessage(t("sourceInventoryEmpty")));
+    return;
+  }
+  refs.sourceInventory.replaceChildren(...sources.map(renderSourceInventoryItem));
+}
+
+function buildSourceInventory() {
+  const sourceStats = new Map(
+    asArray(app.corpus?.shows).map((item) => [normalizedTextTitle(item.title), item]),
+  );
+  const sources = new Map();
+  app.words.forEach((word) => {
+    asArray(word.examples).forEach((example) => {
+      const type = example.source_type || "subtitle";
+      const title = String(example.source_title || example.subtitle_file || t("sourceInventoryUnknown")).trim();
+      const artist = String(example.source_artist || "").trim();
+      const album = String(example.source_album || "").trim();
+      const key = [type, title, artist, album].join("\u0000");
+      if (!sources.has(key)) {
+        const stats = sourceStats.get(normalizedTextTitle(title)) || {};
+        sources.set(key, {
+          type,
+          title,
+          artist,
+          album,
+          files: new Set(),
+          words: new Set(),
+          examples: 0,
+          annotated: 0,
+          fileCount: Number(stats.subtitle_file_count) || 0,
+          tokens: Number(stats.total_tokens) || 0,
+        });
+      }
+      const entry = sources.get(key);
+      entry.examples += 1;
+      if (word.word) {
+        entry.words.add(word.word);
+      }
+      const file = example.reference?.source_file || example.subtitle_file;
+      if (file) {
+        entry.files.add(file);
+      }
+      if (hasExampleAnnotations(example)) {
+        entry.annotated += 1;
+      }
+    });
+  });
+  return [...sources.values()].sort(compareSourceInventoryItems);
+}
+
+function compareSourceInventoryItems(left, right) {
+  const typeOrder = { subtitle: 0, lyrics: 1, text: 2 };
+  const typeDiff = (typeOrder[left.type] ?? 9) - (typeOrder[right.type] ?? 9);
+  if (typeDiff !== 0) {
+    return typeDiff;
+  }
+  return left.title.localeCompare(right.title, app.lang === "zh" ? "zh-CN" : "ja-JP");
+}
+
+function renderSourceInventoryItem(source) {
+  const item = el("article", `source-card source-card-${source.type || "unknown"}`);
+  const heading = el("div", "source-card-heading");
+  const kind = el("span", "source-kind", sourceLabel(source.type));
+  const title = el("strong", "source-title", source.title || t("sourceInventoryUnknown"));
+  heading.append(kind, title);
+  if (source.artist) {
+    heading.append(el("span", "source-meta", source.artist));
+  }
+  if (source.album && source.album !== source.title) {
+    heading.append(el("span", "source-meta", source.album));
+  }
+
+  const metrics = el("div", "source-metrics");
+  const fileCount = source.fileCount || source.files.size;
+  [
+    [t("sourceInventoryFiles"), fileCount],
+    [t("sourceInventoryTokens"), source.tokens],
+    [t("sourceInventoryWords"), source.words.size],
+    [t("sourceInventoryExamples"), source.examples],
+    [t("sourceInventoryAnnotated"), `${formatNumber(source.annotated)}/${formatNumber(source.examples)}`],
+  ].forEach(([label, value]) => {
+    if (value === 0) {
+      return;
+    }
+    const metric = el("span", "source-metric");
+    metric.append(el("span", "", label), strong(value));
+    metrics.append(metric);
+  });
+
+  item.append(heading, metrics);
+  return item;
+}
+
+function hasExampleAnnotations(example) {
+  return Boolean(example.translation_zh && example.usage_note_zh);
 }
 
 async function saveConfig() {

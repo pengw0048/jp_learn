@@ -1176,6 +1176,80 @@ mark {
   line-height: 1.35;
 }
 
+.source-inventory {
+  display: grid;
+  gap: 8px;
+  max-height: 270px;
+  overflow: auto;
+}
+
+.source-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.source-card-lyrics {
+  border-left-color: var(--lyrics);
+}
+
+.source-card-text {
+  border-left-color: var(--text-source);
+}
+
+.source-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-kind {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.source-title {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.source-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #f4f7f7;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-metric strong {
+  color: var(--text);
+}
+
 .checkbox-label {
   grid-template-columns: auto 1fr;
   align-items: center;
