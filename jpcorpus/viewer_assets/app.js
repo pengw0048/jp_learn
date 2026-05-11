@@ -168,6 +168,8 @@ const text = {
     sourceInventoryEpisodes: "集",
     sourceInventoryTracks: "曲",
     sourceInventorySnippets: "片段",
+    sourceInventoryExpand: "展开 {count} 集",
+    sourceInventoryCollapse: "收起",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
@@ -303,6 +305,8 @@ const text = {
     sourceInventoryEpisodes: "Episodes",
     sourceInventoryTracks: "Tracks",
     sourceInventorySnippets: "Snippets",
+    sourceInventoryExpand: "Show {count} more",
+    sourceInventoryCollapse: "Collapse",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
@@ -361,6 +365,7 @@ const app = {
   source: "all",
   sourcePanelType: null,
   sourcePanelGroupKey: null,
+  expandedSourceGroups: new Set(),
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
@@ -881,6 +886,7 @@ function subtitleEpisodeChildren(source) {
       label: entry.label,
       meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryFiles")}` : "",
       examples: entry.examples,
+      files: [...entry.files].sort(),
     }));
 }
 
@@ -946,10 +952,34 @@ function renderSourceGroupItem(source) {
   top.append(heading, action);
   item.append(top, renderSourceMetrics(source));
 
-  const previewLimit = source.type === "subtitle" ? 4 : 6;
-  const childList = renderSourceChildren(source.children.slice(0, previewLimit), source.type);
+  const collapsedPreviewLimit = source.type === "subtitle" ? 4 : 6;
+  const canToggle = source.type === "subtitle" && source.children.length > collapsedPreviewLimit;
+  const expanded = canToggle && app.expandedSourceGroups.has(source.key);
+  const visibleChildren = expanded ? source.children : source.children.slice(0, collapsedPreviewLimit);
+  const childList = renderSourceChildren(visibleChildren, source.type, {
+    showFileDetails: false,
+  });
   if (childList) {
     item.append(childList);
+  }
+  if (canToggle) {
+    const toggle = el(
+      "button",
+      "source-expand-button",
+      expanded
+        ? t("sourceInventoryCollapse")
+        : t("sourceInventoryExpand", { count: formatNumber(source.children.length - collapsedPreviewLimit) }),
+    );
+    toggle.type = "button";
+    toggle.addEventListener("click", () => {
+      if (expanded) {
+        app.expandedSourceGroups.delete(source.key);
+      } else {
+        app.expandedSourceGroups.add(source.key);
+      }
+      renderSourceInventory();
+    });
+    item.append(toggle);
   }
   return item;
 }
@@ -969,7 +999,9 @@ function renderSourceGroupDetail(source) {
   }
   detail.append(heading, renderSourceMetrics(source));
 
-  const children = renderSourceChildren(source.children, source.type);
+  const children = renderSourceChildren(source.children, source.type, {
+    showFileDetails: true,
+  });
   if (children) {
     detail.append(children);
   }
@@ -1004,7 +1036,8 @@ function renderSourceMetrics(source) {
   return metrics;
 }
 
-function renderSourceChildren(children, sourceType) {
+function renderSourceChildren(children, sourceType, options = {}) {
+  const showFileDetails = options.showFileDetails ?? false;
   if (!children || children.length === 0 || sourceType === "text") {
     return null;
   }
@@ -1017,6 +1050,13 @@ function renderSourceChildren(children, sourceType) {
       row.append(el("small", "", `${formatNumber(child.examples)} ${t("sourceInventoryExamples")}`));
     }
     list.append(row);
+    if (showFileDetails && child.files?.length > 0) {
+      const files = el("div", "source-file-list");
+      child.files.forEach((file) => {
+        files.append(el("div", "", cleanSourceFileLabel(file)));
+      });
+      list.append(files);
+    }
   });
   return list;
 }

@@ -1307,7 +1307,8 @@ mark {
 
 .source-view-button,
 .source-back-button,
-.source-word-button {
+.source-word-button,
+.source-expand-button {
   min-height: 28px;
   padding: 4px 9px;
   border: 1px solid var(--line);
@@ -1321,8 +1322,13 @@ mark {
 
 .source-view-button:hover,
 .source-back-button:hover,
-.source-word-button:hover {
+.source-word-button:hover,
+.source-expand-button:hover {
   border-color: var(--accent);
+}
+
+.source-expand-button {
+  justify-self: start;
 }
 
 .source-child-list,
@@ -1360,6 +1366,20 @@ mark {
 
 .source-child-row small {
   justify-self: end;
+  white-space: nowrap;
+}
+
+.source-file-list {
+  display: grid;
+  gap: 3px;
+  margin: -2px 0 4px 34px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.source-file-list div {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
