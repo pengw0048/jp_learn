@@ -176,8 +176,8 @@ const text = {
     scopeCurrentWord: "当前词",
     scopeFilteredWords: "当前筛选结果",
     scopeFirstUnannotated: "前 N 条缺失例句",
-    maintenanceEstimate: "将处理约 {count} 条例句；会先查本地 LLM 缓存，缺失时才调用 API；当前来源 {source}，等级 {level}",
-    maintenanceEstimateRefresh: "将重新生成约 {count} 条例句，并更新本地 LLM 缓存；当前来源 {source}，等级 {level}",
+    maintenanceEstimate: "将处理约 {count} 条例句；会先查本地 LLM 缓存，缺失时才调用 API；来源：{source}；等级：{level}",
+    maintenanceEstimateRefresh: "将重新生成约 {count} 条例句，并更新本地 LLM 缓存；来源：{source}；等级：{level}",
     maintenanceTaskSyncMedia: "同步动画、字幕、音乐和歌词，并重新生成页面语料",
     maintenanceTaskExportCorpus: "不联网，只用现有本地数据重新生成网页语料",
     maintenanceTaskFetchLexicalResources: "下载 JMdict 和 KANJIDIC2；之后点“刷新语料”才会出现在页面里",
@@ -297,8 +297,8 @@ const text = {
     scopeCurrentWord: "Current word",
     scopeFilteredWords: "Current filtered words",
     scopeFirstUnannotated: "First N missing examples",
-    maintenanceEstimate: "About {count} examples; local LLM cache is checked first, API is used only for misses; source {source}, level {level}",
-    maintenanceEstimateRefresh: "Regenerate about {count} examples and update the local LLM cache; source {source}, level {level}",
+    maintenanceEstimate: "About {count} examples; local LLM cache is checked first, API is used only for misses; source: {source}; level: {level}",
+    maintenanceEstimateRefresh: "Regenerate about {count} examples and update the local LLM cache; source: {source}; level: {level}",
     maintenanceTaskSyncMedia: "Sync anime, subtitles, music, and lyrics, then regenerate the viewer corpus",
     maintenanceTaskExportCorpus: "Uses existing local data only and regenerates the viewer corpus",
     maintenanceTaskFetchLexicalResources: "Downloads JMdict and KANJIDIC2; refresh the corpus afterwards to show them",
@@ -593,7 +593,7 @@ function renderMaintenance() {
       {
         count: formatNumber(estimate.planned),
         source: sourceLabel(spec.source),
-        level: spec.level,
+        level: levelLabel(spec.level),
       },
     );
   }
@@ -2101,6 +2101,10 @@ function sourceLabel(source) {
     return t("sourceTexts");
   }
   return t("sourceAll");
+}
+
+function levelLabel(level) {
+  return level === "all" ? t("allLevels") : level;
 }
 
 function maintenanceTaskDescription(task) {
