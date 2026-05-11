@@ -377,6 +377,8 @@ const $ = (selector) => document.querySelector(selector);
 const refs = {
   generatedAt: $("#generated-at"),
   summaryStrip: $("#summary-strip"),
+  sourcePanel: $("#source-panel"),
+  sourcePanelClose: $("#source-panel-close"),
   searchInput: $("#search-input"),
   levelFilter: $("#level-filter"),
   sortSelect: $("#sort-select"),
@@ -484,6 +486,9 @@ function bindControls() {
   refs.maintenanceToggle.addEventListener("click", () => {
     refs.maintenancePanel.hidden = !refs.maintenancePanel.hidden;
     refs.maintenanceToggle.classList.toggle("active", !refs.maintenancePanel.hidden);
+    if (!refs.maintenancePanel.hidden) {
+      hideSourcePanel();
+    }
     renderMaintenance();
   });
   refs.maintenanceClose.addEventListener("click", () => {
@@ -493,6 +498,7 @@ function bindControls() {
   refs.maintenanceActionButtons.forEach((button) => {
     button.addEventListener("click", () => startMaintenanceJob(button.dataset.maintenanceTask));
   });
+  refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
@@ -531,6 +537,7 @@ function render() {
     return;
   }
   renderHeader();
+  renderSourceInventory();
   renderLevelFilter();
   renderWordList();
   renderDetail();
@@ -551,13 +558,40 @@ function renderHeader() {
     [t("studyWords"), app.words.length],
     [t("examples"), totalExampleCount()],
   ];
+  const sourceOpen = !refs.sourcePanel.hidden;
   refs.summaryStrip.replaceChildren(
     ...items.map(([label, value]) => {
-      const pill = el("div", "summary-pill");
+      const pill = el("button", "summary-pill");
+      pill.type = "button";
+      pill.classList.toggle("active", sourceOpen);
+      pill.setAttribute("aria-expanded", sourceOpen ? "true" : "false");
       pill.append(label, " ", strong(value ?? "0"));
+      pill.addEventListener("click", toggleSourcePanel);
       return pill;
     }),
   );
+}
+
+function toggleSourcePanel() {
+  const show = refs.sourcePanel.hidden;
+  refs.sourcePanel.hidden = !show;
+  refs.summaryStrip.querySelectorAll(".summary-pill").forEach((pill) => {
+    pill.classList.toggle("active", show);
+    pill.setAttribute("aria-expanded", show ? "true" : "false");
+  });
+  if (show) {
+    refs.maintenancePanel.hidden = true;
+    refs.maintenanceToggle.classList.remove("active");
+    renderSourceInventory();
+  }
+}
+
+function hideSourcePanel() {
+  refs.sourcePanel.hidden = true;
+  refs.summaryStrip.querySelectorAll(".summary-pill").forEach((pill) => {
+    pill.classList.remove("active");
+    pill.setAttribute("aria-expanded", "false");
+  });
 }
 
 async function loadMaintenanceStatus() {
@@ -595,7 +629,6 @@ function renderMaintenance() {
     return;
   }
   renderConfigStatus();
-  renderSourceInventory();
   const task = maintenanceTask();
   const spec = annotationJobSpec();
   const estimate = estimateAnnotationJob(spec);

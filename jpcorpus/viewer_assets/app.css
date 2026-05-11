@@ -141,7 +141,14 @@ h1 {
   border-radius: 8px;
   background: var(--panel-2);
   color: var(--muted);
+  font: inherit;
   white-space: nowrap;
+}
+
+.summary-pill:hover,
+.summary-pill.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .summary-pill strong {
@@ -1006,6 +1013,43 @@ mark {
   overflow: auto;
 }
 
+.source-panel {
+  position: fixed;
+  top: 92px;
+  right: 18px;
+  z-index: 19;
+  width: min(680px, calc(100vw - 36px));
+  max-height: calc(100vh - 116px);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.source-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.source-panel-header h2 {
+  font-size: 16px;
+}
+
+.source-panel-header button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 760;
+}
+
 .maintenance-header {
   display: flex;
   align-items: center;
@@ -1181,6 +1225,10 @@ mark {
   gap: 8px;
   max-height: 270px;
   overflow: auto;
+}
+
+.source-panel .source-inventory {
+  max-height: calc(100vh - 190px);
 }
 
 .source-card {
@@ -1378,6 +1426,10 @@ mark {
   }
 
   .maintenance-panel {
+    top: 12px;
+  }
+
+  .source-panel {
     top: 12px;
   }
 
