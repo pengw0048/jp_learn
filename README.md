@@ -52,7 +52,7 @@ The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes th
 
 Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` reads Bangumi music collections and splits album subjects into track rows through Bangumi episodes. `jpcorpus lyrics fetch` searches LRCLIB and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated fetches skip BGM/OST misses by default; use `jpcorpus lyrics fetch --force` after matching logic changes or when you want to retry old misses. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 
-Local text files are optional too. Put Japanese `.txt` files in `texts/` and `jpcorpus export corpus-json` will import them automatically as `source_type: text`, using the file name as the title. You can also pass one-off files with `--text path/to/book.txt`; those examples appear in the viewer under the Text source filter.
+Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/` and `jpcorpus export corpus-json` will import them automatically as `source_type: text`, using the file name as the title. You can also pass one-off files with `--text path/to/book.epub`; those examples appear in the viewer under the Text source filter.
 
 Optional LLM annotation:
 
@@ -110,7 +110,7 @@ data/
   jlpt-words.json              # local JLPT vocabulary list
   jimaku-cache/                # downloaded .srt/.ass files
   lyrics-cache/                # downloaded .lrc/.txt lyric files
-texts/                         # optional local Japanese .txt books/articles
+texts/                         # optional local Japanese .txt/.epub books/articles
 ~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index, versioned caches
 ```
 

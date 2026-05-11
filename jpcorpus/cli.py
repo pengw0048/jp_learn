@@ -624,11 +624,11 @@ def report(
         None,
         "--text",
         "--texts",
-        help="Import local Japanese .txt files as text/book sources.",
+        help="Import local Japanese .txt or .epub files as text/book sources.",
     ),
     text_dir: Path = typer.Option(
         DEFAULT_TEXTS_DIR,
-        help="Directory of .txt files to import when --text is omitted.",
+        help="Directory of .txt and .epub files to import when --text is omitted.",
     ),
     zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
 ) -> None:
@@ -674,11 +674,11 @@ def export_anki(
         None,
         "--text",
         "--texts",
-        help="Import local Japanese .txt files as text/book sources.",
+        help="Import local Japanese .txt or .epub files as text/book sources.",
     ),
     text_dir: Path = typer.Option(
         DEFAULT_TEXTS_DIR,
-        help="Directory of .txt files to import when --text is omitted.",
+        help="Directory of .txt and .epub files to import when --text is omitted.",
     ),
 ) -> None:
     """Export a genanki .apkg deck from cached media."""
@@ -734,11 +734,11 @@ def export_corpus_json(
         None,
         "--text",
         "--texts",
-        help="Import local Japanese .txt files as text/book sources.",
+        help="Import local Japanese .txt or .epub files as text/book sources.",
     ),
     text_dir: Path = typer.Option(
         DEFAULT_TEXTS_DIR,
-        help="Directory of .txt files to import when --text is omitted.",
+        help="Directory of .txt and .epub files to import when --text is omitted.",
     ),
 ) -> None:
     """Export structured word/source/example data for future UI work."""

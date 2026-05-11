@@ -1,3 +1,4 @@
+import zipfile
 from pathlib import Path
 
 from jpcorpus.analysis import (
@@ -18,7 +19,7 @@ from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, Wor
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
 from jpcorpus.subtitle import clean_subtitle_text
-from jpcorpus.texts import parse_text
+from jpcorpus.texts import discover_text_files, parse_text
 from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
 
 
@@ -442,6 +443,24 @@ def test_parse_text_splits_japanese_sentences(tmp_path: Path):
     ]
 
 
+def test_parse_text_reads_epub_spine_in_order(tmp_path: Path):
+    epub = tmp_path / "sample.epub"
+    write_sample_epub(epub)
+
+    assert [line.text for line in parse_text(epub)] == [
+        "今日は学校へ行く。",
+        "私は約束を見る。",
+        "明日も行く！",
+    ]
+
+
+def test_discover_text_files_includes_txt_and_epub(tmp_path: Path):
+    (tmp_path / "book.txt").write_text("今日は学校へ行く。", encoding="utf-8")
+    write_sample_epub(tmp_path / "novel.epub")
+
+    assert [item.name for item in discover_text_files(tmp_path)] == ["book.txt", "novel.epub"]
+
+
 def test_clean_subtitle_text_preserves_cue_line_breaks():
     assert clean_subtitle_text("一行目\n  二行目  \n") == "一行目\n二行目"
 
@@ -693,3 +712,53 @@ def load_jlpt_words_from_entries(entries):
     from jpcorpus.jlpt import JLPTWords
 
     return JLPTWords(entries)
+
+
+def write_sample_epub(path: Path) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+""",
+        )
+        archive.writestr(
+            "OEBPS/content.opf",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
+  <manifest>
+    <item id="chapter-1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-2" href="chapter2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter-1"/>
+    <itemref idref="chapter-2"/>
+  </spine>
+</package>
+""",
+        )
+        archive.writestr(
+            "OEBPS/chapter1.xhtml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>Skip this title</title></head>
+  <body>
+    <p>今日は学校へ行く。</p>
+    <p>私は<ruby>約束<rt>やくそく</rt></ruby>を見る。</p>
+  </body>
+</html>
+""",
+        )
+        archive.writestr(
+            "OEBPS/chapter2.xhtml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body><p>明日も行く！</p></body>
+</html>
+""",
+        )

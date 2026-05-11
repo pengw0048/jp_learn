@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import posixpath
 import re
+import zipfile
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote
+from xml.etree import ElementTree as ET
 
 from .models import SubtitleLine, TextFile
 from .paths import DEFAULT_TEXTS_DIR
 
 
 SENTENCE_RE = re.compile(r".+?(?:[。！？!?]+[」』”’）)]*|$)", re.S)
+EPUB_DOC_SUFFIXES = (".xhtml", ".html", ".htm")
+SUPPORTED_TEXT_SUFFIXES = {".txt", ".epub"}
 
 
 def discover_text_files(directory: Path = DEFAULT_TEXTS_DIR) -> list[TextFile]:
@@ -15,8 +22,8 @@ def discover_text_files(directory: Path = DEFAULT_TEXTS_DIR) -> list[TextFile]:
         return []
     return [
         text_file_from_path(path, root=directory)
-        for path in sorted(directory.rglob("*.txt"))
-        if path.is_file()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file() and path.suffix.lower() in SUPPORTED_TEXT_SUFFIXES
     ]
 
 
@@ -31,7 +38,7 @@ def text_file_from_path(path: Path, *, root: Path | None = None) -> TextFile:
 
 
 def parse_text(path: Path) -> list[SubtitleLine]:
-    text = read_text_file(path)
+    text = read_epub_text(path) if path.suffix.lower() == ".epub" else read_text_file(path)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     paragraphs = re.split(r"\n\s*\n+", text)
     lines: list[SubtitleLine] = []
@@ -53,6 +60,100 @@ def read_text_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def read_epub_text(path: Path) -> str:
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        rootfile = epub_rootfile_path(archive)
+        content_paths = epub_spine_paths(archive, rootfile) if rootfile else []
+        if not content_paths:
+            content_paths = sorted(
+                name
+                for name in names
+                if name.lower().endswith(EPUB_DOC_SUFFIXES)
+            )
+        chunks = [
+            extract_html_text(decode_epub_member(archive.read(name)))
+            for name in content_paths
+            if name in names
+        ]
+    return "\n\n".join(chunk for chunk in chunks if chunk)
+
+
+def epub_rootfile_path(archive: zipfile.ZipFile) -> str | None:
+    try:
+        container = archive.read("META-INF/container.xml")
+    except KeyError:
+        return None
+    try:
+        root = ET.fromstring(container)
+    except ET.ParseError:
+        return None
+    rootfile = root.find(".//{*}rootfile")
+    if rootfile is None:
+        return None
+    path = rootfile.attrib.get("full-path")
+    return normalize_epub_path(path) if path else None
+
+
+def epub_spine_paths(archive: zipfile.ZipFile, rootfile: str) -> list[str]:
+    try:
+        root = ET.fromstring(archive.read(rootfile))
+    except (KeyError, ET.ParseError):
+        return []
+    base = posixpath.dirname(rootfile)
+    manifest = {
+        item.attrib.get("id"): item
+        for item in root.findall(".//{*}manifest/{*}item")
+        if item.attrib.get("id")
+    }
+    paths: list[str] = []
+    for itemref in root.findall(".//{*}spine/{*}itemref"):
+        if itemref.attrib.get("linear") == "no":
+            continue
+        item = manifest.get(itemref.attrib.get("idref"))
+        if item is None:
+            continue
+        media_type = item.attrib.get("media-type", "")
+        href = item.attrib.get("href")
+        if not href or not is_epub_document(href, media_type):
+            continue
+        paths.append(normalize_epub_path(posixpath.join(base, href)))
+    return paths
+
+
+def is_epub_document(href: str, media_type: str) -> bool:
+    if media_type in {"application/xhtml+xml", "text/html"}:
+        return True
+    return href.lower().split("#", 1)[0].endswith(EPUB_DOC_SUFFIXES)
+
+
+def normalize_epub_path(path: str) -> str:
+    path = unquote(path.split("#", 1)[0])
+    return posixpath.normpath(path).lstrip("/")
+
+
+def decode_epub_member(payload: bytes) -> str:
+    prefix = payload[:300]
+    match = re.search(br"encoding=[\"']([^\"']+)[\"']", prefix, re.I)
+    encodings = [match.group(1).decode("ascii", errors="ignore")] if match else []
+    encodings.extend(["utf-8-sig", "utf-8", "cp932"])
+    for encoding in encodings:
+        if not encoding:
+            continue
+        try:
+            return payload.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return payload.decode("utf-8", errors="replace")
+
+
+def extract_html_text(value: str) -> str:
+    parser = EPUBTextExtractor()
+    parser.feed(value)
+    parser.close()
+    return parser.text()
+
+
 def normalize_paragraph(value: str) -> str:
     return re.sub(r"[ \t　]+", " ", value.strip())
 
@@ -63,3 +164,82 @@ def split_sentences(paragraph: str) -> list[str]:
         for match in SENTENCE_RE.finditer(paragraph)
     ]
     return [sentence for sentence in sentences if sentence]
+
+
+class EPUBTextExtractor(HTMLParser):
+    BLOCK_TAGS = {
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "br",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "td",
+        "th",
+        "tr",
+        "ul",
+    }
+    SKIP_TAGS = {"head", "nav", "script", "style", "svg", "title", "rt", "rp"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in self.SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if tag in self.BLOCK_TAGS:
+            self._break()
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in self.SKIP_TAGS:
+            self._skip_depth = max(0, self._skip_depth - 1)
+            return
+        if tag in self.BLOCK_TAGS:
+            self._break()
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        text = re.sub(r"\s+", " ", data)
+        if text.strip():
+            self._parts.append(text)
+
+    def text(self) -> str:
+        raw = "".join(self._parts)
+        raw = re.sub(r"[ \t　]*\n[ \t　]*", "\n", raw)
+        raw = re.sub(r"\n{3,}", "\n\n", raw)
+        return raw.strip()
+
+    def _break(self) -> None:
+        if self._parts and not self._parts[-1].endswith("\n"):
+            self._parts.append("\n\n")
