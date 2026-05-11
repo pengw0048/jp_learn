@@ -1,8 +1,8 @@
 # jpcorpus
 
-`jpcorpus` is the v0.1 local app from the product spec: it connects a Bangumi watched list, maps titles to external anime IDs, downloads Japanese subtitles from Jimaku when available, builds a structured personal JLPT corpus, opens a small web viewer, and exports an Anki deck.
+`jpcorpus` is the v0.1 local app from the product spec: it connects a Bangumi watched list, maps titles to external anime IDs, downloads Japanese subtitles from Jimaku when available, imports local lyrics/books, builds a structured personal JLPT corpus, opens a small study viewer, and exports an Anki deck.
 
-The MVP intentionally stays local-first and file-backed. It does not include hosted accounts, SRS scheduling, vector search, LLM annotation, video jump links, screenshots, or chat tutor flows.
+The MVP intentionally stays local-first and file-backed. It does not include hosted accounts, vector search, video jump links, screenshots, or chat tutor flows.
 
 ## Setup
 
@@ -15,7 +15,9 @@ Register the two external services by hand:
 - Bangumi application: <https://bgm.tv/dev/app>
 - Jimaku API key: <https://jimaku.cc/api/docs>
 
-Set credentials in `.env`:
+You can configure credentials either in the viewer UI or by editing `.env` directly. The UI writes to the local `.env` only when the viewer is opened on `127.0.0.1`.
+
+Manual `.env` setup:
 
 ```bash
 cp .env.example .env
@@ -24,23 +26,45 @@ $EDITOR .env
 
 Bangumi requires a useful non-default User-Agent for API clients. The default is `peng/jpcorpus-v0.1`, but setting your own is recommended.
 Shell environment variables take precedence over `.env`.
-When the local viewer is opened on `127.0.0.1`, its Maintenance panel can also show missing
-configuration, save keys to the local `.env`, and run the common sync/refresh actions.
 
 ## First Run
+
+Recommended UI path:
+
+```bash
+uv run jpcorpus data fetch-jlpt-words
+uv run jpcorpus export corpus-json --output corpus.json --no-lexical-notes
+uv run jpcorpus view --corpus corpus.json --port 8767
+```
+
+Then open the Maintenance panel in the viewer:
+
+1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
+2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
+3. Later, use Sync for new Bangumi/media changes, Refresh corpus for local-only changes such as renamed books, and LLM annotations only when you want paid/local model annotation.
+
+If `data fetch-jlpt-words` is unavailable and you just want to bring up the viewer shell, use `uv run jpcorpus data init-sample-jlpt --overwrite` instead of the first command.
+
+Command-line equivalent:
 
 ```bash
 uv run jpcorpus data fetch-anime-db
 uv run jpcorpus data fetch-jlpt-words
 uv run jpcorpus data fetch-zh-dict
+uv run jpcorpus data fetch-lexical-resources
 uv run jpcorpus link bangumi
 uv run jpcorpus sync
 uv run jpcorpus lyrics sync
 uv run jpcorpus lyrics fetch
-uv run jpcorpus report --level 3 --output report.md
-uv run jpcorpus report --language en --level 3 --output report.en.md
 uv run jpcorpus export corpus-json --output corpus.json
 uv run jpcorpus view --corpus corpus.json
+```
+
+Optional debug/export commands:
+
+```bash
+uv run jpcorpus report --level 3 --output report.md
+uv run jpcorpus report --language en --level 3 --output report.en.md
 uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 ```
 
@@ -54,7 +78,7 @@ Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` rea
 
 Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/` and `jpcorpus export corpus-json` will import them automatically as `source_type: text`, using the file name as the title. You can also pass one-off files with `--text path/to/book.epub`; those examples appear in the viewer under the Text source filter.
 
-Optional LLM annotation:
+Optional LLM annotation can be run from the viewer Maintenance panel. The CLI equivalent is:
 
 ```bash
 uv run jpcorpus annotate --provider apple \
