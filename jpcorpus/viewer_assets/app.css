@@ -1352,48 +1352,8 @@ mark {
   color: var(--muted);
 }
 
-.reader-source-list {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
-}
-
-.reader-source-choice {
-  flex: 0 0 230px;
-  display: grid;
-  gap: 3px;
-  min-height: 58px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfc;
-  color: var(--muted);
-  text-align: left;
-}
-
-.reader-source-choice strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.reader-source-choice span {
-  min-width: 0;
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.reader-source-choice.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: inset 3px 0 0 var(--accent);
+.reader-source-select {
+  max-width: 100%;
 }
 
 .reader-mode-scroll {

@@ -742,13 +742,20 @@ function renderHeader() {
   refs.generatedAt.textContent = app.corpus.generated_at
     ? t("generatedAt", { date: app.corpus.generated_at })
     : "";
+  if (app.mode !== "read") {
+    refs.summaryStrip.hidden = true;
+    refs.summaryStrip.replaceChildren();
+    if (!refs.sourcePanel.hidden) {
+      hideSourcePanel();
+    }
+    return;
+  }
+  refs.summaryStrip.hidden = false;
   const summary = app.corpus.summary || {};
   const items = [
     { label: t("subtitles"), value: summary.subtitle_file_count, sourceType: "subtitle" },
     { label: t("lyrics"), value: summary.lyric_file_count, sourceType: "lyrics" },
     { label: t("texts"), value: summary.text_file_count, sourceType: "text" },
-    { label: t("studyWords"), value: app.words.length },
-    { label: t("examples"), value: totalExampleCount() },
   ];
   refs.summaryStrip.replaceChildren(
     ...items.map(({ label, value, sourceType }) => {
@@ -1825,27 +1832,26 @@ function renderReaderModeToolbar(groups, selected) {
     tabs.append(button);
   });
 
-  const sourcePicker = el("div", "reader-source-picker");
+  const sourcePicker = el("label", "reader-source-picker");
   sourcePicker.append(el("span", "reader-source-picker-label", t("readerSourceChoice")));
-  const sourceList = el("div", "reader-source-list");
+  const select = el("select", "reader-source-select");
   groups.forEach((group) => {
-    const button = el("button", "reader-source-choice");
-    button.type = "button";
-    button.classList.toggle("active", group.key === selected.key);
-    button.append(el("strong", "", group.title || t("sourceInventoryUnknown")));
+    const option = el("option", "", group.title || t("sourceInventoryUnknown"));
+    option.value = group.key;
+    option.selected = group.key === selected.key;
     const meta = [
       sourceLabel(group.type),
       group.meta,
       `${formatNumber(group.readerLineCount || group.exampleCount)} ${group.readerLineCount ? t("sourceInventoryLines") : t("sourceInventoryExamples")}`,
     ].filter(Boolean).join(" · ");
-    button.append(el("span", "", meta));
-    button.addEventListener("click", () => {
-      app.reader.groupKey = group.key;
-      render();
-    });
-    sourceList.append(button);
+    option.textContent = [group.title || t("sourceInventoryUnknown"), meta].filter(Boolean).join(" · ");
+    select.append(option);
   });
-  sourcePicker.append(sourceList);
+  select.addEventListener("change", () => {
+    app.reader.groupKey = select.value;
+    render();
+  });
+  sourcePicker.append(select);
   toolbar.append(tabs, renderReaderWordListPicker(), sourcePicker);
   return toolbar;
 }
@@ -3182,13 +3188,6 @@ function normalizeMeaningPos(value) {
     数词: "数",
   };
   return mapping[value] || value;
-}
-
-function totalExampleCount() {
-  return app.words.reduce(
-    (total, word) => total + (Array.isArray(word.examples) ? word.examples.length : 0),
-    0,
-  );
 }
 
 function examplesForWord(word) {
