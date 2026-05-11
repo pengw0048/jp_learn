@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import posixpath
 import re
+import unicodedata
 import zipfile
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote
@@ -17,6 +19,12 @@ EPUB_DOC_SUFFIXES = (".xhtml", ".html", ".htm")
 SUPPORTED_TEXT_SUFFIXES = {".txt", ".epub"}
 
 
+@dataclass(frozen=True)
+class EPUBMetadata:
+    title: str | None = None
+    creator: str | None = None
+
+
 def discover_text_files(directory: Path = DEFAULT_TEXTS_DIR) -> list[TextFile]:
     if not directory.exists():
         return []
@@ -28,13 +36,15 @@ def discover_text_files(directory: Path = DEFAULT_TEXTS_DIR) -> list[TextFile]:
 
 
 def text_file_from_path(path: Path, *, root: Path | None = None) -> TextFile:
-    name = path.name
+    name = normalize_display_text(path.name)
     if root:
         try:
-            name = str(path.relative_to(root))
+            name = normalize_display_text(str(path.relative_to(root)))
         except ValueError:
-            name = path.name
-    return TextFile(title=path.stem, path=path, name=name)
+            name = normalize_display_text(path.name)
+    metadata = read_epub_metadata(path) if path.suffix.lower() == ".epub" else EPUBMetadata()
+    title = metadata.title or normalize_display_text(path.stem)
+    return TextFile(title=title, path=path, name=name, author=metadata.creator)
 
 
 def parse_text(path: Path) -> list[SubtitleLine]:
@@ -77,6 +87,24 @@ def read_epub_text(path: Path) -> str:
             if name in names
         ]
     return "\n\n".join(chunk for chunk in chunks if chunk)
+
+
+def read_epub_metadata(path: Path) -> EPUBMetadata:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            rootfile = epub_rootfile_path(archive)
+            if not rootfile:
+                return EPUBMetadata()
+            try:
+                root = ET.fromstring(archive.read(rootfile))
+            except (KeyError, ET.ParseError):
+                return EPUBMetadata()
+    except (OSError, zipfile.BadZipFile):
+        return EPUBMetadata()
+    return EPUBMetadata(
+        title=first_child_text(root, ".//{*}metadata/{*}title"),
+        creator=first_child_text(root, ".//{*}metadata/{*}creator"),
+    )
 
 
 def epub_rootfile_path(archive: zipfile.ZipFile) -> str | None:
@@ -152,6 +180,19 @@ def extract_html_text(value: str) -> str:
     parser.feed(value)
     parser.close()
     return parser.text()
+
+
+def first_child_text(root: ET.Element, path: str) -> str | None:
+    for element in root.findall(path):
+        value = normalize_display_text("".join(element.itertext()))
+        if value:
+            return value
+    return None
+
+
+def normalize_display_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFC", str(value or ""))
+    return re.sub(r"[\s　]+", " ", normalized).strip()
 
 
 def normalize_paragraph(value: str) -> str:

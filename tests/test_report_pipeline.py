@@ -19,7 +19,7 @@ from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, Wor
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
 from jpcorpus.subtitle import clean_subtitle_text
-from jpcorpus.texts import discover_text_files, parse_text
+from jpcorpus.texts import discover_text_files, parse_text, text_file_from_path
 from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
 
 
@@ -454,6 +454,27 @@ def test_parse_text_reads_epub_spine_in_order(tmp_path: Path):
     ]
 
 
+def test_epub_text_file_uses_metadata_title_and_creator(tmp_path: Path):
+    epub = tmp_path / "fallback title.epub"
+    write_sample_epub(epub)
+
+    text_file = text_file_from_path(epub)
+
+    assert text_file.title == "花束 みたいな恋をした"
+    assert text_file.author == "坂元 裕二"
+    assert text_file.name == "fallback title.epub"
+
+
+def test_text_file_title_and_name_are_nfc_normalized(tmp_path: Path):
+    text = tmp_path / "ノベライズ.txt"
+    text.write_text("今日は学校へ行く。", encoding="utf-8")
+
+    text_file = text_file_from_path(text)
+
+    assert text_file.title == "ノベライズ"
+    assert text_file.name == "ノベライズ.txt"
+
+
 def test_discover_text_files_includes_txt_and_epub(tmp_path: Path):
     (tmp_path / "book.txt").write_text("今日は学校へ行く。", encoding="utf-8")
     write_sample_epub(tmp_path / "novel.epub")
@@ -731,6 +752,10 @@ def write_sample_epub(path: Path) -> None:
             "OEBPS/content.opf",
             """<?xml version="1.0" encoding="UTF-8"?>
 <package version="3.0" xmlns="http://www.idpf.org/2007/opf">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>花束　みたいな恋をした</dc:title>
+    <dc:creator>坂元 裕二</dc:creator>
+  </metadata>
   <manifest>
     <item id="chapter-1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
     <item id="chapter-2" href="chapter2.xhtml" media-type="application/xhtml+xml"/>

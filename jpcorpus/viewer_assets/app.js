@@ -2274,9 +2274,13 @@ function formatReference(example) {
 function formatTextReference(example) {
   const parts = [];
   const title = String(example.source_title || "").trim();
+  const author = String(example.source_artist || "").trim();
   const file = String(example.subtitle_file || "").trim();
   if (title) {
     parts.push(title);
+  }
+  if (author) {
+    parts.push(author);
   }
   if (file && normalizedTextTitle(fileStem(file)) !== normalizedTextTitle(title)) {
     parts.push(file);
@@ -2290,7 +2294,10 @@ function fileStem(value) {
 }
 
 function normalizedTextTitle(value) {
-  return String(value || "").normalize("NFC").trim();
+  return String(value || "")
+    .normalize("NFC")
+    .replace(/[\s\u3000]+/gu, " ")
+    .trim();
 }
 
 function formatLyricReference(example) {
