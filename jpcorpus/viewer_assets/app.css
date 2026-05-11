@@ -145,8 +145,8 @@ h1 {
   white-space: nowrap;
 }
 
-.summary-pill:hover,
-.summary-pill.active {
+button.summary-pill:hover,
+button.summary-pill.active {
   border-color: var(--accent);
   color: var(--accent);
 }

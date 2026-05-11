@@ -349,6 +349,7 @@ const app = {
   sort: "count",
   status: "all",
   source: "all",
+  sourcePanelType: null,
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
   lang: localStorage.getItem(STORAGE_LANG) || "zh",
@@ -551,46 +552,55 @@ function renderHeader() {
     : "";
   const summary = app.corpus.summary || {};
   const items = [
-    [t("shows"), summary.watched_show_count],
-    [t("subtitles"), summary.subtitle_file_count],
-    [t("lyrics"), summary.lyric_file_count],
-    [t("texts"), summary.text_file_count],
-    [t("studyWords"), app.words.length],
-    [t("examples"), totalExampleCount()],
+    { label: t("shows"), value: summary.watched_show_count },
+    { label: t("subtitles"), value: summary.subtitle_file_count, sourceType: "subtitle" },
+    { label: t("lyrics"), value: summary.lyric_file_count, sourceType: "lyrics" },
+    { label: t("texts"), value: summary.text_file_count, sourceType: "text" },
+    { label: t("studyWords"), value: app.words.length },
+    { label: t("examples"), value: totalExampleCount() },
   ];
-  const sourceOpen = !refs.sourcePanel.hidden;
   refs.summaryStrip.replaceChildren(
-    ...items.map(([label, value]) => {
-      const pill = el("button", "summary-pill");
-      pill.type = "button";
-      pill.classList.toggle("active", sourceOpen);
-      pill.setAttribute("aria-expanded", sourceOpen ? "true" : "false");
+    ...items.map(({ label, value, sourceType }) => {
+      const pill = el(sourceType ? "button" : "div", "summary-pill");
+      if (sourceType) {
+        pill.type = "button";
+        pill.dataset.sourcePanelType = sourceType;
+        pill.addEventListener("click", () => toggleSourcePanel(sourceType));
+      }
       pill.append(label, " ", strong(value ?? "0"));
-      pill.addEventListener("click", toggleSourcePanel);
       return pill;
     }),
   );
+  updateSummaryPillStates();
 }
 
-function toggleSourcePanel() {
-  const show = refs.sourcePanel.hidden;
-  refs.sourcePanel.hidden = !show;
-  refs.summaryStrip.querySelectorAll(".summary-pill").forEach((pill) => {
-    pill.classList.toggle("active", show);
-    pill.setAttribute("aria-expanded", show ? "true" : "false");
-  });
-  if (show) {
-    refs.maintenancePanel.hidden = true;
-    refs.maintenanceToggle.classList.remove("active");
-    renderSourceInventory();
+function toggleSourcePanel(sourceType) {
+  if (!refs.sourcePanel.hidden && app.sourcePanelType === sourceType) {
+    hideSourcePanel();
+    return;
   }
+  app.sourcePanelType = sourceType;
+  refs.sourcePanel.hidden = false;
+  refs.maintenancePanel.hidden = true;
+  refs.maintenanceToggle.classList.remove("active");
+  renderSourceInventory();
+  updateSummaryPillStates();
 }
 
 function hideSourcePanel() {
   refs.sourcePanel.hidden = true;
+  app.sourcePanelType = null;
+  updateSummaryPillStates();
+}
+
+function updateSummaryPillStates() {
+  const sourceOpen = !refs.sourcePanel.hidden;
   refs.summaryStrip.querySelectorAll(".summary-pill").forEach((pill) => {
-    pill.classList.remove("active");
-    pill.setAttribute("aria-expanded", "false");
+    const active = sourceOpen && pill.dataset.sourcePanelType === app.sourcePanelType;
+    pill.classList.toggle("active", active);
+    if (pill.dataset.sourcePanelType) {
+      pill.setAttribute("aria-expanded", active ? "true" : "false");
+    }
   });
 }
 
@@ -694,7 +704,9 @@ function renderSourceInventory() {
   if (!refs.sourceInventory) {
     return;
   }
-  const sources = buildSourceInventory();
+  const sources = buildSourceInventory().filter((source) => (
+    !app.sourcePanelType || source.type === app.sourcePanelType
+  ));
   if (sources.length === 0) {
     refs.sourceInventory.replaceChildren(emptyMessage(t("sourceInventoryEmpty")));
     return;
