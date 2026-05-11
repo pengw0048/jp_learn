@@ -1351,6 +1351,18 @@ mark {
   color: var(--text);
 }
 
+.source-child-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-child-row small {
+  justify-self: end;
+  white-space: nowrap;
+}
+
 .source-detail {
   display: grid;
   gap: 10px;

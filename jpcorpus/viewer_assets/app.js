@@ -837,11 +837,7 @@ function addSourceToGroup(group, source) {
 
 function sourceChildren(source) {
   if (source.type === "subtitle") {
-    return [...source.files].sort().map((file) => ({
-      label: subtitleChildLabel(source, file),
-      meta: file,
-      examples: countExamplesForFile(source, file),
-    }));
+    return subtitleEpisodeChildren(source);
   }
   if (source.type === "lyrics") {
     return [{
@@ -859,15 +855,59 @@ function sourceChildren(source) {
   }));
 }
 
-function subtitleChildLabel(source, file) {
-  const match = source.exampleItems.find(({ example }) => (
-    (example.reference?.source_file || example.subtitle_file) === file
-    && Number.isInteger(example.episode)
-  ));
-  if (match) {
-    return `EP${String(match.example.episode).padStart(2, "0")}`;
+function subtitleEpisodeChildren(source) {
+  const episodes = new Map();
+  source.exampleItems.forEach(({ example }) => {
+    const file = example.reference?.source_file || example.subtitle_file || "";
+    const episode = Number.isInteger(example.episode) ? example.episode : null;
+    const key = episode === null ? `file:${file || source.title}` : `episode:${episode}`;
+    if (!episodes.has(key)) {
+      episodes.set(key, {
+        episode,
+        files: new Set(),
+        examples: 0,
+        label: episode === null ? cleanSourceFileLabel(file || source.title) : formatEpisodeLabel(episode),
+      });
+    }
+    const entry = episodes.get(key);
+    if (file) {
+      entry.files.add(file);
+    }
+    entry.examples += 1;
+  });
+  return [...episodes.values()]
+    .sort(compareSubtitleChildren)
+    .map((entry) => ({
+      label: entry.label,
+      meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryFiles")}` : "",
+      examples: entry.examples,
+    }));
+}
+
+function compareSubtitleChildren(left, right) {
+  if (left.episode !== null && right.episode !== null) {
+    return left.episode - right.episode;
   }
-  return fileStem(file);
+  if (left.episode !== null) {
+    return -1;
+  }
+  if (right.episode !== null) {
+    return 1;
+  }
+  return left.label.localeCompare(right.label, app.lang === "zh" ? "zh-CN" : "ja-JP");
+}
+
+function formatEpisodeLabel(episode) {
+  return `EP${String(episode).padStart(2, "0")}`;
+}
+
+function cleanSourceFileLabel(value) {
+  return fileStem(value)
+    .replace(/\[[^\]]+\]/gu, "")
+    .replace(/\([^)]*\)/gu, "")
+    .replace(/[_．.]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim() || value;
 }
 
 function countExamplesForFile(source, file) {
@@ -906,7 +946,8 @@ function renderSourceGroupItem(source) {
   top.append(heading, action);
   item.append(top, renderSourceMetrics(source));
 
-  const childList = renderSourceChildren(source.children.slice(0, 6), source.type);
+  const previewLimit = source.type === "subtitle" ? 4 : 6;
+  const childList = renderSourceChildren(source.children.slice(0, previewLimit), source.type);
   if (childList) {
     item.append(childList);
   }
@@ -971,9 +1012,7 @@ function renderSourceChildren(children, sourceType) {
   children.forEach((child) => {
     const row = el("div", "source-child-row");
     row.append(strong(child.label));
-    if (child.meta) {
-      row.append(el("span", "", child.meta));
-    }
+    row.append(el("span", "", child.meta || ""));
     if (child.examples) {
       row.append(el("small", "", `${formatNumber(child.examples)} ${t("sourceInventoryExamples")}`));
     }
