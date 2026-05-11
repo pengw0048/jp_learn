@@ -9,7 +9,7 @@ from typing import Callable
 from urllib.parse import unquote, urlparse
 import webbrowser
 
-from .viewer_jobs import ViewerJobRunner, maintenance_status
+from .viewer_jobs import ViewerJobRunner, maintenance_status, save_viewer_config
 
 
 ASSET_DIR = Path(__file__).with_name("viewer_assets")
@@ -60,7 +60,7 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request_path = unquote(urlparse(self.path).path)
-        if request_path not in {"/api/jobs/annotate", "/api/jobs/maintenance"}:
+        if request_path not in {"/api/jobs/annotate", "/api/jobs/maintenance", "/api/config"}:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
         if self.job_runner is None:
@@ -68,6 +68,10 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             return
         try:
             payload = self._read_json()
+            if request_path == "/api/config":
+                config = save_viewer_config(payload)
+                self._send_json({"config": config})
+                return
             if request_path == "/api/jobs/annotate":
                 job = self.job_runner.start_annotation(payload)
             else:

@@ -996,7 +996,7 @@ mark {
   top: 92px;
   right: 18px;
   z-index: 20;
-  width: min(520px, calc(100vw - 36px));
+  width: min(760px, calc(100vw - 36px));
   max-height: calc(100vh - 116px);
   padding: 14px;
   border: 1px solid var(--line);
@@ -1028,6 +1028,37 @@ mark {
   font-weight: 760;
 }
 
+.maintenance-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.maintenance-card + .maintenance-card {
+  margin-top: 10px;
+}
+
+.maintenance-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.maintenance-section-header h3 {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.maintenance-help {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .maintenance-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1046,7 +1077,8 @@ mark {
   display: none;
 }
 
-.maintenance-grid input[type="number"] {
+.maintenance-grid input,
+.maintenance-grid select {
   width: 100%;
   min-height: 36px;
   padding: 5px 8px;
@@ -1054,6 +1086,94 @@ mark {
   border-radius: 8px;
   background: #fbfcfc;
   color: var(--text);
+}
+
+.config-form {
+  margin-top: 10px;
+}
+
+.config-form summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.config-form .maintenance-grid {
+  margin-top: 10px;
+}
+
+.config-status-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.config-status {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.config-status strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.config-status.ready {
+  border-color: color-mix(in srgb, var(--accent), var(--line) 55%);
+  background: color-mix(in srgb, var(--accent), white 93%);
+}
+
+.config-status.missing {
+  border-color: color-mix(in srgb, var(--source), var(--line) 50%);
+  background: color-mix(in srgb, var(--source), white 91%);
+}
+
+.maintenance-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.maintenance-action-grid button {
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  text-align: left;
+}
+
+.maintenance-action-grid button:hover:not(:disabled),
+.maintenance-action-grid button.active {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.maintenance-action-grid button:disabled,
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.maintenance-action-grid strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.maintenance-action-grid span {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .checkbox-label {
@@ -1064,6 +1184,30 @@ mark {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfc;
+}
+
+.secondary-button,
+.llm-card .maintenance-section-header > button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.llm-card .maintenance-section-header > button {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.llm-card .maintenance-section-header > button:disabled {
+  cursor: not-allowed;
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
 }
 
 .maintenance-estimate,
@@ -1109,23 +1253,6 @@ mark {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.maintenance-actions button {
-  min-height: 34px;
-  padding: 6px 14px;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent);
-  color: #ffffff;
-  font-weight: 760;
-}
-
-.maintenance-actions button:disabled {
-  cursor: not-allowed;
-  border-color: var(--line);
-  background: var(--panel-2);
-  color: var(--muted);
 }
 
 .maintenance-log {
@@ -1178,6 +1305,11 @@ mark {
 
   .maintenance-panel {
     top: 12px;
+  }
+
+  .config-status-list,
+  .maintenance-action-grid {
+    grid-template-columns: 1fr;
   }
 
   .workspace {
@@ -1259,6 +1391,15 @@ mark {
 
   .maintenance-grid {
     grid-template-columns: 1fr;
+  }
+
+  .maintenance-section-header {
+    flex-direction: column;
+  }
+
+  .secondary-button,
+  .llm-card .maintenance-section-header > button {
+    width: 100%;
   }
 
   .study-actions {

@@ -24,6 +24,8 @@ $EDITOR .env
 
 Bangumi requires a useful non-default User-Agent for API clients. The default is `peng/jpcorpus-v0.1`, but setting your own is recommended.
 Shell environment variables take precedence over `.env`.
+When the local viewer is opened on `127.0.0.1`, its Maintenance panel can also show missing
+configuration, save keys to the local `.env`, and run the common sync/refresh actions.
 
 ## First Run
 

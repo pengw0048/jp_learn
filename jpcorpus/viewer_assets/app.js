@@ -141,17 +141,27 @@ const text = {
     studyWords: "单词",
     maintenance: "维护",
     maintenanceTitle: "维护",
-    maintenanceTask: "任务",
+    configTitle: "配置状态",
+    configEdit: "填写或更新 key",
+    configSave: "保存配置",
+    configSaved: "已保存到本地 .env",
+    configSaveFailed: "保存失败：{error}",
+    configPath: "保存到 {path}；密码和 key 不会回显，留空表示不修改已有值。",
+    configReady: "已配置",
+    configMissing: "缺少 {keys}",
+    configLlmBaseUrl: "LLM Base URL",
+    configLlmModel: "LLM Model",
+    configLlmApiKey: "LLM API Key",
+    quickActionsTitle: "常用操作",
+    quickActionsHelp: "这些按钮会直接开始，不需要再选任务。",
+    llmHelp: "会先查本地缓存；缺失时才调用模型。",
     maintenanceScope: "范围",
     maintenanceProvider: "Provider",
     maintenanceLimit: "上限",
-    maintenanceLimitOptional: "上限（空=全部）",
     maintenanceConcurrency: "并发",
     maintenanceRpm: "RPM",
     maintenanceOverwrite: "覆盖已有标注",
-    maintenanceOverwriteLyrics: "覆盖已有歌词",
     maintenanceShowContext: "使用作品简介",
-    maintenanceStart: "开始",
     maintenanceStartSyncMedia: "同步并刷新",
     maintenanceStartExportCorpus: "刷新语料",
     maintenanceStartFetchLexicalResources: "更新资源",
@@ -174,9 +184,9 @@ const text = {
     maintenanceTaskRefreshAll: "更新词表、中文词典、词语资源和动画数据库，再同步媒体、拉歌词并刷新语料",
     maintenanceDisabled: "维护 API 未启用",
     maintenanceIdle: "还没有运行任务",
-    maintenanceRunningTask: "正在运行：{task}，开始于 {time}",
-    maintenanceSucceededTask: "已完成：{task}{reload}，完成于 {time}",
-    maintenanceFailedTask: "失败：{task}，结束于 {time}",
+    maintenanceRunningTask: "正在运行：{task}，开始 {time}",
+    maintenanceSucceededTask: "上次完成：{task}{reload}，完成 {time}",
+    maintenanceFailedTask: "上次失败：{task}，结束 {time}",
     maintenanceProgressAnnotate: "已处理 {completed}/{total}；缓存 {cached}，新标注 {annotated}，失败 {failed}",
     maintenanceProgressSteps: "步骤 {completed}/{total}：{step}",
     maintenanceProgressGeneric: "已处理 {completed}/{total}",
@@ -252,17 +262,27 @@ const text = {
     studyWords: "Study words",
     maintenance: "Maintain",
     maintenanceTitle: "Maintenance",
-    maintenanceTask: "Task",
+    configTitle: "Configuration",
+    configEdit: "Fill or update keys",
+    configSave: "Save config",
+    configSaved: "Saved to local .env",
+    configSaveFailed: "Save failed: {error}",
+    configPath: "Saved to {path}. Secrets are not echoed back; blank fields keep existing values.",
+    configReady: "Configured",
+    configMissing: "Missing {keys}",
+    configLlmBaseUrl: "LLM Base URL",
+    configLlmModel: "LLM model",
+    configLlmApiKey: "LLM API key",
+    quickActionsTitle: "Common actions",
+    quickActionsHelp: "These buttons start directly; no task dropdown needed.",
+    llmHelp: "Local cache is checked first; the model is called only for misses.",
     maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
     maintenanceLimit: "Limit",
-    maintenanceLimitOptional: "Limit (blank = all)",
     maintenanceConcurrency: "Concurrency",
     maintenanceRpm: "RPM",
     maintenanceOverwrite: "Overwrite annotations",
-    maintenanceOverwriteLyrics: "Overwrite lyrics",
     maintenanceShowContext: "Use show context",
-    maintenanceStart: "Start",
     maintenanceStartSyncMedia: "Sync and refresh",
     maintenanceStartExportCorpus: "Refresh corpus",
     maintenanceStartFetchLexicalResources: "Update resources",
@@ -325,6 +345,9 @@ const app = {
   maintenance: {
     enabled: false,
     job: null,
+    config: null,
+    llm: null,
+    task: "annotate",
     pollTimer: null,
     reloadedJobId: null,
   },
@@ -349,7 +372,19 @@ const refs = {
   maintenanceToggle: $("#maintenance-toggle"),
   maintenancePanel: $("#maintenance-panel"),
   maintenanceClose: $("#maintenance-close"),
-  maintenanceTask: $("#maintenance-task"),
+  maintenanceActionButtons: document.querySelectorAll("[data-maintenance-task]"),
+  configSave: $("#config-save"),
+  configPath: $("#config-path"),
+  configStatusList: $("#config-status-list"),
+  configForm: $("#config-form"),
+  configSaveStatus: $("#config-save-status"),
+  configBangumiClientId: $("#config-bangumi-client-id"),
+  configBangumiClientSecret: $("#config-bangumi-client-secret"),
+  configJimakuApiKey: $("#config-jimaku-api-key"),
+  configLlmProvider: $("#config-llm-provider"),
+  configLlmBaseUrl: $("#config-llm-base-url"),
+  configLlmModel: $("#config-llm-model"),
+  configLlmApiKey: $("#config-llm-api-key"),
   maintenanceScope: $("#maintenance-scope"),
   maintenanceProvider: $("#maintenance-provider"),
   maintenanceLimitLabel: $("#maintenance-limit-label"),
@@ -437,10 +472,25 @@ function bindControls() {
     refs.maintenancePanel.hidden = true;
     refs.maintenanceToggle.classList.remove("active");
   });
+  refs.maintenanceActionButtons.forEach((button) => {
+    button.addEventListener("click", () => startMaintenanceJob(button.dataset.maintenanceTask));
+  });
+  refs.configSave.addEventListener("click", saveConfig);
+  refs.configForm.addEventListener("toggle", () => {
+    refs.configForm.dataset.userToggled = "1";
+  });
+  refs.configLlmProvider.addEventListener("change", () => {
+    refs.maintenanceProvider.value = refs.configLlmProvider.value;
+    renderMaintenance();
+  });
+  refs.maintenanceProvider.addEventListener("change", () => {
+    refs.configLlmProvider.value = refs.maintenanceProvider.value;
+    renderMaintenance();
+  });
   [
-    refs.maintenanceTask,
     refs.maintenanceScope,
     refs.maintenanceProvider,
+    refs.configLlmProvider,
     refs.maintenanceLimit,
     refs.maintenanceConcurrency,
     refs.maintenanceRpm,
@@ -450,7 +500,7 @@ function bindControls() {
     control.addEventListener("input", renderMaintenance);
     control.addEventListener("change", renderMaintenance);
   });
-  refs.maintenanceStart.addEventListener("click", startMaintenanceJob);
+  refs.maintenanceStart.addEventListener("click", () => startMaintenanceJob("annotate"));
 }
 
 function applyLanguage() {
@@ -510,8 +560,17 @@ async function loadMaintenanceStatus() {
     const payload = await response.json();
     app.maintenance.enabled = Boolean(payload.enabled);
     app.maintenance.job = payload.job || null;
+    app.maintenance.config = payload.config || null;
+    app.maintenance.llm = payload.llm || null;
     if (payload.llm?.provider && refs.maintenanceProvider) {
       refs.maintenanceProvider.value = payload.llm.provider;
+      refs.configLlmProvider.value = payload.llm.provider;
+    }
+    if (payload.llm?.base_url && refs.configLlmBaseUrl && !refs.configLlmBaseUrl.value) {
+      refs.configLlmBaseUrl.value = payload.llm.base_url;
+    }
+    if (payload.llm?.model && refs.configLlmModel && !refs.configLlmModel.value) {
+      refs.configLlmModel.value = payload.llm.model;
     }
     renderMaintenance();
     if (app.maintenance.job?.status === "running") {
@@ -527,22 +586,19 @@ function renderMaintenance() {
   if (!refs.maintenancePanel) {
     return;
   }
+  renderConfigStatus();
   const task = maintenanceTask();
-  const isAnnotation = task === "annotate";
-  const spec = isAnnotation ? annotationJobSpec() : maintenanceJobSpec();
-  const estimate = isAnnotation ? estimateAnnotationJob(spec) : { planned: 1 };
+  const spec = annotationJobSpec();
+  const estimate = estimateAnnotationJob(spec);
   const job = app.maintenance.job;
-  document.querySelectorAll(".annotation-control").forEach((node) => {
-    node.hidden = !isAnnotation;
-  });
-  refs.maintenanceLimitLabel.textContent =
-    task === "fetch_lyrics" ? t("maintenanceLimitOptional") : t("maintenanceLimit");
-  refs.maintenanceOverwriteLabel.textContent =
-    task === "fetch_lyrics" ? t("maintenanceOverwriteLyrics") : t("maintenanceOverwrite");
   refs.maintenanceToggle.disabled = !app.maintenance.enabled;
+  refs.maintenanceActionButtons.forEach((button) => {
+    button.disabled = !app.maintenance.enabled || job?.status === "running";
+    button.classList.toggle("active", button.dataset.maintenanceTask === task && job?.status === "running");
+  });
   if (!app.maintenance.enabled) {
     refs.maintenanceEstimate.textContent = t("maintenanceDisabled");
-  } else if (isAnnotation) {
+  } else {
     refs.maintenanceEstimate.textContent = t(
       spec.bypass_cache ? "maintenanceEstimateRefresh" : "maintenanceEstimate",
       {
@@ -551,16 +607,85 @@ function renderMaintenance() {
         level: spec.level,
       },
     );
-  } else {
-    refs.maintenanceEstimate.textContent = maintenanceTaskDescription(task);
   }
   refs.maintenanceStart.disabled =
-    !app.maintenance.enabled || job?.status === "running" || (isAnnotation && estimate.planned <= 0);
-  refs.maintenanceStart.textContent = maintenanceStartLabel(task);
+    !app.maintenance.enabled || job?.status === "running" || estimate.planned <= 0;
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
   updateExampleActionButtons();
+}
+
+function renderConfigStatus() {
+  const config = app.maintenance.config;
+  refs.configSave.disabled = !app.maintenance.enabled;
+  if (!config) {
+    refs.configPath.textContent = app.maintenance.enabled ? "" : t("maintenanceDisabled");
+    refs.configStatusList.replaceChildren();
+    return;
+  }
+  refs.configPath.textContent = t("configPath", { path: config.env_path || ".env" });
+  const services = Array.isArray(config.services) ? config.services : [];
+  const hasMissing = services.some((service) => !service.configured);
+  if (hasMissing && !refs.configForm.dataset.userToggled) {
+    refs.configForm.open = true;
+  }
+  refs.configStatusList.replaceChildren(
+    ...services.map((service) => {
+      const item = el("div", service.configured ? "config-status ready" : "config-status missing");
+      item.append(
+        strong(service.label || service.id),
+        el(
+          "span",
+          "",
+          service.configured
+            ? t("configReady")
+            : t("configMissing", { keys: (service.missing || []).join(", ") }),
+        ),
+      );
+      return item;
+    }),
+  );
+}
+
+async function saveConfig() {
+  refs.configSave.disabled = true;
+  refs.configSaveStatus.textContent = "";
+  const payload = {
+    bangumi_client_id: refs.configBangumiClientId.value.trim(),
+    bangumi_client_secret: refs.configBangumiClientSecret.value.trim(),
+    jimaku_api_key: refs.configJimakuApiKey.value.trim(),
+    llm_provider: refs.configLlmProvider.value,
+    llm_base_url: refs.configLlmBaseUrl.value.trim(),
+    llm_model: refs.configLlmModel.value.trim(),
+    llm_api_key: refs.configLlmApiKey.value.trim(),
+  };
+  try {
+    const response = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `HTTP ${response.status}`);
+    }
+    app.maintenance.config = result.config || null;
+    app.maintenance.llm = result.config?.llm || app.maintenance.llm;
+    if (app.maintenance.llm?.provider) {
+      refs.maintenanceProvider.value = app.maintenance.llm.provider;
+      refs.configLlmProvider.value = app.maintenance.llm.provider;
+    }
+    [refs.configBangumiClientSecret, refs.configJimakuApiKey, refs.configLlmApiKey].forEach((input) => {
+      input.value = "";
+    });
+    refs.configSaveStatus.textContent = t("configSaved");
+    renderMaintenance();
+  } catch (error) {
+    refs.configSaveStatus.textContent = t("configSaveFailed", { error: error.message });
+  } finally {
+    refs.configSave.disabled = !app.maintenance.enabled;
+  }
 }
 
 function renderLevelFilter() {
@@ -899,8 +1024,9 @@ function advanceStudyQueue(previousQueue, word) {
   render();
 }
 
-async function startMaintenanceJob() {
-  const task = maintenanceTask();
+async function startMaintenanceJob(taskOverride = null) {
+  const task = taskOverride || maintenanceTask();
+  app.maintenance.task = task;
   const spec = task === "annotate" ? annotationJobSpec() : maintenanceJobSpec();
   const endpoint = task === "annotate" ? "/api/jobs/annotate" : "/api/jobs/maintenance";
   refs.maintenanceStart.disabled = true;
@@ -1884,11 +2010,10 @@ function examplesForWord(word) {
 }
 
 function maintenanceTask() {
-  return refs.maintenanceTask?.value || "annotate";
+  return app.maintenance.task || "annotate";
 }
 
-function maintenanceJobSpec() {
-  const task = maintenanceTask();
+function maintenanceJobSpec(task = maintenanceTask()) {
   return {
     type: task,
     limit: optionalNumberValue(refs.maintenanceLimit),
