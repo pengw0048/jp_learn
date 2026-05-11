@@ -2,6 +2,7 @@
 .pytest_cache/
 __pycache__/
 *.py[cod]
+.DS_Store
 .env
 .env.*
 !.env.example
@@ -15,3 +16,4 @@ data/lyrics-cache/
 *.apkg
 report*.md
 corpus*.json
+texts/
