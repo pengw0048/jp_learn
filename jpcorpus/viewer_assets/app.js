@@ -2273,13 +2273,24 @@ function formatReference(example) {
 
 function formatTextReference(example) {
   const parts = [];
-  if (example.source_title) {
-    parts.push(example.source_title);
+  const title = String(example.source_title || "").trim();
+  const file = String(example.subtitle_file || "").trim();
+  if (title) {
+    parts.push(title);
   }
-  if (example.subtitle_file) {
-    parts.push(example.subtitle_file);
+  if (file && normalizedTextTitle(fileStem(file)) !== normalizedTextTitle(title)) {
+    parts.push(file);
   }
   return parts.join(" · ");
+}
+
+function fileStem(value) {
+  const name = value.split(/[\\/]/u).pop() || value;
+  return name.replace(/\.[^.]+$/u, "");
+}
+
+function normalizedTextTitle(value) {
+  return String(value || "").normalize("NFC").trim();
 }
 
 function formatLyricReference(example) {
