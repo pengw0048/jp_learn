@@ -7,8 +7,9 @@ from pathlib import Path
 
 from .jlpt import JLPTWords
 from .lyrics import parse_lyrics
-from .models import LyricFile, SubtitleFile, SubtitleLine, Token, WordEntry
+from .models import LyricFile, SubtitleFile, SubtitleLine, TextFile, Token, WordEntry
 from .subtitle import parse_subtitle
+from .texts import parse_text
 from .tokenize import JapaneseTokenizer
 
 
@@ -140,6 +141,7 @@ class CorpusAnalysis:
     watched_show_count: int
     subtitle_show_count: int
     subtitle_file_count: int
+    text_file_count: int
     total_tokens: int
     unique_token_count: int
     word_stats: dict[str, WordStats]
@@ -180,6 +182,7 @@ def analyze_subtitles(
         music_track_count=0,
         subtitle_files=subtitle_files,
         lyric_files=[],
+        text_files=[],
         jlpt_words=jlpt_words,
         max_examples_per_word=max_examples_per_word,
         context_lines=context_lines,
@@ -194,6 +197,7 @@ def analyze_media(
     music_track_count: int,
     subtitle_files: list[SubtitleFile],
     lyric_files: list[LyricFile],
+    text_files: list[TextFile] | None = None,
     jlpt_words: JLPTWords,
     max_examples_per_word: int = 3,
     context_lines: int = 2,
@@ -208,6 +212,7 @@ def analyze_media(
     unique_tokens: set[str] = set()
     source_type_counts: Counter[str] = Counter()
     total_tokens = 0
+    text_files = text_files or []
 
     def consume_lines(
         *,
@@ -325,12 +330,25 @@ def analyze_media(
             lines=parse_lyrics(lyric_file.path),
         )
 
+    for text_file in text_files:
+        if not text_file.path.exists():
+            continue
+        consume_lines(
+            source_type="text",
+            source_title=text_file.title,
+            source_file=text_file.name,
+            lines=parse_text(text_file.path),
+            source_artist=text_file.author,
+        )
+
     subtitle_show_count = len({file.bangumi_id for file in subtitle_files if file.path.exists()})
     existing_lyric_files = [file for file in lyric_files if file.path.exists()]
+    existing_text_files = [file for file in text_files if file.path.exists()]
     return CorpusAnalysis(
         watched_show_count=watched_show_count,
         subtitle_show_count=subtitle_show_count,
         subtitle_file_count=len([file for file in subtitle_files if file.path.exists()]),
+        text_file_count=len(existing_text_files),
         total_tokens=total_tokens,
         unique_token_count=len(unique_tokens),
         word_stats=word_stats,

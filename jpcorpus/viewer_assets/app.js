@@ -89,6 +89,7 @@ const text = {
     sourceAll: "全部",
     sourceSubtitles: "字幕",
     sourceLyrics: "歌词",
+    sourceTexts: "文本",
     loadingTitle: "正在读取 corpus.json",
     loadingBody: "如果这里停住了，请确认本地服务能访问 corpus.json。",
     loadErrorTitle: "没有读到 corpus.json",
@@ -136,6 +137,7 @@ const text = {
     shows: "作品",
     subtitles: "字幕",
     lyrics: "歌词",
+    texts: "文本",
     studyWords: "单词",
     maintenance: "维护",
     maintenanceTitle: "维护",
@@ -198,6 +200,7 @@ const text = {
     sourceAll: "All",
     sourceSubtitles: "Subtitles",
     sourceLyrics: "Lyrics",
+    sourceTexts: "Texts",
     loadingTitle: "Loading corpus.json",
     loadingBody: "If this does not change, make sure the local server can read corpus.json.",
     loadErrorTitle: "Could not read corpus.json",
@@ -245,6 +248,7 @@ const text = {
     shows: "Shows",
     subtitles: "Subtitles",
     lyrics: "Lyrics",
+    texts: "Texts",
     studyWords: "Study words",
     maintenance: "Maintain",
     maintenanceTitle: "Maintenance",
@@ -484,6 +488,7 @@ function renderHeader() {
     [t("shows"), summary.watched_show_count],
     [t("subtitles"), summary.subtitle_file_count],
     [t("lyrics"), summary.lyric_file_count],
+    [t("texts"), summary.text_file_count],
     [t("studyWords"), app.words.length],
     [t("examples"), totalExampleCount()],
   ];
@@ -1033,7 +1038,7 @@ function renderExamples(word, options = {}) {
   }
   const grid = el("div", `examples-grid columns-${app.exampleColumns}`);
   examples.forEach((example) => {
-    const sourceClass = example.source_type === "lyrics" ? "lyrics" : "subtitle";
+    const sourceClass = exampleSourceClass(example);
     const item = el("div", `example example-${sourceClass}`);
     const lines = el("div", "example-lines");
     appendContextBlock(lines, contextPreview(example.context_before, "before"), "before");
@@ -1981,6 +1986,9 @@ function sourceLabel(source) {
   if (source === "lyrics") {
     return t("sourceLyrics");
   }
+  if (source === "text") {
+    return t("sourceTexts");
+  }
   return t("sourceAll");
 }
 
@@ -2119,6 +2127,9 @@ function formatReference(example) {
   if (example.source_type === "lyrics") {
     return formatLyricReference(example);
   }
+  if (example.source_type === "text") {
+    return formatTextReference(example);
+  }
 
   const parts = [];
   if (example.source_title) {
@@ -2133,6 +2144,17 @@ function formatReference(example) {
     parts.push(formatTimestamp(example.start_ms));
   }
   return parts.join(" ");
+}
+
+function formatTextReference(example) {
+  const parts = [];
+  if (example.source_title) {
+    parts.push(example.source_title);
+  }
+  if (example.subtitle_file) {
+    parts.push(example.subtitle_file);
+  }
+  return parts.join(" · ");
 }
 
 function formatLyricReference(example) {
@@ -2150,6 +2172,16 @@ function formatLyricReference(example) {
     parts.push(formatTimestamp(example.start_ms));
   }
   return parts.join(" · ");
+}
+
+function exampleSourceClass(example) {
+  if (example.source_type === "lyrics") {
+    return "lyrics";
+  }
+  if (example.source_type === "text") {
+    return "text";
+  }
+  return "subtitle";
 }
 
 function formatTimestamp(milliseconds) {

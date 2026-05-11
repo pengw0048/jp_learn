@@ -7,7 +7,7 @@ from typing import Any
 
 import typer
 
-from .analysis import analyze_media, analyze_paths
+from .analysis import analyze_media
 from .anime_db import AnimeOfflineIndex, download_latest_anime_db
 from .anki_export import export_anki_deck
 from .bangumi import SUBJECT_MUSIC, BangumiClient, collection_to_music_tracks, collection_to_show, run_oauth_flow
@@ -27,6 +27,7 @@ from .llm import (
     apply_cached_annotations_file,
     annotate_corpus_file,
 )
+from .models import SubtitleFile
 from .lyrics import (
     LRCLIB_ALBUM_CACHE_PURPOSE,
     LRCLIB_ALBUM_CACHE_VERSION,
@@ -48,12 +49,14 @@ from .paths import (
     DEFAULT_KANJIDIC2,
     DEFAULT_LYRICS_CACHE,
     DEFAULT_STATE_DB,
+    DEFAULT_TEXTS_DIR,
     DEFAULT_ZH_DICT,
     ensure_dir,
     ensure_parent,
 )
 from .report import build_markdown_report
 from .state import State
+from .texts import discover_text_files, text_file_from_path
 from .viewer import serve_viewer
 from .zh_dict import ChineseGlossary, download_zh_dict
 
@@ -88,15 +91,34 @@ def load_analysis(
     state_db: Path,
     jlpt_words: Path,
     subtitles: list[Path] | None,
+    texts: list[Path] | None = None,
+    text_dir: Path = DEFAULT_TEXTS_DIR,
     max_examples_per_word: int = 3,
     context_lines: int = 2,
     context_min_chars: int = 0,
     context_max_lines: int | None = None,
 ):
     words = load_jlpt_words(jlpt_words)
+    text_files = (
+        [text_file_from_path(path) for path in texts]
+        if texts
+        else discover_text_files(text_dir)
+    )
     if subtitles:
-        return analyze_paths(
-            paths=subtitles,
+        return analyze_media(
+            watched_show_count=1,
+            music_track_count=0,
+            subtitle_files=[
+                SubtitleFile(
+                    bangumi_id=index + 1,
+                    show_title="Local subtitles",
+                    path=path,
+                    name=path.name,
+                )
+                for index, path in enumerate(subtitles)
+            ],
+            lyric_files=[],
+            text_files=text_files,
             jlpt_words=words,
             max_examples_per_word=max_examples_per_word,
             context_lines=context_lines,
@@ -109,6 +131,7 @@ def load_analysis(
         music_track_count=state.count_music_tracks(),
         subtitle_files=state.list_subtitle_files(),
         lyric_files=state.list_lyric_files(),
+        text_files=text_files,
         jlpt_words=words,
         max_examples_per_word=max_examples_per_word,
         context_lines=context_lines,
@@ -597,6 +620,16 @@ def report(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
     ),
+    texts: list[Path] | None = typer.Option(
+        None,
+        "--text",
+        "--texts",
+        help="Import local Japanese .txt files as text/book sources.",
+    ),
+    text_dir: Path = typer.Option(
+        DEFAULT_TEXTS_DIR,
+        help="Directory of .txt files to import when --text is omitted.",
+    ),
     zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
 ) -> None:
     """Generate a Markdown personal frequency report."""
@@ -605,6 +638,8 @@ def report(
         state_db=state_db,
         jlpt_words=jlpt_words,
         subtitles=subtitles,
+        texts=texts,
+        text_dir=text_dir,
         max_examples_per_word=examples_per_word,
         context_lines=context_lines,
     )
@@ -635,9 +670,25 @@ def export_anki(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
     ),
+    texts: list[Path] | None = typer.Option(
+        None,
+        "--text",
+        "--texts",
+        help="Import local Japanese .txt files as text/book sources.",
+    ),
+    text_dir: Path = typer.Option(
+        DEFAULT_TEXTS_DIR,
+        help="Directory of .txt files to import when --text is omitted.",
+    ),
 ) -> None:
     """Export a genanki .apkg deck from cached media."""
-    analysis = load_analysis(state_db=state_db, jlpt_words=jlpt_words, subtitles=subtitles)
+    analysis = load_analysis(
+        state_db=state_db,
+        jlpt_words=jlpt_words,
+        subtitles=subtitles,
+        texts=texts,
+        text_dir=text_dir,
+    )
     export_anki_deck(
         analysis,
         output=output,
@@ -679,12 +730,24 @@ def export_corpus_json(
         None,
         help="Analyze local subtitle files instead of the synced state database.",
     ),
+    texts: list[Path] | None = typer.Option(
+        None,
+        "--text",
+        "--texts",
+        help="Import local Japanese .txt files as text/book sources.",
+    ),
+    text_dir: Path = typer.Option(
+        DEFAULT_TEXTS_DIR,
+        help="Directory of .txt files to import when --text is omitted.",
+    ),
 ) -> None:
     """Export structured word/source/example data for future UI work."""
     analysis = load_analysis(
         state_db=state_db,
         jlpt_words=jlpt_words,
         subtitles=subtitles,
+        texts=texts,
+        text_dir=text_dir,
         max_examples_per_word=max(examples_per_word * 12, 24),
         context_lines=context_lines,
         context_min_chars=context_min_chars,

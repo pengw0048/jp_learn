@@ -81,6 +81,14 @@ class LyricFile:
 
 
 @dataclass(frozen=True)
+class TextFile:
+    title: str
+    path: Path
+    name: str
+    author: str | None = None
+
+
+@dataclass(frozen=True)
 class SubtitleLine:
     text: str
     start_ms: int | None = None

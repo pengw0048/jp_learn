@@ -14,10 +14,11 @@ from jpcorpus.anki_export import export_anki_deck
 from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.lexical_notes import LexicalResourceIndex
-from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, WordEntry
+from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
 from jpcorpus.subtitle import clean_subtitle_text
+from jpcorpus.texts import parse_text
 from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
 
 
@@ -90,7 +91,7 @@ def test_export_corpus_json(tmp_path: Path):
     payload = analysis_to_dict(analysis, level=4, examples_per_word=2, zh_glossary=glossary)
     output = write_corpus_json(analysis, tmp_path / "corpus.json", level=4, zh_glossary=glossary)
 
-    assert payload["schema_version"] == 11
+    assert payload["schema_version"] == 12
     assert payload["summary"]["lyric_file_count"] == 0
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
@@ -391,6 +392,54 @@ def test_analysis_combines_subtitles_and_lyrics(tmp_path: Path):
     )
     assert lyric_example["source_artist"] == "Sample Artist"
     assert lyric_example["source_album"] == "Sample Album"
+
+
+def test_analysis_includes_local_text_files(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    novel = tmp_path / "sample novel.txt"
+    novel.write_text(
+        "今日は学校へ行く。\n\n私は約束を見る。明日も行く。\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_media(
+        watched_show_count=0,
+        music_track_count=0,
+        subtitle_files=[],
+        lyric_files=[],
+        text_files=[
+            TextFile(
+                title="Sample Novel",
+                path=novel,
+                name=novel.name,
+            )
+        ],
+        jlpt_words=load_jlpt_words(jlpt_path),
+        context_lines=1,
+    )
+    payload = analysis_to_dict(analysis, level=4, examples_per_word=3)
+
+    assert payload["summary"]["text_file_count"] == 1
+    assert payload["words"][0]["word"] == "約束"
+    assert payload["words"][0]["source_type_counts"] == {"text": 1}
+    assert payload["words"][0]["text_count"] == 1
+    assert payload["words"][0]["examples"][0]["source_type"] == "text"
+    assert payload["words"][0]["examples"][0]["source_title"] == "Sample Novel"
+    assert payload["words"][0]["examples"][0]["subtitle_file"] == "sample novel.txt"
+    assert payload["words"][0]["examples"][0]["context_before"] == ["今日は学校へ行く。"]
+    assert payload["words"][0]["examples"][0]["context_after"] == ["明日も行く。"]
+
+
+def test_parse_text_splits_japanese_sentences(tmp_path: Path):
+    text = tmp_path / "book.txt"
+    text.write_text("第一文です。第二文です！\n\n改行しても同じ段落\nなら一文です。", encoding="utf-8")
+
+    assert [line.text for line in parse_text(text)] == [
+        "第一文です。",
+        "第二文です！",
+        "改行しても同じ段落なら一文です。",
+    ]
 
 
 def test_clean_subtitle_text_preserves_cue_line_breaks():

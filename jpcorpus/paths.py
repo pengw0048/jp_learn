@@ -14,6 +14,7 @@ DEFAULT_JMDICT = DEFAULT_DATA_DIR / "JMdict_e.gz"
 DEFAULT_KANJIDIC2 = DEFAULT_DATA_DIR / "kanjidic2.xml.gz"
 DEFAULT_JIMAKU_CACHE = DEFAULT_DATA_DIR / "jimaku-cache"
 DEFAULT_LYRICS_CACHE = DEFAULT_DATA_DIR / "lyrics-cache"
+DEFAULT_TEXTS_DIR = Path("texts")
 
 
 def ensure_parent(path: Path) -> Path:

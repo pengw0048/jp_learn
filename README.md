@@ -46,9 +46,11 @@ uv run jpcorpus export anki --level 3 --output personal-jlpt.apkg
 
 Reports currently support `zh` and `en` through `--language`. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded report labels.
 
-The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle or lyric blocks for LLM annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future prompt context; `jpcorpus annotate` keeps prompts source-text-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can add example-level `translation_zh` and `usage_note_zh` fields through Anthropic Claude, any OpenAI-compatible endpoint, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, source filters, examples, and browser-local study status.
+The Markdown report is a POC/debug view. `jpcorpus export corpus-json` writes the word/example/context data as structured JSON, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for LLM annotation, while preserving line breaks inside multi-line subtitle cues. It also stores cached Bangumi show summaries for future prompt context; `jpcorpus annotate` keeps prompts source-text-only by default, and can opt into those summaries with `--use-show-context`. `jpcorpus annotate` can add example-level `translation_zh` and `usage_note_zh` fields through Anthropic Claude, any OpenAI-compatible endpoint, or a local Apple Foundation Models wrapper. `jpcorpus view` serves a local web viewer for browsing that JSON with word search, JLPT filters, source filters, examples, and browser-local study status.
 
 Lyrics are optional local cache data, like subtitles. `jpcorpus lyrics sync` reads Bangumi music collections and splits album subjects into track rows through Bangumi episodes. `jpcorpus lyrics fetch` searches LRCLIB and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated fetches skip BGM/OST misses by default; use `jpcorpus lyrics fetch --force` after matching logic changes or when you want to retry old misses. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
+
+Local text files are optional too. Put Japanese `.txt` files in `texts/` and `jpcorpus export corpus-json` will import them automatically as `source_type: text`, using the file name as the title. You can also pass one-off files with `--text path/to/book.txt`; those examples appear in the viewer under the Text source filter.
 
 Optional LLM annotation:
 
@@ -106,6 +108,7 @@ data/
   jlpt-words.json              # local JLPT vocabulary list
   jimaku-cache/                # downloaded .srt/.ass files
   lyrics-cache/                # downloaded .lrc/.txt lyric files
+texts/                         # optional local Japanese .txt books/articles
 ~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index, versioned caches
 ```
 

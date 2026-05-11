@@ -33,7 +33,7 @@ ALLOWED_ANNOTATION_SCOPES = {
     "first_unannotated",
     "selected_examples",
 }
-ALLOWED_SOURCES = {"all", "subtitle", "lyrics"}
+ALLOWED_SOURCES = {"all", "subtitle", "lyrics", "text"}
 ALLOWED_LEVELS = {"all", "N5", "N4", "N3", "N2", "N1"}
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
 EXAMPLE_SELECTION_FIELDS = (

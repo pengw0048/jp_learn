@@ -13,6 +13,7 @@
   --knowledge-soft: #f1f2df;
   --knowledge-line: #d9d7a6;
   --lyrics: #2f6f8f;
+  --text-source: #6f5aa8;
   --known: #2f6f3e;
   --learning: #b7791f;
   --ignored: #7a7f86;
@@ -876,6 +877,10 @@ select {
   border-left-color: var(--lyrics);
 }
 
+.example-text {
+  border-left-color: var(--text-source);
+}
+
 .example-lines {
   display: grid;
   gap: 4px;
@@ -920,6 +925,10 @@ mark {
 
 .reference-lyrics {
   color: var(--lyrics);
+}
+
+.reference-text {
+  color: var(--text-source);
 }
 
 .annotation-block {

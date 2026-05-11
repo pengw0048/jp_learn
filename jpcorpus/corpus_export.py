@@ -18,7 +18,7 @@ from .paths import ensure_parent
 from .zh_dict import ChineseGlossary
 
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def analysis_to_dict(
@@ -59,6 +59,7 @@ def analysis_to_dict(
             "watched_show_count": analysis.watched_show_count,
             "subtitle_show_count": analysis.subtitle_show_count,
             "subtitle_file_count": analysis.subtitle_file_count,
+            "text_file_count": analysis.text_file_count,
             "music_track_count": analysis.music_track_count,
             "lyric_file_count": analysis.lyric_file_count,
             "source_type_counts": dict(analysis.source_type_counts),
@@ -225,6 +226,7 @@ def _word_to_dict(
         "source_type_counts": dict(word.source_type_counts),
         "subtitle_count": word.source_type_counts.get("subtitle", 0),
         "lyrics_count": word.source_type_counts.get("lyrics", 0),
+        "text_count": word.source_type_counts.get("text", 0),
         "sources": [
             {"title": title, "count": count}
             for title, count in word.sources.most_common()
