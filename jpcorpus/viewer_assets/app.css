@@ -909,26 +909,29 @@ select {
   padding: 3px 8px;
 }
 
-.examples-grid {
+.examples-masonry {
   display: grid;
   gap: 12px;
   align-items: start;
 }
 
-.examples-grid.columns-auto {
-  grid-template-columns: repeat(auto-fit, minmax(min(390px, 100%), 1fr));
-}
-
-.examples-grid.columns-1 {
+.examples-masonry.columns-1 {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.examples-grid.columns-2 {
+.examples-masonry.columns-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.examples-grid.columns-3 {
+.examples-masonry.columns-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.examples-column {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  align-content: start;
 }
 
 .example {
@@ -1931,11 +1934,10 @@ mark {
     padding: 18px;
   }
 
-  .examples-grid,
-  .examples-grid.columns-auto,
-  .examples-grid.columns-1,
-  .examples-grid.columns-2,
-  .examples-grid.columns-3 {
+  .examples-masonry,
+  .examples-masonry.columns-1,
+  .examples-masonry.columns-2,
+  .examples-masonry.columns-3 {
     grid-template-columns: minmax(0, 1fr);
   }
 

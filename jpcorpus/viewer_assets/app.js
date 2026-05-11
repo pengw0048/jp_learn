@@ -2531,30 +2531,80 @@ function renderExamples(word, options = {}) {
     section.append(emptyMessage(t("noExamples")));
     return section;
   }
-  const columns = app.mode === "read" ? "1" : app.exampleColumns;
-  const grid = el("div", `examples-grid columns-${columns}`);
+  const columnCount = app.mode === "read" ? 1 : resolvedExampleColumnCount(app.exampleColumns);
+  const grid = el("div", `examples-masonry columns-${columnCount}`);
+  const columnNodes = Array.from({ length: columnCount }, () => el("div", "examples-column"));
+  const columnWeights = Array.from({ length: columnCount }, () => 0);
+  columnNodes.forEach((column) => grid.append(column));
   examples.forEach((example) => {
-    const sourceClass = exampleSourceClass(example);
-    const item = el("div", `example example-${sourceClass}`);
-    const lines = el("div", "example-lines");
-    appendContextBlock(lines, contextPreview(example.context_before, "before"), "before");
-    const current = el("div", "example-current");
-    appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
-    lines.append(current);
-    appendContextBlock(lines, contextPreview(example.context_after, "after"), "after");
-    lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
-    item.append(lines);
-    const annotationBlock = renderExampleAnnotationBlock(word, example, {
+    const { item, weight } = renderExampleCard(word, example, {
       revealAnnotations,
       allowActions,
     });
-    if (annotationBlock) {
-      item.append(annotationBlock);
-    }
-    grid.append(item);
+    const targetColumn = shortestColumnIndex(columnWeights);
+    columnNodes[targetColumn].append(item);
+    columnWeights[targetColumn] += weight;
   });
   section.append(grid);
   return section;
+}
+
+function renderExampleCard(word, example, options = {}) {
+  const revealAnnotations = options.revealAnnotations ?? true;
+  const allowActions = options.allowActions ?? true;
+  const sourceClass = exampleSourceClass(example);
+  const item = el("div", `example example-${sourceClass}`);
+  const lines = el("div", "example-lines");
+  const beforeLines = contextPreview(example.context_before, "before");
+  const afterLines = contextPreview(example.context_after, "after");
+  appendContextBlock(lines, beforeLines, "before");
+  const current = el("div", "example-current");
+  appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
+  lines.append(current);
+  appendContextBlock(lines, afterLines, "after");
+  lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
+  item.append(lines);
+  const annotationBlock = renderExampleAnnotationBlock(word, example, {
+    revealAnnotations,
+    allowActions,
+  });
+  if (annotationBlock) {
+    item.append(annotationBlock);
+  }
+  return {
+    item,
+    weight: exampleCardWeight(example, beforeLines, afterLines),
+  };
+}
+
+function resolvedExampleColumnCount(value) {
+  if (value !== "auto") {
+    return Math.trunc(clampNumber(Number(value), 1, 3));
+  }
+  const width = refs.wordDetail?.clientWidth || document.documentElement.clientWidth || 0;
+  return Math.trunc(clampNumber(Math.floor((width + 12) / 402), 1, 3));
+}
+
+function shortestColumnIndex(weights) {
+  let index = 0;
+  for (let candidate = 1; candidate < weights.length; candidate += 1) {
+    if (weights[candidate] < weights[index]) {
+      index = candidate;
+    }
+  }
+  return index;
+}
+
+function exampleCardWeight(example, beforeLines, afterLines) {
+  const text = [
+    ...beforeLines,
+    example.sentence || "",
+    ...afterLines,
+    formatReference(example),
+    example.translation_zh || "",
+    example.usage_note_zh || "",
+  ].join("\n");
+  return 1 + beforeLines.length + afterLines.length + Math.ceil(text.length / 34);
 }
 
 function renderExampleActions(word, example) {
