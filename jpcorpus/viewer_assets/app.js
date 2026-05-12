@@ -2160,26 +2160,44 @@ function subtitleReaderUnits(documents) {
     unit.documents.push(document);
   });
   return [...units.values()]
-    .flatMap((unit) => {
+    .map((unit) => {
       const documentsForUnit = unit.documents.sort(compareReaderDocuments);
-      if (unit.episode !== null && documentsForUnit.length > 1) {
-        return documentsForUnit.map((document) => createReaderUnit({
-          key: readerDocumentKey(document),
-          episode: unit.episode,
-          label: unit.label,
-          meta: cleanSourceFileLabel(document.source_file || document.source_title || ""),
-          documents: [document],
-        }));
-      }
-      return [createReaderUnit({
+      const selectedDocuments = unit.episode === null
+        ? documentsForUnit
+        : [preferredSubtitleDocument(documentsForUnit)];
+      return createReaderUnit({
         key: unit.key,
         episode: unit.episode,
         label: unit.label,
-        meta: [...unit.metaParts][0] || "",
-        documents: documentsForUnit,
-      })];
+        meta: unit.episode === null ? [...unit.metaParts][0] || "" : "",
+        documents: selectedDocuments.filter(Boolean),
+      });
     })
     .sort(compareReaderUnits);
+}
+
+function preferredSubtitleDocument(documents) {
+  return [...documents].sort(comparePreferredSubtitleDocuments)[0] || null;
+}
+
+function comparePreferredSubtitleDocuments(left, right) {
+  return subtitleDocumentPreferenceScore(right) - subtitleDocumentPreferenceScore(left)
+    || compareReaderDocuments(left, right);
+}
+
+function subtitleDocumentPreferenceScore(document) {
+  const file = String(document.source_file || document.source_title || "").toLowerCase();
+  let score = asArray(document.lines).length;
+  if (/(^|[._\s-])ja($|[._\s-]|\[)/u.test(file) || /jpn|japanese/u.test(file)) {
+    score += 80;
+  }
+  if (/ja[-_]?en|en[-_]?ja|dual|bilingual/u.test(file)) {
+    score -= 120;
+  }
+  if (/netflix|web-?rip/u.test(file)) {
+    score += 20;
+  }
+  return score;
 }
 
 function createReaderUnit({ key, episode = null, label, meta = "", documents }) {
