@@ -25,18 +25,6 @@ const SPLIT_LIMITS = {
   read: { minLeft: 420, minRight: 340 },
 };
 const STUDY_TARGET_COUNT = 7;
-const EXAMPLE_SELECTION_FIELDS = [
-  "source_type",
-  "source_title",
-  "source_artist",
-  "source_album",
-  "subtitle_file",
-  "episode",
-  "start_ms",
-  "end_ms",
-  "matched_text",
-  "sentence",
-];
 const SEARCH_PUNCTUATION_RE = /[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~、。，．・･；;：:！？!?「」『』【】（）()［］\[\]〈〉《》…〜～·]+/gu;
 const GODAN_ENDINGS = {
   "う": { a: "わ", i: "い", e: "え", o: "お", te: "って", ta: "った" },
@@ -161,8 +149,6 @@ const text = {
     scene: "场景",
     translation: "翻译",
     usageNote: "用法",
-    reannotateExample: "刷新标注",
-    reannotateExampleTitle: "重新生成这一条例句的翻译和用法",
     studyMode: "学习",
     browseMode: "浏览",
     readMode: "阅读",
@@ -236,30 +222,12 @@ const text = {
     readerExplainUnavailable: "先在维护里配置 LLM 后再使用",
     readerTranslation: "这句意思",
     readerUsage: "这里的用法",
-    llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
-    maintenanceScope: "范围",
     maintenanceProvider: "Provider",
-    maintenanceLimit: "上限",
-    maintenanceConcurrency: "并发",
-    maintenanceRpm: "RPM",
-    maintenanceOverwrite: "覆盖已有标注",
-    maintenanceShowContext: "使用作品简介",
-    maintenanceStartSyncMedia: "刷新",
-    maintenanceStartExportCorpus: "刷新语料",
-    maintenanceStartFetchLexicalResources: "更新资源",
-    maintenanceStartRefreshAll: "完整刷新",
-    maintenanceStartAnnotate: "开始标注",
     maintenanceReloaded: "，页面已刷新",
-    taskAnnotate: "LLM 标注",
     taskSyncMedia: "刷新",
     taskExportCorpus: "刷新语料",
     taskFetchLexicalResources: "更新词语资源",
     taskRefreshAll: "完整刷新",
-    scopeCurrentWord: "当前词",
-    scopeFilteredWords: "当前筛选结果",
-    scopeFirstUnannotated: "前 N 条缺失例句",
-    maintenanceEstimate: "将处理约 {count} 条例句；会先查本地 LLM 缓存，缺失时才调用 API；来源：{source}；等级：{level}",
-    maintenanceEstimateRefresh: "将重新生成约 {count} 条例句，并更新本地 LLM 缓存；来源：{source}；等级：{level}",
     maintenanceTaskSyncMedia: "同步动画、字幕、音乐和歌词，并重新生成页面语料",
     maintenanceTaskExportCorpus: "不联网，只用现有本地数据重新生成网页语料",
     maintenanceTaskFetchLexicalResources: "下载 JMdict 和 KANJIDIC2；之后点“刷新语料”才会出现在页面里",
@@ -269,7 +237,6 @@ const text = {
     maintenanceRunningTask: "正在运行：{task}，开始 {time}",
     maintenanceSucceededTask: "上次完成：{task}{reload}，完成 {time}",
     maintenanceFailedTask: "上次失败：{task}，结束 {time}",
-    maintenanceProgressAnnotate: "已处理 {completed}/{total}；缓存 {cached}，新标注 {annotated}，失败 {failed}",
     maintenanceProgressSteps: "步骤 {completed}/{total}：{step}",
     maintenanceProgressGeneric: "已处理 {completed}/{total}",
   },
@@ -320,8 +287,6 @@ const text = {
     scene: "Scene",
     translation: "Translation",
     usageNote: "Usage",
-    reannotateExample: "Refresh annotation",
-    reannotateExampleTitle: "Regenerate this example translation and usage note",
     studyMode: "Study",
     browseMode: "Browse",
     readMode: "Read",
@@ -395,30 +360,12 @@ const text = {
     readerExplainUnavailable: "Configure an LLM in Maintenance first",
     readerTranslation: "Meaning here",
     readerUsage: "Usage here",
-    llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
-    maintenanceScope: "Scope",
     maintenanceProvider: "Provider",
-    maintenanceLimit: "Limit",
-    maintenanceConcurrency: "Concurrency",
-    maintenanceRpm: "RPM",
-    maintenanceOverwrite: "Overwrite annotations",
-    maintenanceShowContext: "Use show context",
-    maintenanceStartSyncMedia: "Refresh",
-    maintenanceStartExportCorpus: "Refresh corpus",
-    maintenanceStartFetchLexicalResources: "Update resources",
-    maintenanceStartRefreshAll: "Full refresh",
-    maintenanceStartAnnotate: "Start annotation",
     maintenanceReloaded: ", page refreshed",
-    taskAnnotate: "LLM annotations",
     taskSyncMedia: "Refresh",
     taskExportCorpus: "Export corpus",
     taskFetchLexicalResources: "Update word resources",
     taskRefreshAll: "Full refresh",
-    scopeCurrentWord: "Current word",
-    scopeFilteredWords: "Current filtered words",
-    scopeFirstUnannotated: "First N missing examples",
-    maintenanceEstimate: "About {count} examples; local LLM cache is checked first, API is used only for misses; source: {source}; level: {level}",
-    maintenanceEstimateRefresh: "Regenerate about {count} examples and update the local LLM cache; source: {source}; level: {level}",
     maintenanceTaskSyncMedia: "Sync anime, subtitles, music, and lyrics, then regenerate the viewer corpus",
     maintenanceTaskExportCorpus: "Uses existing local data only and regenerates the viewer corpus",
     maintenanceTaskFetchLexicalResources: "Downloads JMdict and KANJIDIC2; refresh the corpus afterwards to show them",
@@ -428,7 +375,6 @@ const text = {
     maintenanceRunningTask: "Running: {task}, started {time}",
     maintenanceSucceededTask: "Done: {task}{reload}, finished {time}",
     maintenanceFailedTask: "Failed: {task}, ended {time}",
-    maintenanceProgressAnnotate: "Processed {completed}/{total}; cache {cached}, new {annotated}, failed {failed}",
     maintenanceProgressSteps: "Step {completed}/{total}: {step}",
     maintenanceProgressGeneric: "Processed {completed}/{total}",
   },
@@ -484,7 +430,7 @@ const app = {
     job: null,
     config: null,
     llm: null,
-    task: "annotate",
+    task: "sync_media",
     pollTimer: null,
     reloadedJobId: null,
   },
@@ -529,16 +475,6 @@ const refs = {
   configLlmBaseUrl: $("#config-llm-base-url"),
   configLlmModel: $("#config-llm-model"),
   configLlmApiKey: $("#config-llm-api-key"),
-  maintenanceScope: $("#maintenance-scope"),
-  maintenanceLimitLabel: $("#maintenance-limit-label"),
-  maintenanceLimit: $("#maintenance-limit"),
-  maintenanceConcurrency: $("#maintenance-concurrency"),
-  maintenanceRpm: $("#maintenance-rpm"),
-  maintenanceOverwriteLabel: $("#maintenance-overwrite-label"),
-  maintenanceOverwrite: $("#maintenance-overwrite"),
-  maintenanceShowContext: $("#maintenance-show-context"),
-  maintenanceStart: $("#maintenance-start"),
-  maintenanceEstimate: $("#maintenance-estimate"),
   maintenanceProgress: $("#maintenance-progress"),
   maintenanceProgressFill: $("#maintenance-progress-fill"),
   maintenanceProgressLabel: $("#maintenance-progress-label"),
@@ -627,18 +563,11 @@ function bindControls() {
     refs.configForm.dataset.userToggled = "1";
   });
   [
-    refs.maintenanceScope,
     refs.configLlmProvider,
-    refs.maintenanceLimit,
-    refs.maintenanceConcurrency,
-    refs.maintenanceRpm,
-    refs.maintenanceOverwrite,
-    refs.maintenanceShowContext,
   ].forEach((control) => {
     control.addEventListener("input", renderMaintenance);
     control.addEventListener("change", renderMaintenance);
   });
-  refs.maintenanceStart.addEventListener("click", () => startMaintenanceJob("annotate"));
   bindSplitResizer();
   window.addEventListener("resize", () => applyWorkspaceSplit());
 }
@@ -902,32 +831,15 @@ function renderMaintenance() {
   }
   renderConfigStatus();
   const task = maintenanceTask();
-  const spec = annotationJobSpec();
-  const estimate = estimateAnnotationJob(spec);
   const job = app.maintenance.job;
   refs.maintenanceToggle.disabled = !app.maintenance.enabled;
   refs.maintenanceActionButtons.forEach((button) => {
     button.disabled = !app.maintenance.enabled || job?.status === "running";
     button.classList.toggle("active", button.dataset.maintenanceTask === task && job?.status === "running");
   });
-  if (!app.maintenance.enabled) {
-    refs.maintenanceEstimate.textContent = t("maintenanceDisabled");
-  } else {
-    refs.maintenanceEstimate.textContent = t(
-      spec.bypass_cache ? "maintenanceEstimateRefresh" : "maintenanceEstimate",
-      {
-        count: formatNumber(estimate.planned),
-        source: sourceLabel(spec.source),
-        level: levelLabel(spec.level),
-      },
-    );
-  }
-  refs.maintenanceStart.disabled =
-    !app.maintenance.enabled || job?.status === "running" || estimate.planned <= 0;
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
-  updateExampleActionButtons();
 }
 
 function renderConfigStatus() {
@@ -2384,9 +2296,7 @@ function renderDetail() {
     nodes.push(readerContext);
   }
   nodes.push(renderLexicalNotes(word));
-  nodes.push(renderExamples(word, {
-    allowActions: app.mode !== "read",
-  }));
+  nodes.push(renderExamples(word));
   refs.wordDetail.replaceChildren(...nodes);
 }
 
@@ -2594,7 +2504,6 @@ function renderStudyCard(word, index, total) {
   card.append(renderStudyActions(word));
   card.append(renderExamples(word, {
     revealAnnotations: app.study.showAnswer,
-    allowActions: app.study.showAnswer,
   }));
   return card;
 }
@@ -2742,57 +2651,9 @@ function advanceStudyQueue(previousQueue, word) {
 async function startMaintenanceJob(taskOverride = null) {
   const task = taskOverride || maintenanceTask();
   app.maintenance.task = task;
-  const spec = task === "annotate" ? annotationJobSpec() : maintenanceJobSpec();
-  const endpoint = task === "annotate" ? "/api/jobs/annotate" : "/api/jobs/maintenance";
-  refs.maintenanceStart.disabled = true;
+  const spec = maintenanceJobSpec();
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(spec),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
-    app.maintenance.job = payload.job;
-    app.maintenance.reloadedJobId = null;
-    renderMaintenance();
-    pollMaintenanceJob();
-  } catch (error) {
-    app.maintenance.job = {
-      status: "failed",
-      log: [String(error.message || error)],
-    };
-    renderMaintenance();
-  }
-}
-
-async function startExampleAnnotationJob(word, example, button) {
-  if (!app.maintenance.enabled || app.maintenance.job?.status === "running") {
-    return;
-  }
-  if (button) {
-    button.disabled = true;
-  }
-  refs.maintenancePanel.hidden = false;
-  refs.maintenanceToggle.classList.add("active");
-  const spec = {
-    scope: "selected_examples",
-    words: [word.word].filter(Boolean),
-    examples: [exampleAnnotationSelector(example)],
-    source: "all",
-    level: "all",
-    limit: 1,
-    concurrency: 1,
-    rpm: numberValue(refs.maintenanceRpm, 0) || null,
-    cache_only: false,
-    bypass_cache: true,
-    overwrite: true,
-    use_show_context: refs.maintenanceShowContext.checked,
-  };
-  try {
-    const response = await fetch("/api/jobs/annotate", {
+    const response = await fetch("/api/jobs/maintenance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(spec),
@@ -2866,7 +2727,6 @@ async function reloadCorpus() {
 
 function renderExamples(word, options = {}) {
   const revealAnnotations = options.revealAnnotations ?? true;
-  const allowActions = options.allowActions ?? true;
   const section = el("section", "examples");
   const header = el("div", "examples-header");
   header.append(el("h3", "section-title", t("examples")));
@@ -2887,7 +2747,6 @@ function renderExamples(word, options = {}) {
   examples.forEach((example) => {
     const { item, weight } = renderExampleCard(word, example, {
       revealAnnotations,
-      allowActions,
     });
     const targetColumn = shortestColumnIndex(columnWeights);
     columnNodes[targetColumn].append(item);
@@ -2899,7 +2758,6 @@ function renderExamples(word, options = {}) {
 
 function renderExampleCard(word, example, options = {}) {
   const revealAnnotations = options.revealAnnotations ?? true;
-  const allowActions = options.allowActions ?? true;
   const sourceClass = exampleSourceClass(example);
   const item = el("div", `example example-${sourceClass}`);
   const lines = el("div", "example-lines");
@@ -2914,7 +2772,6 @@ function renderExampleCard(word, example, options = {}) {
   item.append(lines);
   const annotationBlock = renderExampleAnnotationBlock(word, example, {
     revealAnnotations,
-    allowActions,
   });
   if (annotationBlock) {
     item.append(annotationBlock);
@@ -2955,27 +2812,14 @@ function exampleCardWeight(example, beforeLines, afterLines) {
   return 1 + beforeLines.length + afterLines.length + Math.ceil(text.length / 34);
 }
 
-function renderExampleActions(word, example) {
-  const wrap = el("div", "example-actions");
-  const button = el("button", "example-action-button", "↻");
-  button.type = "button";
-  button.title = t("reannotateExampleTitle");
-  button.setAttribute("aria-label", t("reannotateExample"));
-  button.disabled = !app.maintenance.enabled || app.maintenance.job?.status === "running";
-  button.addEventListener("click", () => startExampleAnnotationJob(word, example, button));
-  wrap.append(button);
-  return wrap;
-}
-
 function renderExampleAnnotationBlock(word, example, options = {}) {
   const revealAnnotations = options.revealAnnotations ?? true;
-  const allowActions = options.allowActions ?? true;
   const hasTranslation = revealAnnotations && example.translation_zh;
   const hasUsageNote = revealAnnotations && example.usage_note_zh;
-  if (!hasTranslation && !hasUsageNote && !allowActions) {
+  if (!hasTranslation && !hasUsageNote) {
     return null;
   }
-  const block = el("div", `annotation-block ${hasTranslation || hasUsageNote ? "" : "empty"}`.trim());
+  const block = el("div", "annotation-block");
   const lines = el("div", "annotation-lines");
   if (hasTranslation) {
     lines.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
@@ -2984,9 +2828,6 @@ function renderExampleAnnotationBlock(word, example, options = {}) {
     lines.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
   }
   block.append(lines);
-  if (allowActions) {
-    block.append(renderExampleActions(word, example));
-  }
   return block;
 }
 
@@ -3809,90 +3650,13 @@ function examplesForWord(word) {
 }
 
 function maintenanceTask() {
-  return app.maintenance.task || "annotate";
+  return app.maintenance.task || "sync_media";
 }
 
 function maintenanceJobSpec(task = maintenanceTask()) {
   return {
     type: task,
-    limit: optionalNumberValue(refs.maintenanceLimit),
-    concurrency: numberValue(refs.maintenanceConcurrency, 4),
-    overwrite: refs.maintenanceOverwrite.checked,
   };
-}
-
-function annotationJobSpec() {
-  const scope = refs.maintenanceScope.value;
-  let words = [];
-  if (scope === "current_word" && app.selectedWord?.word) {
-    words = [app.selectedWord.word];
-  } else if (scope === "filtered_words") {
-    words = filteredWords().map((word) => word.word).filter(Boolean);
-  }
-  return {
-    scope,
-    words,
-    source: app.source,
-    level: app.level,
-    limit: optionalNumberValue(refs.maintenanceLimit) || 20,
-    concurrency: numberValue(refs.maintenanceConcurrency, 1),
-    rpm: numberValue(refs.maintenanceRpm, 0) || null,
-    cache_only: false,
-    bypass_cache: refs.maintenanceOverwrite.checked,
-    overwrite: refs.maintenanceOverwrite.checked,
-    use_show_context: refs.maintenanceShowContext.checked,
-  };
-}
-
-function estimateAnnotationJob(spec) {
-  const wordSet = spec.scope === "first_unannotated" ? null : new Set(spec.words);
-  const exampleSet = spec.scope === "selected_examples"
-    ? new Set((spec.examples || []).map(exampleAnnotationSignature))
-    : null;
-  let selected = 0;
-  app.words.forEach((word) => {
-    if (wordSet && !wordSet.has(word.word)) {
-      return;
-    }
-    if (spec.level !== "all" && word.level !== spec.level) {
-      return;
-    }
-    (word.examples || []).forEach((example) => {
-      if (exampleSet && !exampleSet.has(exampleAnnotationSignature(example))) {
-        return;
-      }
-      if (spec.source !== "all" && example.source_type !== spec.source) {
-        return;
-      }
-      if (!spec.overwrite && example.translation_zh && example.usage_note_zh) {
-        return;
-      }
-      selected += 1;
-    });
-  });
-  return {
-    selected,
-    planned: Math.min(selected, spec.limit),
-  };
-}
-
-function updateExampleActionButtons() {
-  const disabled = !app.maintenance.enabled || app.maintenance.job?.status === "running";
-  document.querySelectorAll(".example-action-button").forEach((button) => {
-    button.disabled = disabled;
-  });
-}
-
-function exampleAnnotationSelector(example) {
-  const selector = {};
-  EXAMPLE_SELECTION_FIELDS.forEach((field) => {
-    selector[field] = example[field] ?? null;
-  });
-  return selector;
-}
-
-function exampleAnnotationSignature(example) {
-  return JSON.stringify(exampleAnnotationSelector(example));
 }
 
 function displayCount(word) {
@@ -3915,38 +3679,12 @@ function sourceLabel(source) {
   return t("sourceAll");
 }
 
-function levelLabel(level) {
-  return level === "all" ? t("allLevels") : level;
-}
-
-function maintenanceTaskDescription(task) {
-  const key = {
-    sync_media: "maintenanceTaskSyncMedia",
-    export_corpus: "maintenanceTaskExportCorpus",
-    fetch_lexical_resources: "maintenanceTaskFetchLexicalResources",
-    refresh_all: "maintenanceTaskRefreshAll",
-  }[task];
-  return key ? t(key) : "";
-}
-
-function maintenanceStartLabel(task) {
-  const key = {
-    sync_media: "maintenanceStartSyncMedia",
-    export_corpus: "maintenanceStartExportCorpus",
-    fetch_lexical_resources: "maintenanceStartFetchLexicalResources",
-    refresh_all: "maintenanceStartRefreshAll",
-    annotate: "maintenanceStartAnnotate",
-  }[task];
-  return key ? t(key) : t("maintenanceStart");
-}
-
 function maintenanceTaskLabel(task) {
   const key = {
     sync_media: "taskSyncMedia",
     export_corpus: "taskExportCorpus",
     fetch_lexical_resources: "taskFetchLexicalResources",
     refresh_all: "taskRefreshAll",
-    annotate: "taskAnnotate",
   }[task];
   return key ? t(key) : task || t("maintenance");
 }
@@ -3997,15 +3735,6 @@ function maintenanceProgressLabel(progress) {
   const phase = progress.phase || "";
   const completed = formatNumber(progress.completed || 0);
   const total = formatNumber(progress.total || 0);
-  if (phase === "annotate" || phase === "cache") {
-    return t("maintenanceProgressAnnotate", {
-      completed,
-      total,
-      cached: formatNumber(progress.cached || 0),
-      annotated: formatNumber(progress.annotated || 0),
-      failed: formatNumber(progress.failed || 0),
-    });
-  }
   if (phase === "steps" || phase === "export") {
     return t("maintenanceProgressSteps", {
       completed,
@@ -4029,20 +3758,6 @@ function formatJobTime(value) {
     minute: "2-digit",
     second: "2-digit",
   });
-}
-
-function numberValue(input, fallback) {
-  const value = Number.parseInt(input.value, 10);
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function optionalNumberValue(input) {
-  const value = input.value.trim();
-  if (!value) {
-    return null;
-  }
-  const number = Number.parseInt(value, 10);
-  return Number.isFinite(number) ? number : null;
 }
 
 function sourceCount(word, sourceType) {

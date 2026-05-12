@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import select
 import subprocess
 import threading
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any
 
 import httpx
 
@@ -19,8 +16,6 @@ from .paths import APP_DIR, ensure_parent
 
 ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
 REQUIRED_ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh")
-ANNOTATION_CACHE_PURPOSE = "llm-annotation"
-ANNOTATION_CACHE_VERSION = 6
 APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
@@ -44,32 +39,6 @@ class LLMConfig:
     @property
     def anthropic_messages_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/messages"
-
-
-class AnnotationClient(Protocol):
-    def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
-        ...
-
-
-ExamplePredicate = Callable[[dict[str, Any], dict[str, Any]], bool]
-ProgressCallback = Callable[[str, dict[str, Any]], None]
-
-
-class RequestRateLimiter:
-    def __init__(self, *, min_interval_seconds: float) -> None:
-        self.min_interval_seconds = max(0.0, min_interval_seconds)
-        self._lock = threading.Lock()
-        self._next_request_at = 0.0
-
-    def wait(self) -> None:
-        if self.min_interval_seconds <= 0:
-            return
-        with self._lock:
-            now = time.monotonic()
-            if now < self._next_request_at:
-                time.sleep(self._next_request_at - now)
-                now = time.monotonic()
-            self._next_request_at = now + self.min_interval_seconds
 
 
 class OpenAICompatibleClient:
@@ -305,265 +274,15 @@ def parse_annotation_response(content: str) -> dict[str, str]:
     except json.JSONDecodeError:
         payload = parse_loose_annotation_response(content)
     if not isinstance(payload, dict):
-        raise ValueError("LLM annotation response must be a JSON object.")
+        raise ValueError("LLM response must be a JSON object.")
     annotations = {
         field: _clean_annotation_value(payload.get(field))
         for field in ANNOTATION_FIELDS
     }
     missing = [field for field in REQUIRED_ANNOTATION_FIELDS if not annotations[field]]
     if missing:
-        raise ValueError(f"LLM annotation response is missing required fields: {', '.join(missing)}")
+        raise ValueError(f"LLM response is missing required fields: {', '.join(missing)}")
     return annotations
-
-
-def annotate_corpus(
-    payload: dict[str, Any],
-    *,
-    client: AnnotationClient,
-    limit: int,
-    overwrite: bool = False,
-    cache_state: Any | None = None,
-    cache_context: dict[str, Any] | None = None,
-    bypass_cache: bool = False,
-    include_example: ExamplePredicate | None = None,
-    concurrency: int = 1,
-    request_interval_seconds: float = 0.0,
-    on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
-    on_progress: ProgressCallback | None = None,
-) -> tuple[dict[str, Any], int]:
-    annotated = 0
-    targets: list[tuple[dict[str, Any], dict[str, Any], str | None]] = []
-    for word in payload.get("words", []):
-        for example in word.get("examples", []):
-            if annotated + len(targets) >= limit:
-                break
-            if include_example is not None and not include_example(word, example):
-                continue
-            if not overwrite and _has_annotations(example):
-                continue
-            cache_key = None
-            if cache_state is not None:
-                cache_key = annotation_cache_key(word, example, cache_context or {})
-                if not bypass_cache:
-                    cached = cache_state.get_cache_entry(
-                        purpose=ANNOTATION_CACHE_PURPOSE,
-                        cache_key=cache_key,
-                        version=ANNOTATION_CACHE_VERSION,
-                    )
-                    if cached and cached["status"] == "hit" and _has_required_annotations(cached.get("value")):
-                        for field, value in cached["value"].items():
-                            if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
-                                example[field] = value
-                        annotated += 1
-                        if on_progress is not None:
-                            on_progress("cache_hit", {"word": word.get("word") or ""})
-                        continue
-            targets.append((word, example, cache_key))
-        if annotated + len(targets) >= limit:
-            break
-
-    if on_progress is not None:
-        on_progress(
-            "targets_ready",
-            {
-                "cached": annotated,
-                "api_targets": len(targets),
-                "total": annotated + len(targets),
-            },
-        )
-
-    if targets:
-        max_workers = max(1, concurrency)
-        rate_limiter = RequestRateLimiter(min_interval_seconds=request_interval_seconds)
-
-        def annotate_target(word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
-            rate_limiter.wait()
-            return client.annotate_example(word, example)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(annotate_target, word, example): (word, example, cache_key)
-                for word, example, cache_key in targets
-            }
-            for future in as_completed(futures):
-                word, example, cache_key = futures[future]
-                try:
-                    annotations = future.result()
-                except Exception as exc:
-                    if on_error is None:
-                        raise
-                    on_error(word, example, exc)
-                    if on_progress is not None:
-                        on_progress("failed", {"word": word.get("word") or ""})
-                    continue
-                if cache_state is not None and cache_key is not None:
-                    cache_state.save_cache_entry(
-                        purpose=ANNOTATION_CACHE_PURPOSE,
-                        cache_key=cache_key,
-                        version=ANNOTATION_CACHE_VERSION,
-                        status="hit",
-                        value=annotations,
-                    )
-                for field, value in annotations.items():
-                    if overwrite or not example.get(field):
-                        example[field] = value
-                annotated += 1
-                if on_progress is not None:
-                    on_progress("api_hit", {"word": word.get("word") or ""})
-
-    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 6)
-    metadata = payload.setdefault("annotation", {})
-    if isinstance(metadata, dict):
-        metadata["fields"] = list(ANNOTATION_FIELDS)
-    return payload, annotated
-
-
-def apply_cached_annotations(
-    payload: dict[str, Any],
-    *,
-    cache_state: Any,
-    cache_context: dict[str, Any] | None = None,
-    limit: int,
-    overwrite: bool = False,
-    include_example: ExamplePredicate | None = None,
-    on_progress: ProgressCallback | None = None,
-) -> tuple[dict[str, Any], int]:
-    annotated = 0
-    for word in payload.get("words", []):
-        for example in word.get("examples", []):
-            if annotated >= limit:
-                break
-            if include_example is not None and not include_example(word, example):
-                continue
-            if not overwrite and _has_annotations(example):
-                continue
-            cache_key = annotation_cache_key(word, example, cache_context or {})
-            cached = cache_state.get_cache_entry(
-                purpose=ANNOTATION_CACHE_PURPOSE,
-                cache_key=cache_key,
-                version=ANNOTATION_CACHE_VERSION,
-            )
-            if not (cached and cached["status"] == "hit" and _has_required_annotations(cached.get("value"))):
-                continue
-            for field, value in cached["value"].items():
-                if field in ANNOTATION_FIELDS and (overwrite or not example.get(field)):
-                    example[field] = value
-            annotated += 1
-            if on_progress is not None:
-                on_progress("cache_hit", {"word": word.get("word") or ""})
-        if annotated >= limit:
-            break
-
-    payload["schema_version"] = max(int(payload.get("schema_version") or 0), 6)
-    metadata = payload.setdefault("annotation", {})
-    if isinstance(metadata, dict):
-        metadata["fields"] = list(ANNOTATION_FIELDS)
-    return payload, annotated
-
-
-def annotate_corpus_file(
-    input_path: Path,
-    output_path: Path,
-    *,
-    client: AnnotationClient,
-    limit: int,
-    overwrite: bool = False,
-    cache_state: Any | None = None,
-    cache_context: dict[str, Any] | None = None,
-    bypass_cache: bool = False,
-    include_example: ExamplePredicate | None = None,
-    concurrency: int = 1,
-    request_interval_seconds: float = 0.0,
-    on_error: Callable[[dict[str, Any], dict[str, Any], Exception], None] | None = None,
-) -> int:
-    payload = json.loads(input_path.read_text(encoding="utf-8"))
-    payload, annotated = annotate_corpus(
-        payload,
-        client=client,
-        limit=limit,
-        overwrite=overwrite,
-        cache_state=cache_state,
-        cache_context=cache_context,
-        bypass_cache=bypass_cache,
-        include_example=include_example,
-        concurrency=concurrency,
-        request_interval_seconds=request_interval_seconds,
-        on_error=on_error,
-    )
-    ensure_parent(output_path)
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return annotated
-
-
-def apply_cached_annotations_file(
-    input_path: Path,
-    output_path: Path,
-    *,
-    cache_state: Any,
-    cache_context: dict[str, Any] | None = None,
-    limit: int,
-    overwrite: bool = False,
-    include_example: ExamplePredicate | None = None,
-) -> int:
-    payload = json.loads(input_path.read_text(encoding="utf-8"))
-    payload, annotated = apply_cached_annotations(
-        payload,
-        cache_state=cache_state,
-        cache_context=cache_context,
-        limit=limit,
-        overwrite=overwrite,
-        include_example=include_example,
-    )
-    ensure_parent(output_path)
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return annotated
-
-
-def _has_annotations(example: dict[str, Any]) -> bool:
-    return all(example.get(field) for field in REQUIRED_ANNOTATION_FIELDS)
-
-
-def _has_required_annotations(value: Any) -> bool:
-    return isinstance(value, dict) and all(
-        bool(_clean_annotation_value(value.get(field)))
-        for field in REQUIRED_ANNOTATION_FIELDS
-    )
-
-
-def annotation_cache_key(
-    word: dict[str, Any],
-    example: dict[str, Any],
-    context: dict[str, Any],
-) -> str:
-    example_payload: dict[str, Any] = {
-        "source_type": example.get("source_type") or "",
-        "matched_text": example.get("matched_text") or "",
-        "sentence": example.get("sentence") or "",
-        "context_before": example.get("context_before") or [],
-        "context_after": example.get("context_after") or [],
-    }
-    show_context = example.get("show_context") or {}
-    if context.get("use_show_context"):
-        example_payload["show_context"] = show_context
-    else:
-        example_payload["show_context"] = {
-            "summary": show_context.get("summary"),
-            "characters": [],
-        }
-    payload = {
-        "context": context,
-        "word": {
-            "word": word.get("word") or "",
-            "reading": word.get("reading") or "",
-            "level": word.get("level") or "",
-            "meaning_zh": word.get("meaning_zh") or "",
-            "meaning": word.get("meaning") or "",
-        },
-        "example": example_payload,
-    }
-    return hashlib.sha256(
-        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    ).hexdigest()
 
 
 def parse_loose_annotation_response(content: str) -> dict[str, str]:
@@ -580,7 +299,7 @@ def parse_loose_annotation_response(content: str) -> dict[str, str]:
                 value = value[1:-1]
             payload[field] = value.replace('\\"', '"').replace("\\n", " ")
     if not payload:
-        raise ValueError("LLM annotation response must be JSON or JSON-like key/value lines.")
+        raise ValueError("LLM response must be JSON or JSON-like key/value lines.")
     return payload
 
 

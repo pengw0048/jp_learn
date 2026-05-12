@@ -16,7 +16,7 @@ From the viewer, open Maintenance:
 
 1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
 2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
-3. Later, run `uv run jpcorpus` again and use Refresh for new media/local text changes. Use LLM annotation only when you want paid/local model annotation.
+3. Later, run `uv run jpcorpus` again and use Refresh for new media/local text changes. LLM settings are only needed for on-demand AI explanations in the reader.
 
 The only normal working corpus file is `corpus.json`. Extra input/output paths are for debugging or experiments.
 
@@ -47,21 +47,19 @@ uv run jpcorpus
 
 Then use the Maintenance panel. Day to day, this is still the only command you need.
 
-The app intentionally does not expose a command tree. Data sync, dictionary refresh, corpus rebuild, and LLM annotation are all launched from the viewer so a normal user does not need to learn separate commands or path flags.
+The app intentionally does not expose a command tree. Data sync, dictionary refresh, and corpus rebuild are launched from the viewer so a normal user does not need to learn separate commands or path flags.
 
 The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary, and offline JMdict/KANJIDIC2 lexical resources. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
 
 The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded labels.
 
-The Markdown report is a POC/debug view. The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for LLM annotation, while preserving line breaks inside multi-line subtitle cues. LLM annotation keeps prompts source-text-only by default and can add example-level `translation_zh` and `usage_note_zh` fields through Anthropic Claude, any OpenAI-compatible endpoint, or a local Apple Foundation Models wrapper.
+The Markdown report is a POC/debug view. The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
 
 Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi music collections, splits album subjects into track rows through Bangumi episodes, searches LRCLIB, and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated refreshes skip BGM/OST misses by default. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 
 Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh. The corpus importer will add them as `source_type: text`, using EPUB metadata when available and the file name as a fallback title.
 
-Optional LLM annotation can be run from the viewer Maintenance panel. Pick a scope, confirm the estimated request size, and start the job there. Successful annotations are written to the versioned state-database cache as each request completes, and failed requests are reported without stopping the batch. LLM annotations are keyed by source text and provider context, so repeated annotation runs reuse existing results until the annotation cache version changes. Cache-only application is also available in the same panel when you want to preview already stored annotations without making model requests.
-
-Anthropic, OpenAI-compatible endpoints, and Apple Foundation Models are configured through `.env` or the viewer Configuration form. The Apple provider compiles `jpcorpus/apple_fm_annotate.swift` into `~/.jpcorpus/apple_fm_annotate` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout during the annotation run.
+Optional reader AI explanation uses Anthropic, OpenAI-compatible endpoints, or Apple Foundation Models configured through `.env` or the viewer Configuration form. The Apple provider compiles `jpcorpus/apple_fm_annotate.swift` into `~/.jpcorpus/apple_fm_annotate` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout for reader explanation requests.
 
 ## Data Files
 

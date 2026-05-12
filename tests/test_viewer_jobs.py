@@ -3,13 +3,10 @@ import pytest
 from jpcorpus.viewer_jobs import (
     ViewerJob,
     ViewerJobRunner,
-    build_annotation_predicate,
     composite_maintenance_steps,
     explain_reader_usage,
     llm_config_status,
-    normalize_annotation_spec,
     normalize_maintenance_spec,
-    public_annotation_spec,
     save_viewer_config,
     viewer_config_status,
 )
@@ -36,58 +33,6 @@ def test_normalize_maintenance_spec_accepts_fetch_lyrics_options():
 def test_normalize_maintenance_spec_rejects_unknown_task():
     with pytest.raises(ValueError, match="Unsupported maintenance task"):
         normalize_maintenance_spec({"type": "shell"})
-
-
-def test_selected_examples_annotation_scope_matches_exact_example():
-    target = {
-        "source_type": "subtitle",
-        "source_title": "CLANNAD",
-        "subtitle_file": "clannad_ep05.srt",
-        "episode": 5,
-        "start_ms": 705240,
-        "end_ms": 709000,
-        "matched_text": "届か",
-        "sentence": "声が届かないから、風子はこうしてるんだと思います",
-    }
-    spec = normalize_annotation_spec(
-        {
-            "scope": "selected_examples",
-            "provider": "openai-compatible",
-            "words": ["届く"],
-            "examples": [target],
-            "cache_only": False,
-            "bypass_cache": True,
-            "overwrite": True,
-        }
-    )
-
-    include_example = build_annotation_predicate(spec)
-
-    assert spec["bypass_cache"] is True
-    assert public_annotation_spec(spec)["example_count"] == 1
-    assert include_example({"word": "届く", "level": "N4"}, target)
-    assert not include_example({"word": "届く", "level": "N4"}, {**target, "start_ms": 705241})
-    assert not include_example({"word": "届ける", "level": "N4"}, target)
-
-
-def test_annotation_spec_uses_configured_provider_when_request_omits_provider(monkeypatch):
-    monkeypatch.setenv("JPCORPUS_LLM_PROVIDER", "anthropic")
-
-    spec = normalize_annotation_spec({"scope": "first_unannotated"})
-
-    assert spec["provider"] == "anthropic"
-
-
-def test_selected_examples_annotation_scope_requires_examples():
-    with pytest.raises(ValueError, match="requires at least one example"):
-        normalize_annotation_spec(
-            {
-                "scope": "selected_examples",
-                "provider": "openai-compatible",
-                "words": ["届く"],
-                "examples": [],
-            }
-        )
 
 
 def test_normalize_maintenance_spec_accepts_simple_sync_action():
@@ -186,7 +131,7 @@ def test_composite_refresh_all_updates_indexes_before_syncing():
     assert steps[-1][1]["type"] == "export_corpus"
 
 
-def test_explain_reader_usage_calls_llm_without_cache(monkeypatch):
+def test_explain_reader_usage_calls_llm_directly(monkeypatch):
     calls = {}
 
     class FakeClient:
@@ -202,11 +147,11 @@ def test_explain_reader_usage_calls_llm_without_cache(monkeypatch):
         def close(self):
             calls["closed"] = True
 
-    def fake_runtime(spec):
-        calls["spec"] = spec
-        return {}, FakeClient()
+    def fake_client(**kwargs):
+        calls["client_kwargs"] = kwargs
+        return FakeClient()
 
-    monkeypatch.setattr("jpcorpus.viewer_jobs.resolve_annotation_runtime", fake_runtime)
+    monkeypatch.setattr("jpcorpus.viewer_jobs.resolve_llm_client", fake_client)
 
     result = explain_reader_usage(
         {
@@ -229,8 +174,8 @@ def test_explain_reader_usage_calls_llm_without_cache(monkeypatch):
         }
     )
 
-    assert calls["spec"]["cache_only"] is False
-    assert calls["spec"]["provider"] == "apple"
+    assert calls["client_kwargs"]["provider"] == "apple"
+    assert calls["client_kwargs"]["use_show_context"] is False
     assert calls["word"]["word"] == "行く"
     assert calls["example"]["sentence"] == "学校へ行く。"
     assert calls["closed"] is True

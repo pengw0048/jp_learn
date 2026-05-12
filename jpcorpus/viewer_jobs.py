@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import time
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
@@ -19,35 +18,11 @@ from .llm import (
     AppleFoundationModelsClient,
     LLMConfig,
     OpenAICompatibleClient,
-    annotate_corpus,
-    apply_cached_annotations,
-    apply_cached_annotations_file,
 )
 from .paths import DEFAULT_STATE_DB, ensure_parent
-from .state import State
 
 
-ALLOWED_ANNOTATION_SCOPES = {
-    "current_word",
-    "filtered_words",
-    "first_unannotated",
-    "selected_examples",
-}
-ALLOWED_SOURCES = {"all", "subtitle", "lyrics", "text"}
-ALLOWED_LEVELS = {"all", "N5", "N4", "N3", "N2", "N1"}
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
-EXAMPLE_SELECTION_FIELDS = (
-    "source_type",
-    "source_title",
-    "source_artist",
-    "source_album",
-    "subtitle_file",
-    "episode",
-    "start_ms",
-    "end_ms",
-    "matched_text",
-    "sentence",
-)
 ALLOWED_MAINTENANCE_TASKS = {
     "sync_media",
     "refresh_all",
@@ -62,7 +37,7 @@ ALLOWED_MAINTENANCE_TASKS = {
     "fetch_kanjidic2",
     "fetch_lexical_resources",
 }
-CORPUS_RELOAD_TASKS = {"annotate", "export_corpus"}
+CORPUS_RELOAD_TASKS = {"export_corpus"}
 CONFIG_ENV_PATH = Path(".env")
 
 
@@ -109,17 +84,6 @@ class ViewerJobRunner:
         with self._lock:
             return self._job.to_dict() if self._job else None
 
-    def start_annotation(self, raw_spec: dict[str, Any]) -> dict[str, Any]:
-        spec = normalize_annotation_spec(raw_spec)
-        with self._lock:
-            if self._job and self._job.status == "running":
-                raise RuntimeError("Another maintenance job is already running.")
-            job = ViewerJob(id=str(uuid.uuid4()), kind="annotate", spec=public_annotation_spec(spec))
-            self._job = job
-        thread = threading.Thread(target=self._run_annotation_job, args=(job, spec), daemon=True)
-        thread.start()
-        return job.to_dict()
-
     def start_maintenance(self, raw_spec: dict[str, Any]) -> dict[str, Any]:
         spec = normalize_maintenance_spec(raw_spec)
         with self._lock:
@@ -130,105 +94,6 @@ class ViewerJobRunner:
         thread = threading.Thread(target=self._run_maintenance_job, args=(job, spec), daemon=True)
         thread.start()
         return job.to_dict()
-
-    def _run_annotation_job(self, job: ViewerJob, spec: dict[str, Any]) -> None:
-        client: Any | None = None
-        try:
-            self._log(job, f"Reading corpus: {self.corpus_path}")
-            payload = json.loads(self.corpus_path.read_text(encoding="utf-8"))
-            include_example = build_annotation_predicate(spec)
-            selected_count = count_annotation_targets(
-                payload,
-                include_example=include_example,
-                overwrite=spec["overwrite"],
-            )
-            self._log(job, f"Selected {selected_count} candidate examples.")
-            progress = {
-                "phase": "cache" if spec["cache_only"] else "annotate",
-                "selected": selected_count,
-                "total": min(selected_count, spec["limit"]),
-                "completed": 0,
-                "cached": 0,
-                "annotated": 0,
-                "failed": 0,
-                "api_targets": None,
-                "remaining": min(selected_count, spec["limit"]),
-                "percent": 0.0,
-            }
-
-            def publish_progress() -> None:
-                total = int(progress["total"] or 0)
-                completed = int(progress["completed"] or 0)
-                progress["remaining"] = max(total - completed, 0)
-                progress["percent"] = round((completed / total) * 100, 1) if total else 100.0
-                self._set_progress(job, progress)
-
-            def on_annotation_progress(event: str, _details: dict[str, Any]) -> None:
-                if event == "targets_ready":
-                    progress["api_targets"] = _details.get("api_targets")
-                    progress["cached"] = int(_details.get("cached") or progress["cached"])
-                    progress["completed"] = int(progress["cached"]) + int(progress["failed"])
-                elif event == "cache_hit":
-                    progress["cached"] = int(progress["cached"]) + 1
-                    progress["completed"] = int(progress["completed"]) + 1
-                elif event == "api_hit":
-                    progress["annotated"] = int(progress["annotated"]) + 1
-                    progress["completed"] = int(progress["completed"]) + 1
-                elif event == "failed":
-                    progress["failed"] = int(progress["failed"]) + 1
-                    progress["completed"] = int(progress["completed"]) + 1
-                publish_progress()
-
-            publish_progress()
-            cache_context, client = resolve_annotation_runtime(spec)
-            if spec["cache_only"]:
-                payload, annotated = apply_cached_annotations(
-                    payload,
-                    cache_state=State(self.state_db),
-                    cache_context=cache_context,
-                    limit=spec["limit"],
-                    overwrite=spec["overwrite"],
-                    include_example=include_example,
-                    on_progress=on_annotation_progress,
-                )
-                self._log(job, f"Applied {annotated} cached annotations.")
-            else:
-                errors = []
-
-                def on_error(word: dict[str, Any], example: dict[str, Any], exc: Exception) -> None:
-                    label = word.get("word") or example.get("matched_text") or "example"
-                    message = f"Annotation failed for {label}: {exc}"
-                    errors.append(message)
-                    self._log(job, message)
-
-                payload, annotated = annotate_corpus(
-                    payload,
-                    client=client,
-                    limit=spec["limit"],
-                    overwrite=spec["overwrite"],
-                    cache_state=State(self.state_db),
-                    cache_context=cache_context,
-                    bypass_cache=spec["bypass_cache"],
-                    include_example=include_example,
-                    concurrency=spec["concurrency"],
-                    request_interval_seconds=(60.0 / spec["rpm"]) if spec.get("rpm") else 0.0,
-                    on_error=on_error,
-                    on_progress=on_annotation_progress,
-                )
-                self._log(job, f"Annotated {annotated} examples with {len(errors)} failures.")
-            write_corpus_atomic(self.corpus_path, payload)
-            self._finish(
-                job,
-                "succeeded",
-                {"annotated": annotated, "selected": selected_count, "reload_corpus": True},
-            )
-        except Exception as exc:
-            self._log(job, f"Job failed: {exc}")
-            self._finish(job, "failed", {}, error=str(exc))
-        finally:
-            close_client = getattr(client, "close", None)
-            if callable(close_client):
-                close_client()
 
     def _run_maintenance_job(self, job: ViewerJob, spec: dict[str, Any]) -> None:
         try:
@@ -308,38 +173,6 @@ class ViewerJobRunner:
         raw_path = Path("corpus.json")
         self._run_export_corpus_file(job, raw_path)
         served_path = self.corpus_path.resolve()
-        if served_path == raw_path.resolve():
-            if job.kind == "export_corpus":
-                self._set_progress(
-                    job,
-                    {
-                        "phase": "export",
-                        "total": 1,
-                        "completed": 1,
-                        "current_step": "Export corpus",
-                        "percent": 100.0,
-                    },
-                )
-            return {"output": str(raw_path), "reload_corpus": True}
-
-        self._log(job, f"Applying cached annotations to served corpus: {served_path}")
-        cache_context, _client = resolve_annotation_runtime(
-            {
-                "provider": os.environ.get("JPCORPUS_LLM_PROVIDER") or "openai-compatible",
-                "model": os.environ.get("JPCORPUS_LLM_MODEL") or os.environ.get("ANTHROPIC_MODEL"),
-                "cache_only": True,
-                "use_show_context": False,
-            }
-        )
-        annotated = apply_cached_annotations_file(
-            raw_path,
-            served_path,
-            cache_state=State(self.state_db),
-            cache_context=cache_context,
-            limit=500000,
-            overwrite=False,
-        )
-        self._log(job, f"Applied {annotated} cached annotations.")
         if job.kind == "export_corpus":
             self._set_progress(
                 job,
@@ -351,10 +184,14 @@ class ViewerJobRunner:
                     "percent": 100.0,
                 },
             )
+        if served_path == raw_path.resolve():
+            return {"output": str(raw_path), "reload_corpus": True}
+        self._log(job, f"Copying exported corpus to served path: {served_path}")
+        ensure_parent(served_path)
+        served_path.write_bytes(raw_path.read_bytes())
         return {
             "output": str(served_path),
             "raw_output": str(raw_path),
-            "cached_annotations": annotated,
             "reload_corpus": True,
         }
 
@@ -509,7 +346,7 @@ def maintenance_status(runner: ViewerJobRunner | None) -> dict[str, Any]:
     return {
         "enabled": runner is not None,
         "corpus_path": str(runner.corpus_path) if runner else None,
-        "tasks": sorted(ALLOWED_MAINTENANCE_TASKS | {"annotate"}),
+        "tasks": sorted(ALLOWED_MAINTENANCE_TASKS),
         "llm": llm_config_status(),
         "config": viewer_config_status(),
         "job": runner.current_job() if runner else None,
@@ -525,15 +362,11 @@ def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
     provider = str(raw.get("provider") or os.environ.get("JPCORPUS_LLM_PROVIDER") or "openai-compatible")
     if provider not in ALLOWED_PROVIDERS:
         raise ValueError(f"Unsupported provider: {provider}")
-    spec = {
-        "provider": provider,
-        "model": raw.get("model") or os.environ.get("JPCORPUS_LLM_MODEL") or os.environ.get("ANTHROPIC_MODEL"),
-        "cache_only": False,
-        "use_show_context": False,
-    }
-    _cache_context, client = resolve_annotation_runtime(spec)
-    if client is None:
-        raise ValueError("LLM client is not available for explanation.")
+    client = resolve_llm_client(
+        provider=provider,
+        model=raw.get("model") or os.environ.get("JPCORPUS_LLM_MODEL") or os.environ.get("ANTHROPIC_MODEL"),
+        use_show_context=False,
+    )
     try:
         explanation = client.annotate_example(compact_reader_word(word), compact_reader_example(example))
     finally:
@@ -608,7 +441,7 @@ def viewer_config_status() -> dict[str, Any]:
             },
             {
                 "id": "llm",
-                "label": "LLM annotations",
+                "label": "AI explanation",
                 "configured": not llm_missing,
                 "missing": llm_missing,
             },
@@ -730,62 +563,6 @@ def quote_env_value(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def normalize_annotation_spec(raw: dict[str, Any]) -> dict[str, Any]:
-    scope = str(raw.get("scope") or "current_word")
-    if scope not in ALLOWED_ANNOTATION_SCOPES:
-        raise ValueError(f"Unsupported annotation scope: {scope}")
-    provider = str(raw.get("provider") or os.environ.get("JPCORPUS_LLM_PROVIDER") or "openai-compatible")
-    if provider not in ALLOWED_PROVIDERS:
-        raise ValueError(f"Unsupported provider: {provider}")
-    source = str(raw.get("source") or "all")
-    if source not in ALLOWED_SOURCES:
-        raise ValueError(f"Unsupported source filter: {source}")
-    level = str(raw.get("level") or "all")
-    if level not in ALLOWED_LEVELS:
-        raise ValueError(f"Unsupported level filter: {level}")
-    words = raw.get("words") or []
-    if not isinstance(words, list):
-        raise ValueError("words must be a list.")
-    words = [str(word) for word in words if str(word)]
-    if scope in {"current_word", "filtered_words", "selected_examples"} and not words:
-        raise ValueError("This annotation scope requires at least one word.")
-    examples = raw.get("examples") or []
-    if not isinstance(examples, list):
-        raise ValueError("examples must be a list.")
-    examples = [normalize_example_selector(example) for example in examples]
-    if scope == "selected_examples" and not examples:
-        raise ValueError("This annotation scope requires at least one example.")
-    limit = clamp_int(raw.get("limit"), default=20, minimum=1, maximum=5000)
-    concurrency = clamp_int(raw.get("concurrency"), default=1, minimum=1, maximum=16)
-    rpm = raw.get("rpm")
-    rpm_value = float(rpm) if rpm not in (None, "", 0) else None
-    if rpm_value is not None and rpm_value <= 0:
-        raise ValueError("rpm must be greater than zero.")
-    return {
-        "scope": scope,
-        "provider": provider,
-        "model": str(raw.get("model") or "") or None,
-        "words": words[:10000],
-        "examples": examples[:1000],
-        "source": source,
-        "level": level,
-        "limit": limit,
-        "concurrency": concurrency,
-        "rpm": rpm_value,
-        "cache_only": bool(raw.get("cache_only", True)),
-        "bypass_cache": bool(raw.get("bypass_cache", False)),
-        "overwrite": bool(raw.get("overwrite", False)),
-        "use_show_context": bool(raw.get("use_show_context", False)),
-    }
-
-
-def public_annotation_spec(spec: dict[str, Any]) -> dict[str, Any]:
-    public = dict(spec)
-    public["word_count"] = len(public.pop("words", []))
-    public["example_count"] = len(public.pop("examples", []))
-    return public
-
-
 def normalize_maintenance_spec(raw: dict[str, Any]) -> dict[str, Any]:
     task_type = str(raw.get("type") or "")
     if task_type not in ALLOWED_MAINTENANCE_TASKS:
@@ -802,129 +579,44 @@ def public_maintenance_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return dict(spec)
 
 
-def build_annotation_predicate(spec: dict[str, Any]):
-    word_set = (
-        set(spec["words"])
-        if spec["scope"] in {"current_word", "filtered_words", "selected_examples"}
-        else None
-    )
-    example_set = (
-        {example_selection_key(example) for example in spec.get("examples", [])}
-        if spec["scope"] == "selected_examples"
-        else None
-    )
-    source = spec["source"]
-    level = spec["level"]
-
-    def include_example(word: dict[str, Any], example: dict[str, Any]) -> bool:
-        if word_set is not None and str(word.get("word") or "") not in word_set:
-            return False
-        if example_set is not None and example_selection_key(example) not in example_set:
-            return False
-        if level != "all" and word.get("level") != level:
-            return False
-        if source != "all" and example.get("source_type") != source:
-            return False
-        return True
-
-    return include_example
-
-
-def normalize_example_selector(raw: Any) -> dict[str, Any]:
-    if not isinstance(raw, dict):
-        raise ValueError("examples must contain objects.")
-    return {field: normalize_example_selection_value(raw.get(field)) for field in EXAMPLE_SELECTION_FIELDS}
-
-
-def normalize_example_selection_value(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    return str(value)
-
-
-def example_selection_key(example: dict[str, Any]) -> str:
-    payload = normalize_example_selector(example)
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def count_annotation_targets(
-    payload: dict[str, Any],
-    *,
-    include_example,
-    overwrite: bool,
-) -> int:
-    count = 0
-    for word in payload.get("words", []):
-        for example in word.get("examples", []):
-            if not include_example(word, example):
-                continue
-            if not overwrite and example.get("translation_zh") and example.get("usage_note_zh"):
-                continue
-            count += 1
-    return count
-
-
-def resolve_annotation_runtime(spec: dict[str, Any]) -> tuple[dict[str, Any], Any | None]:
-    provider = spec["provider"]
+def resolve_llm_client(*, provider: str, model: Any = None, use_show_context: bool = False) -> Any:
     if provider == "apple":
-        model = "apple"
-        base_url = ""
-        client = None if spec["cache_only"] else AppleFoundationModelsClient(
-            use_show_context=spec["use_show_context"]
-        )
-    elif provider == "anthropic":
-        model = spec["model"] or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_ANTHROPIC_MODEL
+        return AppleFoundationModelsClient(use_show_context=use_show_context)
+    if provider == "anthropic":
+        resolved_model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_ANTHROPIC_MODEL
         base_url = (
             os.environ.get("JPCORPUS_ANTHROPIC_BASE_URL")
             or os.environ.get("ANTHROPIC_BASE_URL")
             or DEFAULT_ANTHROPIC_BASE_URL
         )
-        client = None
-        if not spec["cache_only"]:
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                raise ValueError("Set ANTHROPIC_API_KEY before running Anthropic annotations.")
-            client = AnthropicClient(
-                LLMConfig(
-                    model=model,
-                    base_url=base_url,
-                    api_key=api_key,
-                    use_show_context=spec["use_show_context"],
-                )
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("Set ANTHROPIC_API_KEY before using Anthropic AI explanation.")
+        return AnthropicClient(
+            LLMConfig(
+                model=resolved_model,
+                base_url=base_url,
+                api_key=api_key,
+                use_show_context=use_show_context,
             )
-    elif provider == "openai-compatible":
-        model = spec["model"] or os.environ.get("JPCORPUS_LLM_MODEL")
-        if not model:
-            raise ValueError("Set JPCORPUS_LLM_MODEL before running OpenAI-compatible annotations.")
+        )
+    if provider == "openai-compatible":
+        resolved_model = model or os.environ.get("JPCORPUS_LLM_MODEL")
+        if not resolved_model:
+            raise ValueError("Set JPCORPUS_LLM_MODEL before using OpenAI-compatible AI explanation.")
         base_url = os.environ.get("JPCORPUS_LLM_BASE_URL", "https://api.openai.com/v1")
-        client = None
-        if not spec["cache_only"]:
-            api_key = os.environ.get("JPCORPUS_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
-            if "api.openai.com" in base_url and not api_key:
-                raise ValueError("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY before running annotations.")
-            client = OpenAICompatibleClient(
-                LLMConfig(
-                    model=model,
-                    base_url=base_url,
-                    api_key=api_key,
-                    use_show_context=spec["use_show_context"],
-                )
+        api_key = os.environ.get("JPCORPUS_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        if "api.openai.com" in base_url and not api_key:
+            raise ValueError("Set JPCORPUS_LLM_API_KEY or OPENAI_API_KEY before using AI explanation.")
+        return OpenAICompatibleClient(
+            LLMConfig(
+                model=resolved_model,
+                base_url=base_url,
+                api_key=api_key,
+                use_show_context=use_show_context,
             )
-    else:
-        raise ValueError(f"Unsupported provider: {provider}")
-    return {
-        "provider": provider,
-        "model": model,
-        "base_url": base_url,
-        "use_show_context": spec["use_show_context"],
-    }, client
-
-
-def write_corpus_atomic(path: Path, payload: dict[str, Any]) -> None:
-    ensure_parent(path)
-    temp_path = path.with_name(f".{path.name}.{int(time.time() * 1000)}.tmp")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temp_path.replace(path)
+        )
+    raise ValueError(f"Unsupported provider: {provider}")
 
 
 def composite_maintenance_steps(spec: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:

@@ -1083,48 +1083,10 @@ mark {
 
 .annotation-block {
   margin-top: 8px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
-}
-
-.annotation-block.empty {
-  justify-content: end;
 }
 
 .annotation-lines {
   min-width: 0;
-}
-
-.example-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.example-action-button {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfc;
-  color: var(--muted);
-  font-size: 18px;
-  font-weight: 720;
-  line-height: 1;
-}
-
-.example-action-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.example-action-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .annotation-line {
