@@ -196,6 +196,7 @@ const text = {
     readerWordListAll: "全部词",
     readerWordListStudy: "今日学习",
     readerCurrentHint: "点高亮词查看解释",
+    readerNoSelection: "点正文里的高亮词查看解释",
     readerContextTitle: "当前阅读",
     readerContextAddStudy: "加入学习",
     readerContextCheck: "今天 +1",
@@ -354,6 +355,7 @@ const text = {
     readerWordListAll: "All words",
     readerWordListStudy: "Today",
     readerCurrentHint: "Click highlighted words to inspect them",
+    readerNoSelection: "Click a highlighted word in the text to inspect it",
     readerContextTitle: "Current passage",
     readerContextAddStudy: "Add to study",
     readerContextCheck: "Today +1",
@@ -1567,7 +1569,10 @@ function appendReaderHighlighted(target, text, matches, options = {}) {
     button.type = "button";
     button.title = match.word;
     button.dataset.word = match.word;
-    button.addEventListener("click", () => selectReaderWord(match.word, readerSelectionForLine(options.line || { text }, match, options)));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectReaderWord(match.word, readerSelectionForLine(options.line || { text }, match, options));
+    });
     target.append(button);
     cursor = match.end;
   });
@@ -1848,6 +1853,7 @@ function renderReadingPane() {
 
   const pane = el("div", "reader-mode-pane");
   const scroller = el("div", "reader-mode-scroll");
+  scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
   scroller.append(
     renderReaderModeSummary(selected, selectedUnit),
     renderSourceReader(selected, {
@@ -1874,24 +1880,39 @@ function currentReaderScrollTop() {
 
 function syncSelectedWordToReaderSource(readingTarget, wordSet) {
   const words = readingTarget?.words || new Set();
-  if (words.has(app.selectedWord?.word) && readerWordAllowed(app.selectedWord.word, wordSet)) {
+  if (
+    app.reader.selection
+    && words.has(app.selectedWord?.word)
+    && readerWordAllowed(app.selectedWord.word, wordSet)
+  ) {
     return;
   }
-  const firstWord = [...words]
-    .map(findWord)
-    .find((word) => word && readerWordAllowed(word.word, wordSet));
-  if (firstWord) {
-    app.selectedWord = firstWord;
-    app.study.showAnswer = false;
-  } else {
-    app.selectedWord = null;
-  }
+  app.selectedWord = null;
   clearReaderSelection();
 }
 
 function clearReaderSelection() {
   app.reader.selection = null;
   app.reader.explanation = null;
+}
+
+function clearReaderWordSelectionFromBlank(event) {
+  if (event.target instanceof Element && event.target.closest(".reader-token, summary, button, select, input, textarea, label, a")) {
+    return;
+  }
+  clearReaderWordSelection();
+}
+
+function clearReaderWordSelection() {
+  if (!app.selectedWord && !app.reader.selection && !app.reader.explanation) {
+    return;
+  }
+  app.selectedWord = null;
+  clearReaderSelection();
+  app.study.showAnswer = false;
+  renderDetail();
+  renderMaintenance();
+  updateReaderActiveTokens();
 }
 
 function renderReaderModeControls(groups, selected, units, selectedUnit) {
@@ -2255,7 +2276,7 @@ function renderDetail() {
   if (!word) {
     refs.wordDetail.hidden = true;
     refs.emptyState.hidden = false;
-    refs.emptyState.querySelector("h2").textContent = t("noWords");
+    refs.emptyState.querySelector("h2").textContent = t(app.mode === "read" ? "readerNoSelection" : "noWords");
     refs.emptyState.querySelector("p").textContent = "";
     return;
   }
@@ -2559,7 +2580,8 @@ function setStudyMode(mode) {
     hideSourcePanel();
     refs.maintenancePanel.hidden = true;
     refs.maintenanceToggle.classList.remove("active");
-    app.selectedWord = app.selectedWord || chooseInitialWord(filteredWords());
+    app.selectedWord = null;
+    clearReaderSelection();
   } else {
     clearReaderSelection();
     app.selectedWord = chooseInitialWord(currentWordSet());
