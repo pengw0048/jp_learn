@@ -143,8 +143,6 @@ const text = {
     lexicalSpellings: "写法",
     lexicalReadings: "异读",
     lexicalPos: "语法",
-    lexicalSenses: "义项",
-    lexicalKanji: "字音",
     lexicalExamples: "词典例句",
     scene: "场景",
     translation: "翻译",
@@ -281,8 +279,6 @@ const text = {
     lexicalSpellings: "Spellings",
     lexicalReadings: "Alt. reading",
     lexicalPos: "Grammar",
-    lexicalSenses: "Senses",
-    lexicalKanji: "Kanji readings",
     lexicalExamples: "Dictionary examples",
     scene: "Scene",
     translation: "Translation",
@@ -3377,14 +3373,11 @@ function renderLexicalNotes(word) {
   const spellingNodes = lexicalFormNodes(lexicalUsefulForms(notes.spellings, [word.word]));
   const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, [word.reading, word.word]));
   const posNodes = lexicalPosNodes(notes.parts_of_speech);
-  const senseNodes = app.lang === "zh" ? [] : lexicalSenseNodes(notes.senses);
-  const kanjiNodes = app.lang === "zh" ? [] : lexicalKanjiNodes(notes.kanji, word);
   const dictionaryExampleNodes = lexicalDictionaryExampleNodes(notes.dictionary_examples);
   const hasUsefulNotes =
     spellingNodes.length > 0
     || readingNodes.length > 0
-    || senseNodes.length > 0
-    || kanjiNodes.length > 0
+    || posNodes.length > 0
     || dictionaryExampleNodes.length > 0;
   if (!hasUsefulNotes) {
     return document.createDocumentFragment();
@@ -3392,8 +3385,6 @@ function renderLexicalNotes(word) {
   appendLexicalRow(body, t("lexicalSpellings"), spellingNodes);
   appendLexicalRow(body, t("lexicalReadings"), readingNodes);
   appendLexicalRow(body, t("lexicalPos"), posNodes);
-  appendLexicalRow(body, t("lexicalSenses"), senseNodes, "lexical-note-values sense-values");
-  appendLexicalRow(body, t("lexicalKanji"), kanjiNodes);
   appendLexicalRow(
     body,
     t("lexicalExamples"),
@@ -3494,41 +3485,6 @@ function labelLexicalPosZh(value) {
   return LEXICAL_POS_LABELS_ZH[value] || value;
 }
 
-function lexicalSenseNodes(values) {
-  return asArray(values).map((sense, index) => {
-    const item = el("div", "lexical-sense");
-    item.append(el("span", "lexical-sense-index", `${index + 1}.`));
-    const textValue = asArray(sense.glosses)
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .join("; ");
-    item.append(el("span", "lexical-sense-text", textValue));
-    const tags = asArray(sense.tags).filter(Boolean);
-    if (tags.length) {
-      item.append(el("span", "lexical-sense-tags", tags.join(" / ")));
-    }
-    return item;
-  }).filter((node) => node.textContent.trim());
-}
-
-function lexicalKanjiNodes(values, word) {
-  if (isSingleKanjiWord(word.word)) {
-    return [];
-  }
-  return asArray(values).map((kanji) => {
-    const chip = el("span", "lexical-kanji-chip");
-    chip.append(el("strong", "", String(kanji.literal || "")));
-    const readings = [
-      ...asArray(kanji.on_readings).slice(0, 2),
-      ...asArray(kanji.kun_readings).slice(0, 1),
-    ].filter(Boolean).slice(0, 4);
-    if (readings.length) {
-      chip.append(el("span", "lexical-kanji-reading", readings.join("・")));
-    }
-    return chip;
-  }).filter((node) => node.textContent.trim());
-}
-
 function lexicalDictionaryExampleNodes(values) {
   return asArray(values).map((example) => {
     const japanese = String(example.japanese || example.sentence || "").trim();
@@ -3568,11 +3524,6 @@ function lexicalExampleTranslation(example) {
   return Object.values(translations)
     .map((value) => String(value || "").trim())
     .find(Boolean) || "";
-}
-
-function isSingleKanjiWord(value) {
-  const textValue = String(value || "");
-  return textValue.length === 1 && /[\u3400-\u4dbf\u4e00-\u9fff]/u.test(textValue);
 }
 
 function parseMeaning(value) {

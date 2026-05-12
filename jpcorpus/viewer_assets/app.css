@@ -771,38 +771,8 @@ select {
   min-width: 0;
 }
 
-.sense-values {
-  display: grid;
-  gap: 4px;
-}
-
-.lexical-sense {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 7px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.lexical-sense-index {
-  color: var(--accent);
-  font-weight: 760;
-}
-
-.lexical-sense-text {
-  color: var(--text);
-}
-
-.lexical-sense-tags {
-  grid-column: 2;
-  color: var(--muted);
-}
-
 .lexical-chip,
-.lexical-form-chip,
-.lexical-kanji-chip {
+.lexical-form-chip {
   min-height: 24px;
   padding: 1px 0;
   border-radius: 8px;
@@ -816,23 +786,6 @@ select {
   background: rgba(255, 255, 255, 0.58);
   font-family: var(--font-ja);
   color: var(--text);
-}
-
-.lexical-kanji-chip {
-  font-family: var(--font-ja);
-  color: var(--text);
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.lexical-kanji-chip strong {
-  font-size: 15px;
-}
-
-.lexical-kanji-reading,
-.lexical-kanji-meaning {
-  color: var(--muted);
 }
 
 .lexical-example-values {
