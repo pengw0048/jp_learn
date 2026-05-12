@@ -195,7 +195,7 @@ const text = {
     readerWordListChoice: "高亮词表",
     readerWordListAll: "全部词",
     readerWordListStudy: "今日学习",
-    readerCurrentHint: "点高亮词或右侧词 chip 查看解释",
+    readerCurrentHint: "点高亮词查看解释",
     readerContextTitle: "当前阅读",
     readerContextAddStudy: "加入学习",
     readerContextCheck: "今天 +1",
@@ -353,7 +353,7 @@ const text = {
     readerWordListChoice: "Highlighted words",
     readerWordListAll: "All words",
     readerWordListStudy: "Today",
-    readerCurrentHint: "Click highlighted words or right-side chips to inspect them",
+    readerCurrentHint: "Click highlighted words to inspect them",
     readerContextTitle: "Current passage",
     readerContextAddStudy: "Add to study",
     readerContextCheck: "Today +1",
@@ -428,6 +428,8 @@ const app = {
     wordList: readReaderWordList(),
     selection: null,
     explanation: null,
+    controlsOpen: false,
+    preserveScrollOnRender: false,
   },
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
@@ -470,6 +472,7 @@ const refs = {
   sourceFilter: $("#source-filter"),
   resultCount: $("#result-count"),
   wordList: $("#word-list"),
+  detailPane: $(".detail-pane"),
   emptyState: $("#empty-state"),
   wordDetail: $("#word-detail"),
   studyModeButtons: document.querySelectorAll("[data-mode]"),
@@ -1543,18 +1546,6 @@ function renderReaderLine(line, options = {}) {
   const textLine = el("div", "reader-line-text");
   appendReaderHighlighted(textLine, line.text, line.matches, { ...options, line });
   row.append(textLine);
-  const words = uniqueReaderWords(line.matches, options);
-  if (words.length > 0) {
-    const wordList = el("div", "reader-line-words");
-    words.forEach((match) => {
-      const chip = el("button", "reader-word-chip", match.word);
-      chip.type = "button";
-      chip.dataset.word = match.word;
-      chip.addEventListener("click", () => selectReaderWord(match.word, readerSelectionForLine(line, match, options)));
-      wordList.append(chip);
-    });
-    row.append(wordList);
-  }
   return row;
 }
 
@@ -1586,19 +1577,6 @@ function appendReaderHighlighted(target, text, matches, options = {}) {
   if (target.childNodes.length === 0) {
     target.textContent = text;
   }
-}
-
-function uniqueReaderWords(matches, options = {}) {
-  const seen = new Set();
-  const result = [];
-  matches.forEach((match) => {
-    if (!match.word || seen.has(match.word) || !readerWordAllowed(match.word, options.wordSet) || !findWord(match.word)) {
-      return;
-    }
-    seen.add(match.word);
-    result.push(match);
-  });
-  return result;
 }
 
 function compareReaderDocuments(left, right) {
@@ -1713,6 +1691,7 @@ function selectReaderWord(wordText, selection = null) {
     openWordFromSource(wordText);
     return;
   }
+  const changedWord = app.selectedWord?.word !== word.word;
   app.selectedWord = word;
   app.reader.selection = selection;
   if (!selection || app.reader.explanation?.key !== selection.key) {
@@ -1720,6 +1699,9 @@ function selectReaderWord(wordText, selection = null) {
   }
   app.study.showAnswer = false;
   renderDetail();
+  if (changedWord) {
+    resetDetailScroll();
+  }
   renderMaintenance();
   updateReaderActiveTokens();
 }
@@ -1729,7 +1711,7 @@ function updateReaderActiveTokens() {
     return;
   }
   const selected = app.selectedWord?.word || "";
-  refs.wordList.querySelectorAll(".reader-token, .reader-word-chip").forEach((node) => {
+  refs.wordList.querySelectorAll(".reader-token").forEach((node) => {
     node.classList.toggle("active", Boolean(selected) && node.dataset.word === selected);
   });
 }
@@ -1839,6 +1821,7 @@ function renderWordList() {
 
 function renderReadingPane() {
   renderLevelFilter();
+  const previousScrollTop = app.reader.preserveScrollOnRender ? currentReaderScrollTop() : null;
   const readerWords = readerWordSet();
   const sourceType = app.reader.sourceType === "all" ? null : app.reader.sourceType;
   const groups = buildSourceGroups(sourceType);
@@ -1847,6 +1830,7 @@ function renderReadingPane() {
     app.reader.documentKey = null;
     refs.resultCount.textContent = t("readerSourcesFound", { count: formatNumber(0) });
     refs.wordList.replaceChildren(emptyMessage(t("sourceReaderEmpty")));
+    app.reader.preserveScrollOnRender = false;
     return;
   }
   if (!groups.some((group) => group.key === app.reader.groupKey)) {
@@ -1860,14 +1844,9 @@ function renderReadingPane() {
   }
   const selectedUnit = units.find((unit) => unit.key === app.reader.documentKey) || units[0] || null;
   syncSelectedWordToReaderSource(selectedUnit || selected, readerWords);
-  refs.resultCount.textContent = [
-    t("readerSourcesFound", { count: formatNumber(groups.length) }),
-    selected.title,
-    selectedUnit?.label,
-  ].filter(Boolean).join(" · ");
+  refs.resultCount.replaceChildren(renderReaderModeControls(groups, selected, units, selectedUnit));
 
   const pane = el("div", "reader-mode-pane");
-  pane.append(renderReaderModeToolbar(groups, selected, units, selectedUnit));
   const scroller = el("div", "reader-mode-scroll");
   scroller.append(
     renderReaderModeSummary(selected, selectedUnit),
@@ -1879,7 +1858,18 @@ function renderReadingPane() {
   );
   pane.append(scroller);
   refs.wordList.replaceChildren(pane);
+  if (previousScrollTop !== null) {
+    const nextScroller = refs.wordList.querySelector(".reader-mode-scroll");
+    if (nextScroller) {
+      nextScroller.scrollTop = previousScrollTop;
+    }
+  }
+  app.reader.preserveScrollOnRender = false;
   updateReaderActiveTokens();
+}
+
+function currentReaderScrollTop() {
+  return refs.wordList.querySelector(".reader-mode-scroll")?.scrollTop || 0;
 }
 
 function syncSelectedWordToReaderSource(readingTarget, wordSet) {
@@ -1902,6 +1892,30 @@ function syncSelectedWordToReaderSource(readingTarget, wordSet) {
 function clearReaderSelection() {
   app.reader.selection = null;
   app.reader.explanation = null;
+}
+
+function renderReaderModeControls(groups, selected, units, selectedUnit) {
+  const details = el("details", "reader-mode-controls");
+  details.open = app.reader.controlsOpen;
+  details.addEventListener("toggle", () => {
+    app.reader.controlsOpen = details.open;
+  });
+  details.append(
+    el("summary", "reader-mode-controls-summary", readerModeSummaryLabel(groups, selected, selectedUnit)),
+    renderReaderModeToolbar(groups, selected, units, selectedUnit),
+  );
+  return details;
+}
+
+function readerModeSummaryLabel(groups, selected, selectedUnit) {
+  const parts = [
+    t("readerSourcesFound", { count: formatNumber(groups.length) }),
+    selected.title,
+  ];
+  if (selectedUnit?.label && selectedUnit.label !== selected.title) {
+    parts.push(selectedUnit.label);
+  }
+  return parts.filter(Boolean).join(" · ");
 }
 
 function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
@@ -1994,6 +2008,7 @@ function renderReaderWordListPicker() {
     button.addEventListener("click", () => {
       app.reader.wordList = value;
       localStorage.setItem(STORAGE_READER_WORD_LIST, value);
+      app.reader.preserveScrollOnRender = true;
       clearReaderSelection();
       render();
     });
@@ -2255,6 +2270,12 @@ function renderDetail() {
   refs.wordDetail.replaceChildren(...nodes);
 }
 
+function resetDetailScroll() {
+  if (refs.detailPane) {
+    refs.detailPane.scrollTop = 0;
+  }
+}
+
 function renderStudyDetail() {
   const words = studyQueue();
   if (words.length === 0) {
@@ -2513,6 +2534,7 @@ function renderStatusActions(word) {
 }
 
 function selectWord(word, button) {
+  const changedWord = app.selectedWord?.word !== word.word;
   app.selectedWord = word;
   app.study.showAnswer = false;
   refs.wordList.querySelectorAll(".word-row.active").forEach((row) => {
@@ -2520,6 +2542,9 @@ function selectWord(word, button) {
   });
   button.classList.add("active");
   renderDetail();
+  if (changedWord) {
+    resetDetailScroll();
+  }
   renderMaintenance();
 }
 
