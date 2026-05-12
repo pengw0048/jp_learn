@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 
 struct AnnotationRequest: Decodable {
+    let task: String?
     let word: String
     let reading: String
     let level: String
@@ -13,6 +14,7 @@ struct AnnotationRequest: Decodable {
     let context_after: [String]
     let show_context: ShowContext?
     let use_show_context: Bool?
+    let question: String?
 }
 
 struct ShowContext: Decodable {
@@ -36,8 +38,8 @@ guard model.isAvailable else {
 }
 
 let instructions = """
-You annotate Japanese media examples for Chinese-speaking JLPT learners.
-Return strict JSON only, with keys translation_zh, usage_note_zh, scene_description.
+You help Chinese-speaking Japanese learners understand Japanese media text.
+Return strict JSON only.
 Do not wrap the JSON in Markdown.
 Only use the provided source blocks. Do not invent setting, genre, speaker identity, or hidden episode facts.
 """
@@ -68,7 +70,7 @@ func runJsonlServer() async throws {
 }
 
 func annotate(_ request: AnnotationRequest) async throws -> String {
-    let prompt = buildPrompt(request)
+    let prompt = request.task == "question" ? buildQuestionPrompt(request) : buildPrompt(request)
     let session = LanguageModelSession(instructions: instructions)
     let response = try await session.respond(to: prompt)
     return response.content
@@ -110,6 +112,36 @@ Return JSON:
   "translation_zh": "natural Simplified Chinese translation of the full current source block only; preserve names and question tone; do not omit content; do not translate honorifics like さん as 小姐 or 先生 unless gender/title is explicit",
   "usage_note_zh": "one short Chinese note explaining the target word's meaning or grammar in this source block",
   "scene_description": ""
+}
+"""
+}
+
+func buildQuestionPrompt(_ request: AnnotationRequest) -> String {
+    return """
+Answer a Chinese-speaking Japanese learner's question about this exact Japanese text.
+
+Word: \(request.word)
+Reading: \(request.reading)
+JLPT level: \(request.level)
+Chinese meaning: \(request.meaning_zh)
+English meaning for disambiguation only: \(request.meaning)
+Matched text in sentence: \(request.matched_text)
+
+Previous source blocks:
+\(request.context_before.isEmpty ? "(none)" : request.context_before.joined(separator: "\n"))
+
+Current source block:
+\(request.sentence)
+
+Next source blocks:
+\(request.context_after.isEmpty ? "(none)" : request.context_after.joined(separator: "\n"))
+
+Learner question:
+\(request.question ?? "")
+
+Return JSON:
+{
+  "answer_zh": "natural Simplified Chinese answer, at most three sentences; only use the provided text and dictionary meaning; preserve Japanese expressions exactly when quoting them"
 }
 """
 }

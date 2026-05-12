@@ -13,7 +13,7 @@ const DAILY_STUDY_LIMIT = 30;
 const STUDY_REVIEW_DELAY_DAYS = 1;
 const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
 const MODE_VALUES = new Set(["browse", "study", "read"]);
-const READER_WORD_LIST_VALUES = new Set(["all", "study", "N5", "N4", "N3", "N2", "N1"]);
+const READER_WORD_LIST_VALUES = new Set(["all", "study", "piece", "N5", "N4", "N3", "N2", "N1"]);
 const SPLIT_DEFAULT_RATIOS = {
   browse: 0.28,
   study: 0.28,
@@ -222,6 +222,12 @@ const text = {
     readerExplainUnavailable: "先在维护里配置 LLM 后再使用",
     readerTranslation: "这句意思",
     readerUsage: "这里的用法",
+    readerQuestionPlaceholder: "问 AI：这里的语气、用法、翻译…",
+    readerQuestionSubmit: "问",
+    readerQuestionLoading: "AI 正在回答…",
+    readerQuestionFailed: "回答失败：{error}",
+    readerQuestionAnswer: "回答",
+    readerProgress: "读到 {percent}%",
     readerAddStudy: "加入学习",
     readerKnown: "已认识",
     readerIgnore: "忽略",
@@ -369,6 +375,12 @@ const text = {
     readerExplainUnavailable: "Configure an LLM in Maintenance first",
     readerTranslation: "Meaning here",
     readerUsage: "Usage here",
+    readerQuestionPlaceholder: "Ask AI about tone, usage, translation…",
+    readerQuestionSubmit: "Ask",
+    readerQuestionLoading: "AI is answering…",
+    readerQuestionFailed: "Answer failed: {error}",
+    readerQuestionAnswer: "Answer",
+    readerProgress: "{percent}% read",
     readerAddStudy: "Add to study",
     readerKnown: "Know it",
     readerIgnore: "Ignore",
@@ -425,6 +437,7 @@ const app = {
     wordList: readReaderWordList(),
     selection: null,
     explanation: null,
+    question: null,
     controlsOpen: false,
     markedOpen: false,
     preserveScrollOnRender: false,
@@ -1696,6 +1709,9 @@ function selectReaderWord(wordText, selection = null) {
   if (!selection || app.reader.explanation?.key !== selection.key) {
     app.reader.explanation = null;
   }
+  if (!selection || app.reader.question?.key !== selection.key) {
+    app.reader.question = null;
+  }
   app.study.showAnswer = false;
   renderDetail();
   if (changedWord) {
@@ -1850,7 +1866,7 @@ function renderReadingPane() {
   const positionKey = readerPositionKey(selected, selectedUnit);
   app.reader.positionKey = positionKey;
   scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
-  scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller.scrollTop), { passive: true });
+  scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller), { passive: true });
   scroller.append(
     renderReaderModeSummary(selected, selectedUnit),
     renderReaderMarkedWordsPanel(),
@@ -1883,16 +1899,18 @@ function readerPositionKey(source, unit) {
   ].join("\u0000");
 }
 
-function saveReaderPosition(key, scrollTop) {
-  if (!key || !Number.isFinite(scrollTop)) {
+function saveReaderPosition(key, scroller) {
+  if (!key || !scroller) {
     return;
   }
-  const nextTop = Math.max(0, Math.round(scrollTop));
+  const nextTop = Math.max(0, Math.round(scroller.scrollTop || 0));
+  const maxScroll = Math.max(0, (scroller.scrollHeight || 0) - (scroller.clientHeight || 0));
+  const progress = maxScroll > 0 ? Math.round((nextTop / maxScroll) * 100) : 0;
   const current = app.reader.positions[key];
-  if (current?.scrollTop === nextTop) {
+  if (current?.scrollTop === nextTop && current?.progress === progress) {
     return;
   }
-  app.reader.positions[key] = { scrollTop: nextTop, updatedAt: Date.now() };
+  app.reader.positions[key] = { scrollTop: nextTop, progress, updatedAt: Date.now() };
   if (app.reader.positionSaveTimer) {
     window.clearTimeout(app.reader.positionSaveTimer);
   }
@@ -1918,6 +1936,7 @@ function syncSelectedWordToReaderSource(readingTarget, wordSet) {
 function clearReaderSelection() {
   app.reader.selection = null;
   app.reader.explanation = null;
+  app.reader.question = null;
 }
 
 function clearReaderWordSelectionFromBlank(event) {
@@ -1996,6 +2015,7 @@ function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
       sourceLabel(group.type),
       group.meta,
       `${formatNumber(group.readerLineCount || group.exampleCount)} ${group.readerLineCount ? t("sourceInventoryLines") : t("sourceInventoryExamples")}`,
+      readerSourceProgressLabel(group),
     ].filter(Boolean).join(" · ");
     option.textContent = [group.title || t("sourceInventoryUnknown"), meta].filter(Boolean).join(" · ");
     select.append(option);
@@ -2012,6 +2032,7 @@ function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
 }
 
 function renderReaderUnitPicker(units, selectedUnit) {
+  const { source } = currentReaderSelectionSource();
   const picker = el("label", "reader-source-picker");
   picker.append(el("span", "reader-source-picker-label", t("readerItemChoice")));
   const select = el("select", "reader-source-select");
@@ -2020,7 +2041,8 @@ function renderReaderUnitPicker(units, selectedUnit) {
     select.append(el("option", "", t("sourceReaderEmpty")));
   }
   units.forEach((unit) => {
-    const option = el("option", "", readerUnitOptionLabel(unit));
+    const label = [readerUnitOptionLabel(unit), readerUnitProgressLabel(source, unit)].filter(Boolean).join(" · ");
+    const option = el("option", "", label);
     option.value = unit.key;
     option.selected = unit.key === selectedUnit?.key;
     select.append(option);
@@ -2230,6 +2252,29 @@ function readerUnitOptionLabel(unit) {
   return [unit.label, meta].filter(Boolean).join(" · ");
 }
 
+function readerUnitProgressLabel(source, unit) {
+  if (!source || !unit) {
+    return "";
+  }
+  const progress = app.reader.positions[readerPositionKey(source, unit)]?.progress;
+  if (!Number.isFinite(progress) || progress <= 0) {
+    return "";
+  }
+  return t("readerProgress", { percent: formatNumber(Math.min(100, Math.max(0, Math.round(progress)))) });
+}
+
+function readerSourceProgressLabel(source) {
+  const units = readerUnitsForSource(source);
+  const progressValues = units
+    .map((unit) => app.reader.positions[readerPositionKey(source, unit)]?.progress)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (progressValues.length === 0) {
+    return "";
+  }
+  const progress = Math.max(...progressValues);
+  return t("readerProgress", { percent: formatNumber(Math.min(100, Math.max(0, Math.round(progress)))) });
+}
+
 function compareReaderUnits(left, right) {
   const episodeDiff = compareNullableNumbers(left.episode, right.episode);
   if (episodeDiff !== 0) {
@@ -2423,10 +2468,15 @@ function renderReaderContextPanel(word) {
   top.append(actions);
   section.append(top);
   section.append(el("small", `reader-context-reference reference reference-${sourceClass}`, formatReference(example)));
+  section.append(renderReaderQuestionForm(word, selection));
 
   const explanation = renderReaderExplanation(selection);
   if (explanation) {
     section.append(explanation);
+  }
+  const answer = renderReaderQuestionAnswer(selection);
+  if (answer) {
+    section.append(answer);
   }
   return section;
 }
@@ -2595,6 +2645,53 @@ function renderReaderExplanation(selection) {
   return renderExplanationResult(explanation);
 }
 
+function renderReaderQuestionForm(word, selection) {
+  const form = el("form", "reader-question-form");
+  const input = el("input", "reader-question-input");
+  input.type = "text";
+  input.placeholder = t("readerQuestionPlaceholder");
+  input.disabled = !canUseReaderAi() || app.reader.question?.status === "loading";
+  const button = el("button", "reader-question-submit", t("readerQuestionSubmit"));
+  button.type = "submit";
+  button.disabled = input.disabled;
+  if (!canUseReaderAi()) {
+    input.title = t("readerExplainUnavailable");
+    button.title = t("readerExplainUnavailable");
+  }
+  form.append(input, button);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (!question) {
+      return;
+    }
+    startReaderQuestion(word, selection, question);
+  });
+  return form;
+}
+
+function renderReaderQuestionAnswer(selection) {
+  const question = app.reader.question;
+  if (!question || question.key !== selection.key) {
+    return null;
+  }
+  const block = el("div", `reader-question-answer ${question.status || ""}`.trim());
+  if (question.status === "loading") {
+    block.append(el("div", "annotation-line", t("readerQuestionLoading")));
+    return block;
+  }
+  if (question.status === "failed") {
+    block.append(el("div", "annotation-line", t("readerQuestionFailed", { error: question.error || "" })));
+    return block;
+  }
+  if (question.answer) {
+    block.append(
+      el("div", "annotation-line translation-line", `${t("readerQuestionAnswer")}: ${question.answer}`),
+    );
+  }
+  return block.childNodes.length ? block : null;
+}
+
 async function startReaderExplanation(word, selection) {
   if (!selection) {
     return;
@@ -2626,6 +2723,47 @@ async function startReaderExplanation(word, selection) {
     app.reader.explanation = {
       key: selection.key,
       status: "failed",
+      error: error.message || String(error),
+    };
+  }
+  renderDetail();
+}
+
+async function startReaderQuestion(word, selection, question) {
+  if (!selection) {
+    return;
+  }
+  app.reader.question = {
+    key: selection.key,
+    status: "loading",
+    prompt: question,
+  };
+  renderDetail();
+  try {
+    const response = await fetch("/api/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word: explanationWordPayload(word),
+        example: selection.example,
+        question,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    app.reader.question = {
+      key: selection.key,
+      status: "succeeded",
+      prompt: question,
+      answer: payload.answer || "",
+    };
+  } catch (error) {
+    app.reader.question = {
+      key: selection.key,
+      status: "failed",
+      prompt: question,
       error: error.message || String(error),
     };
   }
@@ -4369,8 +4507,9 @@ function readReaderPositions() {
       Object.entries(value)
         .map(([key, entry]) => {
           const scrollTop = Math.max(0, Math.round(Number(entry?.scrollTop) || 0));
+          const progress = Math.min(100, Math.max(0, Math.round(Number(entry?.progress) || 0)));
           const updatedAt = Math.max(0, Math.round(Number(entry?.updatedAt) || 0));
-          return [key, { scrollTop, updatedAt }];
+          return [key, { scrollTop, progress, updatedAt }];
         })
         .filter(([key]) => key),
     );

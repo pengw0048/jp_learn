@@ -182,6 +182,55 @@ def test_explain_reader_usage_calls_llm_directly(monkeypatch):
     assert result["explanation"]["usage_note_zh"] == "这里的「行く」表示移动到某处。"
 
 
+def test_explain_reader_usage_answers_reader_question(monkeypatch):
+    calls = {}
+
+    class FakeClient:
+        def answer_question(self, word, example, question):
+            calls["word"] = word
+            calls["example"] = example
+            calls["question"] = question
+            return "这里的「行く」表示移动到学校。"
+
+        def close(self):
+            calls["closed"] = True
+
+    def fake_client(**kwargs):
+        calls["client_kwargs"] = kwargs
+        return FakeClient()
+
+    monkeypatch.setattr("jpcorpus.viewer_jobs.resolve_llm_client", fake_client)
+
+    result = explain_reader_usage(
+        {
+            "provider": "apple",
+            "word": {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "meaning_zh": "去",
+                "meaning": "to go",
+            },
+            "example": {
+                "source_type": "text",
+                "source_title": "Book",
+                "matched_text": "行く",
+                "sentence": "学校へ行く。",
+                "context_before": ["朝だ。"],
+                "context_after": ["急いだ。"],
+            },
+            "question": "这里为什么用行く？",
+        }
+    )
+
+    assert calls["client_kwargs"]["provider"] == "apple"
+    assert calls["word"]["word"] == "行く"
+    assert calls["example"]["sentence"] == "学校へ行く。"
+    assert calls["question"] == "这里为什么用行く？"
+    assert calls["closed"] is True
+    assert result == {"answer": "这里的「行く」表示移动到学校。"}
+
+
 def test_viewer_config_status_reports_missing_keys(monkeypatch):
     for key in (
         "JPCORPUS_BANGUMI_CLIENT_ID",

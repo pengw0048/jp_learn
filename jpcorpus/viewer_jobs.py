@@ -358,6 +358,7 @@ def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
     example = raw.get("example")
     if not isinstance(word, dict) or not isinstance(example, dict):
         raise ValueError("Explanation requires word and example objects.")
+    question = text_limit(raw.get("question"), 500).strip()
 
     provider = str(raw.get("provider") or os.environ.get("JPCORPUS_LLM_PROVIDER") or "openai-compatible")
     if provider not in ALLOWED_PROVIDERS:
@@ -368,12 +369,19 @@ def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
         use_show_context=False,
     )
     try:
-        explanation = client.annotate_example(compact_reader_word(word), compact_reader_example(example))
+        compact_word = compact_reader_word(word)
+        compact_example = compact_reader_example(example)
+        if question:
+            answer_question = getattr(client, "answer_question", None)
+            if not callable(answer_question):
+                raise ValueError("Configured LLM does not support reader questions.")
+            return {"answer": answer_question(compact_word, compact_example, question)}
+        explanation = client.annotate_example(compact_word, compact_example)
+        return {"explanation": explanation}
     finally:
         close_client = getattr(client, "close", None)
         if callable(close_client):
             close_client()
-    return {"explanation": explanation}
 
 
 def compact_reader_word(word: dict[str, Any]) -> dict[str, Any]:

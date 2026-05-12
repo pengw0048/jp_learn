@@ -81,6 +81,37 @@ class OpenAICompatibleClient:
         content = response.json()["choices"][0]["message"]["content"]
         return parse_annotation_response(content)
 
+    def answer_question(self, word: dict[str, Any], example: dict[str, Any], question: str) -> str:
+        payload = {
+            "model": self.config.model,
+            "temperature": 0.2,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "你帮助中文母语的日语学习者理解正在阅读的日语文本。"
+                        "只返回严格 JSON，字段 answer_zh 使用自然简体中文。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": build_question_prompt(word, example, question),
+                },
+            ],
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        with httpx.Client(
+            timeout=self.config.timeout,
+            follow_redirects=True,
+            transport=self.config.transport,
+        ) as client:
+            response = client.post(self.config.chat_completions_url, headers=headers, json=payload)
+            response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        return parse_question_response(content)
+
 
 class AnthropicClient:
     def __init__(self, config: LLMConfig) -> None:
@@ -132,6 +163,48 @@ class AnthropicClient:
         ]
         return parse_annotation_response("\n".join(text_parts))
 
+    def answer_question(self, word: dict[str, Any], example: dict[str, Any], question: str) -> str:
+        if not self.config.api_key:
+            raise ValueError("Anthropic API key is required.")
+        payload = {
+            "model": self.config.model,
+            "max_tokens": 512,
+            "temperature": 0.2,
+            "system": (
+                "You help Chinese-speaking Japanese learners understand the exact Japanese text they are reading. "
+                "Return strict JSON only."
+            ),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": build_question_prompt(word, example, question),
+                }
+            ],
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.config.api_key,
+            "anthropic-version": ANTHROPIC_VERSION,
+        }
+        with httpx.Client(
+            timeout=self.config.timeout,
+            follow_redirects=True,
+            transport=self.config.transport,
+        ) as client:
+            response = client.post(self.config.anthropic_messages_url, headers=headers, json=payload)
+            if response.is_error:
+                detail = _truncate_text(response.text, limit=500)
+                raise RuntimeError(
+                    f"Anthropic request failed with HTTP {response.status_code}: {detail}"
+                )
+        content = response.json().get("content") or []
+        text_parts = [
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        return parse_question_response("\n".join(text_parts))
+
 
 class AppleFoundationModelsClient:
     def __init__(self, *, timeout: float = 120.0, use_show_context: bool = False) -> None:
@@ -155,6 +228,7 @@ class AppleFoundationModelsClient:
 
     def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         payload = {
+            "task": "annotate",
             "word": word.get("word") or "",
             "reading": word.get("reading") or "",
             "level": word.get("level") or "",
@@ -170,7 +244,26 @@ class AppleFoundationModelsClient:
         with self._lock:
             return self._annotate_with_worker(payload)
 
-    def _annotate_with_worker(self, payload: dict[str, Any]) -> dict[str, str]:
+    def answer_question(self, word: dict[str, Any], example: dict[str, Any], question: str) -> str:
+        payload = {
+            "task": "question",
+            "word": word.get("word") or "",
+            "reading": word.get("reading") or "",
+            "level": word.get("level") or "",
+            "meaning_zh": word.get("meaning_zh") or "",
+            "meaning": word.get("meaning") or "",
+            "matched_text": example.get("matched_text") or "",
+            "sentence": example.get("sentence") or "",
+            "context_before": example.get("context_before") or [],
+            "context_after": example.get("context_after") or [],
+            "show_context": example.get("show_context") or {},
+            "use_show_context": self.use_show_context,
+            "question": question,
+        }
+        with self._lock:
+            return parse_question_response(self._annotate_with_worker(payload, parse=False))
+
+    def _annotate_with_worker(self, payload: dict[str, Any], *, parse: bool = True) -> dict[str, str] | str:
         process = self._worker_process()
         if process.stdin is None or process.stdout is None:
             raise RuntimeError("Apple Foundation Models worker pipes are not available.")
@@ -187,7 +280,8 @@ class AppleFoundationModelsClient:
         response = json.loads(line)
         if not response.get("ok"):
             raise RuntimeError(str(response.get("error") or "Apple Foundation Models request failed."))
-        return parse_annotation_response(str(response.get("content") or ""))
+        content = str(response.get("content") or "")
+        return parse_annotation_response(content) if parse else content
 
     def _worker_process(self) -> subprocess.Popen[str]:
         if self._process is not None and self._process.poll() is None:
@@ -264,6 +358,28 @@ def build_annotation_prompt(
     )
 
 
+def build_question_prompt(word: dict[str, Any], example: dict[str, Any], question: str) -> str:
+    context_before = "\n".join(example.get("context_before") or [])
+    context_after = "\n".join(example.get("context_after") or [])
+    return (
+        "请回答一个中文母语日语学习者关于当前日语文本的问题。\n\n"
+        f"目标词: {word.get('word')}\n"
+        f"读音: {word.get('reading')}\n"
+        f"JLPT 等级: {word.get('level')}\n"
+        f"中文释义: {word.get('meaning_zh') or ''}\n"
+        f"英文释义，仅用于消歧，禁止照抄到输出中: {word.get('meaning') or ''}\n"
+        f"当前句中匹配到的词形: {example.get('matched_text') or ''}\n\n"
+        f"前文 source blocks，只能辅助理解:\n{context_before or '(none)'}\n\n"
+        f"当前 source block:\n{example.get('sentence') or ''}\n\n"
+        f"后文 source blocks，只能辅助理解:\n{context_after or '(none)'}\n\n"
+        f"学习者问题: {question}\n\n"
+        "只返回一个 JSON object，必须且只能包含字符串字段 answer_zh。"
+        "用自然简体中文回答，最多三句话。"
+        "只基于给出的文本和词典释义，不要编造作品设定、说话人身份或隐藏剧情。"
+        "引用日语表达时必须原样复制日语。不要输出英文解释，除非原文或问题里本来就有英语。"
+    )
+
+
 def parse_annotation_response(content: str) -> dict[str, str]:
     content = content.strip()
     if content.startswith("```"):
@@ -283,6 +399,20 @@ def parse_annotation_response(content: str) -> dict[str, str]:
     if missing:
         raise ValueError(f"LLM response is missing required fields: {', '.join(missing)}")
     return annotations
+
+
+def parse_question_response(content: str) -> str:
+    content = content.strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*", "", content)
+        content = re.sub(r"\s*```$", "", content)
+    payload = json.loads(content)
+    if not isinstance(payload, dict):
+        raise ValueError("LLM response must be a JSON object.")
+    answer = _clean_annotation_value(payload.get("answer_zh") or payload.get("answer"))
+    if not answer:
+        raise ValueError("LLM response is missing required field: answer_zh")
+    return answer
 
 
 def parse_loose_annotation_response(content: str) -> dict[str, str]:
