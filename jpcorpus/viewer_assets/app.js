@@ -1831,6 +1831,7 @@ function renderReadingPane() {
   scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller.scrollTop), { passive: true });
   scroller.append(
     renderReaderModeSummary(selected, selectedUnit),
+    renderReaderMarkedWordsPanel(),
     renderSourceReader(selected, {
       full: true,
       wordSet: readerWords,
@@ -2307,18 +2308,9 @@ function renderDetail() {
   }
   const word = app.selectedWord;
   if (!word) {
-    if (app.mode === "read") {
-      refs.emptyState.hidden = true;
-      refs.wordDetail.hidden = false;
-      refs.wordDetail.replaceChildren(
-        emptyMessage(t("readerNoSelection")),
-        renderReaderMarkedWordsPanel(),
-      );
-      return;
-    }
     refs.wordDetail.hidden = true;
     refs.emptyState.hidden = false;
-    refs.emptyState.querySelector("h2").textContent = t("noWords");
+    refs.emptyState.querySelector("h2").textContent = t(app.mode === "read" ? "readerNoSelection" : "noWords");
     refs.emptyState.querySelector("p").textContent = "";
     return;
   }
@@ -2328,9 +2320,6 @@ function renderDetail() {
   const readerContext = renderReaderContextPanel(word);
   if (readerContext) {
     nodes.push(readerContext);
-  }
-  if (app.mode === "read") {
-    nodes.push(renderReaderMarkedWordsPanel());
   }
   nodes.push(renderLexicalNotes(word));
   nodes.push(renderExamples(word));
