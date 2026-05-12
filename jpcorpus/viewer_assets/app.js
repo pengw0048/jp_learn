@@ -2153,22 +2153,32 @@ function subtitleReaderUnits(documents) {
       });
     }
     const unit = units.get(key);
-    const fileLabel = cleanSourceFileLabel(document.source_file || "");
+    const fileLabel = cleanSourceFileLabel(document.source_file || document.source_title || "");
     if (fileLabel && episode === null) {
       unit.metaParts.add(fileLabel);
     }
     unit.documents.push(document);
   });
   return [...units.values()]
-    .map((unit) => createReaderUnit({
-      key: unit.key,
-      episode: unit.episode,
-      label: unit.label,
-      meta: unit.documents.length > 1
-        ? `${formatNumber(unit.documents.length)} ${t("sourceInventoryFiles")}`
-        : [...unit.metaParts][0] || "",
-      documents: unit.documents.sort(compareReaderDocuments),
-    }))
+    .flatMap((unit) => {
+      const documentsForUnit = unit.documents.sort(compareReaderDocuments);
+      if (unit.episode !== null && documentsForUnit.length > 1) {
+        return documentsForUnit.map((document) => createReaderUnit({
+          key: readerDocumentKey(document),
+          episode: unit.episode,
+          label: unit.label,
+          meta: cleanSourceFileLabel(document.source_file || document.source_title || ""),
+          documents: [document],
+        }));
+      }
+      return [createReaderUnit({
+        key: unit.key,
+        episode: unit.episode,
+        label: unit.label,
+        meta: [...unit.metaParts][0] || "",
+        documents: documentsForUnit,
+      })];
+    })
     .sort(compareReaderUnits);
 }
 
@@ -2234,7 +2244,11 @@ function compareReaderUnits(left, right) {
   if (episodeDiff !== 0) {
     return episodeDiff;
   }
-  return String(left.label || "").localeCompare(String(right.label || ""), app.lang === "zh" ? "zh-CN" : "ja-JP");
+  const labelDiff = String(left.label || "").localeCompare(String(right.label || ""), app.lang === "zh" ? "zh-CN" : "ja-JP");
+  if (labelDiff !== 0) {
+    return labelDiff;
+  }
+  return String(left.meta || "").localeCompare(String(right.meta || ""), app.lang === "zh" ? "zh-CN" : "ja-JP");
 }
 
 function renderReaderModeSummary(source, unit) {
