@@ -225,8 +225,8 @@ const text = {
     readerKnown: "已认识",
     readerIgnore: "忽略",
     readerClearMark: "取消标记",
-    readerMarkedTitle: "本篇已标记",
-    readerMarkedEmpty: "这篇还没有标记词",
+    readerMarkedTitle: "本篇学习中",
+    readerMarkedEmpty: "这篇还没有学习中的词",
     readerMarkedCount: "{count} 个词",
     exampleAddStudy: "+ 学习",
     exampleInStudy: "复习中",
@@ -371,8 +371,8 @@ const text = {
     readerKnown: "Know it",
     readerIgnore: "Ignore",
     readerClearMark: "Clear",
-    readerMarkedTitle: "Marked in this piece",
-    readerMarkedEmpty: "No marked words in this piece yet",
+    readerMarkedTitle: "Studying in this piece",
+    readerMarkedEmpty: "No study words in this piece yet",
     readerMarkedCount: "{count} words",
     exampleAddStudy: "+ Study",
     exampleInStudy: "Reviewing",
@@ -2452,7 +2452,7 @@ function readerMarkedWordsForCurrentUnit() {
           return;
         }
         const status = statusFor(word);
-        if (status === "none") {
+        if (!isActiveStudyStatus(status)) {
           return;
         }
         const current = entries.get(word.word) || { word, status, count: 0 };
@@ -2486,9 +2486,11 @@ function readerMarkedStatusRank(status) {
   return {
     learning: 0,
     uncertain: 1,
-    known: 2,
-    ignored: 3,
   }[status] ?? 4;
+}
+
+function isActiveStudyStatus(status) {
+  return status === "learning" || status === "uncertain";
 }
 
 function canUseReaderAi() {
@@ -4066,7 +4068,7 @@ function formatTimestamp(milliseconds) {
 
 function statusFor(word) {
   const stored = app.statuses[word.word] || "none";
-  if (stored === "ignored") {
+  if (stored === "ignored" || stored === "known" || isActiveStudyStatus(stored)) {
     return stored;
   }
   const count = studyCountFor(word);
@@ -4086,8 +4088,14 @@ function setStatus(word, status) {
     clearStudySchedule(word);
   } else {
     app.statuses[word.word] = status;
+    if (isActiveStudyStatus(status) && studyCountFor(word) >= STUDY_TARGET_COUNT) {
+      setStudyCount(word, 0);
+    }
     if (status === "known") {
       setStudyCount(word, STUDY_TARGET_COUNT);
+    }
+    if (status === "ignored") {
+      setStudyCount(word, 0);
     }
     if (status === "known" || status === "ignored") {
       clearStudySchedule(word);
