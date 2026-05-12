@@ -7,6 +7,7 @@ const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
 const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
 const STORAGE_SPLIT_RATIOS = "jpcorpus.viewer.splitRatios.v1";
 const STORAGE_READER_WORD_LIST = "jpcorpus.viewer.readerWordList.v1";
+const STORAGE_READER_POSITIONS = "jpcorpus.viewer.readerPositions.v1";
 const WORD_LIST_PAGE_SIZE = 600;
 const DAILY_STUDY_LIMIT = 30;
 const STUDY_REVIEW_DELAY_DAYS = 1;
@@ -198,8 +199,6 @@ const text = {
     readerCurrentHint: "点高亮词查看解释",
     readerNoSelection: "点正文里的高亮词查看解释",
     readerContextTitle: "当前阅读",
-    readerContextAddStudy: "加入学习",
-    readerContextCheck: "今天 +1",
     readerExplain: "解释这里",
     readerExplainLoading: "正在解释…",
     readerExplainFailed: "解释失败：{error}",
@@ -357,8 +356,6 @@ const text = {
     readerCurrentHint: "Click highlighted words to inspect them",
     readerNoSelection: "Click a highlighted word in the text to inspect it",
     readerContextTitle: "Current passage",
-    readerContextAddStudy: "Add to study",
-    readerContextCheck: "Today +1",
     readerExplain: "Explain here",
     readerExplainLoading: "Explaining…",
     readerExplainFailed: "Explanation failed: {error}",
@@ -432,6 +429,9 @@ const app = {
     explanation: null,
     controlsOpen: false,
     preserveScrollOnRender: false,
+    positions: readReaderPositions(),
+    positionKey: null,
+    positionSaveTimer: null,
   },
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
@@ -1853,7 +1853,10 @@ function renderReadingPane() {
 
   const pane = el("div", "reader-mode-pane");
   const scroller = el("div", "reader-mode-scroll");
+  const positionKey = readerPositionKey(selected, selectedUnit);
+  app.reader.positionKey = positionKey;
   scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
+  scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller.scrollTop), { passive: true });
   scroller.append(
     renderReaderModeSummary(selected, selectedUnit),
     renderSourceReader(selected, {
@@ -1864,11 +1867,10 @@ function renderReadingPane() {
   );
   pane.append(scroller);
   refs.wordList.replaceChildren(pane);
-  if (previousScrollTop !== null) {
-    const nextScroller = refs.wordList.querySelector(".reader-mode-scroll");
-    if (nextScroller) {
-      nextScroller.scrollTop = previousScrollTop;
-    }
+  const restoredScrollTop = previousScrollTop ?? (app.reader.positions[positionKey]?.scrollTop || 0);
+  const nextScroller = refs.wordList.querySelector(".reader-mode-scroll");
+  if (nextScroller && restoredScrollTop > 0) {
+    nextScroller.scrollTop = restoredScrollTop;
   }
   app.reader.preserveScrollOnRender = false;
   updateReaderActiveTokens();
@@ -1876,6 +1878,33 @@ function renderReadingPane() {
 
 function currentReaderScrollTop() {
   return refs.wordList.querySelector(".reader-mode-scroll")?.scrollTop || 0;
+}
+
+function readerPositionKey(source, unit) {
+  return [
+    source?.type || "",
+    source?.key || "",
+    unit?.key || "",
+  ].join("\u0000");
+}
+
+function saveReaderPosition(key, scrollTop) {
+  if (!key || !Number.isFinite(scrollTop)) {
+    return;
+  }
+  const nextTop = Math.max(0, Math.round(scrollTop));
+  const current = app.reader.positions[key];
+  if (current?.scrollTop === nextTop) {
+    return;
+  }
+  app.reader.positions[key] = { scrollTop: nextTop, updatedAt: Date.now() };
+  if (app.reader.positionSaveTimer) {
+    window.clearTimeout(app.reader.positionSaveTimer);
+  }
+  app.reader.positionSaveTimer = window.setTimeout(() => {
+    app.reader.positionSaveTimer = null;
+    persistReaderPositions();
+  }, 150);
 }
 
 function syncSelectedWordToReaderSource(readingTarget, wordSet) {
@@ -2351,22 +2380,11 @@ function renderReaderContextPanel(word) {
   const top = el("div", "reader-context-top");
   top.append(el("h3", "section-title", t("readerContextTitle")));
   const actions = el("div", "reader-context-actions");
-  const addStudy = el("button", "", t("readerContextAddStudy"));
-  addStudy.type = "button";
-  addStudy.addEventListener("click", () => {
-    setStatus(word, "learning");
-    scheduleStudyReview(word);
-    renderDetail();
-    updateReaderActiveTokens();
-  });
-  const check = el("button", "", t("readerContextCheck"));
-  check.type = "button";
-  check.addEventListener("click", () => addReaderStudyCheck(word));
   const explain = el("button", "reader-explain-button", t("readerExplain"));
   explain.type = "button";
   explain.disabled = !app.maintenance.enabled || app.reader.explanation?.status === "loading";
   explain.addEventListener("click", () => startReaderExplanation(word, selection));
-  actions.append(addStudy, check, explain);
+  actions.append(explain);
   top.append(actions);
   section.append(top);
 
@@ -2408,17 +2426,6 @@ function renderReaderExplanation(selection) {
     block.append(el("div", "annotation-line", `${t("readerUsage")}: ${result.usage_note_zh}`));
   }
   return block.childNodes.length ? block : null;
-}
-
-function addReaderStudyCheck(word) {
-  const nextCount = Math.min(studyCountFor(word) + 1, STUDY_TARGET_COUNT);
-  setStudyCount(word, nextCount);
-  setStatus(word, nextCount >= STUDY_TARGET_COUNT ? "known" : "learning");
-  if (nextCount < STUDY_TARGET_COUNT) {
-    scheduleStudyReview(word);
-  }
-  renderDetail();
-  updateReaderActiveTokens();
 }
 
 async function startReaderExplanation(word, selection) {
@@ -4236,6 +4243,34 @@ function readMode() {
 function readReaderWordList() {
   const value = localStorage.getItem(STORAGE_READER_WORD_LIST) || "all";
   return READER_WORD_LIST_VALUES.has(value) ? value : "all";
+}
+
+function readReaderPositions() {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_READER_POSITIONS) || "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, entry]) => {
+          const scrollTop = Math.max(0, Math.round(Number(entry?.scrollTop) || 0));
+          const updatedAt = Math.max(0, Math.round(Number(entry?.updatedAt) || 0));
+          return [key, { scrollTop, updatedAt }];
+        })
+        .filter(([key]) => key),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function persistReaderPositions() {
+  const entries = Object.entries(app.reader.positions)
+    .sort((left, right) => (right[1].updatedAt || 0) - (left[1].updatedAt || 0))
+    .slice(0, 200);
+  app.reader.positions = Object.fromEntries(entries);
+  localStorage.setItem(STORAGE_READER_POSITIONS, JSON.stringify(app.reader.positions));
 }
 
 function statusDot(status) {
