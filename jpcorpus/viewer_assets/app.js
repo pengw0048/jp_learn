@@ -82,6 +82,32 @@ const ROMAJI_KANA = {
   ぁ: "a", ぃ: "i", ぅ: "u", ぇ: "e", ぉ: "o",
   ゃ: "ya", ゅ: "yu", ょ: "yo",
 };
+const LEXICAL_POS_LABELS_ZH = {
+  "noun or participle which takes the aux. verb suru": "する名词",
+  "nouns which may take the genitive case particle 'no'": "の名词",
+  "adverb taking the 'to' particle": "と副词",
+  "expressions (phrases, clauses, etc.)": "表达",
+  "noun or verb acting prenominally": "连体用法",
+  "suru verb - special class": "サ变",
+  "suru verb - included": "サ变",
+  "numeric": "数词",
+  "noun, used as a prefix": "名词・接头",
+  "Ichidan verb - zuru verb (alternative form of -jiru verbs)": "一段・ずる",
+  "'taru' adjective": "たる形容词",
+  "pre-noun adjectival (rentaishi)": "连体词",
+  "Godan verb with 'ru' ending (irregular verb)": "五段・る特殊",
+  "Godan verb - -aru special class": "五段・ある",
+  "Godan verb with 'u' ending (special class)": "五段・う特殊",
+  "su verb - precursor to the modern suru": "す动词",
+  "'ku' adjective (archaic)": "く形容词・古语",
+  "auxiliary": "助动词",
+  "'shiku' adjective (archaic)": "しく形容词・古语",
+  "Nidan verb (lower class) with 'u' ending and 'we' conjugation (archaic)": "古典二段动词",
+  "Nidan verb (upper class) with 'ru' ending (archaic)": "古典二段动词",
+  "Nidan verb (lower class) with 'ru' ending (archaic)": "古典二段动词",
+  "Yodan verb with 'ru' ending (archaic)": "古典四段动词",
+  unclassified: "未分类",
+};
 
 const text = {
   zh: {
@@ -3549,9 +3575,13 @@ function lexicalPosNodes(values) {
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const visibleLabels = app.lang === "zh"
-    ? labels.filter((label) => label !== "名词")
+    ? labels.map(labelLexicalPosZh).filter((label) => label !== "名词")
     : labels;
   return lexicalTextNodes(visibleLabels);
+}
+
+function labelLexicalPosZh(value) {
+  return LEXICAL_POS_LABELS_ZH[value] || value;
 }
 
 function lexicalSenseNodes(values) {

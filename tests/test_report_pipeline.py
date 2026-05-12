@@ -14,7 +14,7 @@ from jpcorpus.analysis import (
 from jpcorpus.anki_export import export_anki_deck
 from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
-from jpcorpus.lexical_notes import LexicalResourceIndex
+from jpcorpus.lexical_notes import LexicalResourceIndex, label_pos
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
 from jpcorpus.report import build_markdown_report
 from jpcorpus.report import format_reference, format_timestamp
@@ -286,6 +286,13 @@ def test_jmdict_notes_prefer_common_entry_over_exact_kana_suffix(tmp_path: Path)
     assert notes is not None
     assert notes["senses"][0]["glosses"] == ["time"]
     assert index.canonical_surface("とき", "とき") == "時"
+
+
+def test_jmdict_pos_labels_cover_verbose_english_tags():
+    assert label_pos("noun or participle which takes the aux. verb suru") == "する名词"
+    assert label_pos("nouns which may take the genitive case particle 'no'") == "の名词"
+    assert label_pos("adverb taking the 'to' particle") == "と副词"
+    assert label_pos("suru verb - special class") == "サ变"
 
 
 def test_example_context_and_reference_format(tmp_path: Path):
