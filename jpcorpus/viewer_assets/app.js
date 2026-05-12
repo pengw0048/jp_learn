@@ -2843,7 +2843,7 @@ function renderExampleCard(word, example, options = {}) {
   appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
   lines.append(current);
   appendContextBlock(lines, afterLines, "after");
-  lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
+  lines.append(renderExampleFooter(word, example, sourceClass, allowAiExplain));
   item.append(lines);
   const annotationBlock = renderExampleAnnotationBlock(word, example, {
     allowAiExplain,
@@ -2856,6 +2856,15 @@ function renderExampleCard(word, example, options = {}) {
     item,
     weight: exampleCardWeight(example, beforeLines, afterLines),
   };
+}
+
+function renderExampleFooter(word, example, sourceClass, allowAiExplain) {
+  const footer = el("div", "example-footer");
+  footer.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
+  if (allowAiExplain) {
+    footer.append(renderExampleExplainButton(word, example, exampleExplanationKey(word, example)));
+  }
+  return footer;
 }
 
 function resolvedExampleColumnCount(value) {
@@ -2896,7 +2905,7 @@ function renderExampleAnnotationBlock(word, example, options = {}) {
   const key = exampleExplanationKey(word, example);
   const explanation = app.exampleExplanations[key];
   const explanationBlock = allowAiExplain ? renderExplanationResult(explanation, "example-explanation") : null;
-  if (!hasTranslation && !hasUsageNote && !allowAiExplain && !explanationBlock) {
+  if (!hasTranslation && !hasUsageNote && !explanationBlock) {
     return null;
   }
   const block = el("div", "annotation-block");
@@ -2913,14 +2922,10 @@ function renderExampleAnnotationBlock(word, example, options = {}) {
   if (explanationBlock) {
     block.append(explanationBlock);
   }
-  if (allowAiExplain) {
-    block.append(renderExampleExplainActions(word, example, key));
-  }
   return block;
 }
 
-function renderExampleExplainActions(word, example, key) {
-  const actions = el("div", "example-explain-actions");
+function renderExampleExplainButton(word, example, key) {
   const button = el("button", "example-explain-button", "✨");
   const canExplain = canUseReaderAi();
   button.type = "button";
@@ -2928,8 +2933,7 @@ function renderExampleExplainActions(word, example, key) {
   button.setAttribute("aria-label", button.title);
   button.disabled = !canExplain || app.exampleExplanations[key]?.status === "loading";
   button.addEventListener("click", () => startExampleExplanation(word, example, key));
-  actions.append(button);
-  return actions;
+  return button;
 }
 
 async function startExampleExplanation(word, example, key) {

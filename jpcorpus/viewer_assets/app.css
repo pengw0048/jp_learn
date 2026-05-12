@@ -1045,6 +1045,17 @@ mark {
   color: var(--text-source);
 }
 
+.example-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.example-footer .reference {
+  min-width: 0;
+}
+
 .annotation-block {
   margin-top: 8px;
   display: grid;
@@ -1076,22 +1087,18 @@ mark {
   background: #fff8ed;
 }
 
-.example-explain-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
 .example-explain-button {
+  flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfc;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 760;
 }
 
