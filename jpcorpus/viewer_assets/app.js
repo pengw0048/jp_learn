@@ -211,6 +211,7 @@ const text = {
     readerWordListChoice: "高亮词表",
     readerWordListAll: "全部词",
     readerWordListStudy: "今日学习",
+    readerWordListPiece: "本篇学习中",
     readerCurrentHint: "点高亮词查看解释",
     readerNoSelection: "点正文里的高亮词查看解释",
     readerContextTitle: "当前语境",
@@ -357,6 +358,7 @@ const text = {
     readerWordListChoice: "Highlighted words",
     readerWordListAll: "All words",
     readerWordListStudy: "Today",
+    readerWordListPiece: "This piece",
     readerCurrentHint: "Click highlighted words to inspect them",
     readerNoSelection: "Click a highlighted word in the text to inspect it",
     readerContextTitle: "Current context",
@@ -424,6 +426,7 @@ const app = {
     selection: null,
     explanation: null,
     controlsOpen: false,
+    markedOpen: false,
     preserveScrollOnRender: false,
     positions: readReaderPositions(),
     positionKey: null,
@@ -1507,6 +1510,7 @@ function readerDocumentLabel(document) {
 
 function renderReaderLine(line, options = {}) {
   const row = el("div", "reader-line");
+  row.dataset.readerLineKey = readerLineDomKey(options.document || {}, line, options.lineIndex);
   const time = Number.isInteger(line.start_ms) ? formatTimestamp(line.start_ms) : "";
   row.append(el("span", "reader-line-time", time));
   const textLine = el("div", "reader-line-text");
@@ -1546,6 +1550,24 @@ function appendReaderHighlighted(target, text, matches, options = {}) {
   if (target.childNodes.length === 0) {
     target.textContent = text;
   }
+}
+
+function readerLineDomKey(document, line, lineIndex) {
+  return `line-${stableHash([
+    readerDocumentKey(document || {}),
+    Number.isInteger(lineIndex) ? lineIndex : "",
+    Number.isInteger(line.start_ms) ? line.start_ms : "",
+    line.text || "",
+  ].join("\n"))}`;
+}
+
+function stableHash(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function compareReaderDocuments(left, right) {
@@ -2019,6 +2041,7 @@ function renderReaderWordListPicker() {
   [
     ["all", t("readerWordListAll")],
     ["study", t("readerWordListStudy")],
+    ["piece", t("readerWordListPiece")],
     ["N5", "N5"],
     ["N4", "N4"],
     ["N3", "N3"],
@@ -2047,6 +2070,9 @@ function readerWordSet() {
   }
   if (app.reader.wordList === "study") {
     return new Set(readerStudyWords().map((word) => word.word));
+  }
+  if (app.reader.wordList === "piece") {
+    return new Set(readerMarkedWordsForCurrentUnit().map((entry) => entry.word.word));
   }
   return new Set(
     app.words
@@ -2407,17 +2433,23 @@ function renderReaderContextPanel(word) {
 
 function renderReaderMarkedWordsPanel() {
   const entries = readerMarkedWordsForCurrentUnit();
-  const section = el("section", "reader-marked-card");
-  const top = el("div", "reader-marked-top");
+  const section = el("details", "reader-marked-card");
+  section.open = app.reader.markedOpen;
+  section.addEventListener("toggle", () => {
+    app.reader.markedOpen = section.open;
+  });
+  const top = el("summary", "reader-marked-top");
   top.append(el("h3", "section-title", t("readerMarkedTitle")));
   top.append(el("span", "reader-marked-count", t("readerMarkedCount", { count: formatNumber(entries.length) })));
   section.append(top);
+  const body = el("div", "reader-marked-body");
   if (entries.length === 0) {
-    section.append(emptyMessage(t("readerMarkedEmpty")));
+    body.append(emptyMessage(t("readerMarkedEmpty")));
+    section.append(body);
     return section;
   }
   const list = el("div", "reader-marked-list");
-  entries.forEach(({ word, status, count }) => {
+  entries.forEach(({ word, status, count, selection, lineKey }) => {
     const button = el("button", `reader-marked-chip ${status}`.trim());
     button.type = "button";
     button.title = [
@@ -2430,11 +2462,13 @@ function renderReaderMarkedWordsPanel() {
       el("span", "reader-marked-state", stateLabels[status]?.[app.lang] || ""),
     );
     button.addEventListener("click", () => {
-      selectReaderWord(word.word);
+      selectReaderWord(word.word, selection);
+      scrollReaderLineIntoView(lineKey);
     });
     list.append(button);
   });
-  section.append(list);
+  body.append(list);
+  section.append(body);
   return section;
 }
 
@@ -2445,7 +2479,7 @@ function readerMarkedWordsForCurrentUnit() {
   }
   const entries = new Map();
   unit.documents.forEach((document) => {
-    asArray(document.lines).forEach((line) => {
+    asArray(document.lines).forEach((line, lineIndex) => {
       asArray(line.matches).forEach((match) => {
         const word = findWord(match.word);
         if (!word) {
@@ -2455,7 +2489,13 @@ function readerMarkedWordsForCurrentUnit() {
         if (!isActiveStudyStatus(status)) {
           return;
         }
-        const current = entries.get(word.word) || { word, status, count: 0 };
+        const current = entries.get(word.word) || {
+          word,
+          status,
+          count: 0,
+          selection: readerSelectionForLine(line, match, { document, lineIndex }),
+          lineKey: readerLineDomKey(document, line, lineIndex),
+        };
         current.status = status;
         current.count += 1;
         entries.set(word.word, current);
@@ -2475,6 +2515,28 @@ function currentReaderSelectionSource() {
   const units = readerUnitsForSource(source);
   const unit = units.find((item) => item.key === app.reader.documentKey) || units[0] || null;
   return { source, unit };
+}
+
+function scrollReaderLineIntoView(lineKey) {
+  if (!lineKey) {
+    return;
+  }
+  const line = refs.wordList.querySelector(`.reader-line[data-reader-line-key="${lineKey}"]`);
+  if (!line) {
+    return;
+  }
+  const documentDetails = line.closest(".reader-document");
+  if (documentDetails) {
+    documentDetails.open = true;
+  }
+  refs.wordList.querySelectorAll(".reader-line-target").forEach((node) => {
+    node.classList.remove("reader-line-target");
+  });
+  line.classList.add("reader-line-target");
+  line.scrollIntoView({ block: "center", behavior: "smooth" });
+  window.setTimeout(() => {
+    line.classList.remove("reader-line-target");
+  }, 1600);
 }
 
 function compareReaderMarkedWords(left, right) {
