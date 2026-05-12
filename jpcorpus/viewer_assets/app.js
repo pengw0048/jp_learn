@@ -225,6 +225,11 @@ const text = {
     readerKnown: "已认识",
     readerIgnore: "忽略",
     readerClearMark: "取消标记",
+    readerMarkedTitle: "本篇已标记",
+    readerMarkedEmpty: "这篇还没有标记词",
+    readerMarkedCount: "{count} 个词",
+    exampleAddStudy: "+ 学习",
+    exampleInStudy: "复习中",
     maintenanceProvider: "Provider",
     maintenanceReloaded: "，页面已刷新",
     taskSyncMedia: "刷新",
@@ -366,6 +371,11 @@ const text = {
     readerKnown: "Know it",
     readerIgnore: "Ignore",
     readerClearMark: "Clear",
+    readerMarkedTitle: "Marked in this piece",
+    readerMarkedEmpty: "No marked words in this piece yet",
+    readerMarkedCount: "{count} words",
+    exampleAddStudy: "+ Study",
+    exampleInStudy: "Reviewing",
     maintenanceProvider: "Provider",
     maintenanceReloaded: ", page refreshed",
     taskSyncMedia: "Refresh",
@@ -2297,9 +2307,18 @@ function renderDetail() {
   }
   const word = app.selectedWord;
   if (!word) {
+    if (app.mode === "read") {
+      refs.emptyState.hidden = true;
+      refs.wordDetail.hidden = false;
+      refs.wordDetail.replaceChildren(
+        emptyMessage(t("readerNoSelection")),
+        renderReaderMarkedWordsPanel(),
+      );
+      return;
+    }
     refs.wordDetail.hidden = true;
     refs.emptyState.hidden = false;
-    refs.emptyState.querySelector("h2").textContent = t(app.mode === "read" ? "readerNoSelection" : "noWords");
+    refs.emptyState.querySelector("h2").textContent = t("noWords");
     refs.emptyState.querySelector("p").textContent = "";
     return;
   }
@@ -2309,6 +2328,9 @@ function renderDetail() {
   const readerContext = renderReaderContextPanel(word);
   if (readerContext) {
     nodes.push(readerContext);
+  }
+  if (app.mode === "read") {
+    nodes.push(renderReaderMarkedWordsPanel());
   }
   nodes.push(renderLexicalNotes(word));
   nodes.push(renderExamples(word));
@@ -2401,6 +2423,92 @@ function renderReaderContextPanel(word) {
     section.append(explanation);
   }
   return section;
+}
+
+function renderReaderMarkedWordsPanel() {
+  const entries = readerMarkedWordsForCurrentUnit();
+  const section = el("section", "reader-marked-card");
+  const top = el("div", "reader-marked-top");
+  top.append(el("h3", "section-title", t("readerMarkedTitle")));
+  top.append(el("span", "reader-marked-count", t("readerMarkedCount", { count: formatNumber(entries.length) })));
+  section.append(top);
+  if (entries.length === 0) {
+    section.append(emptyMessage(t("readerMarkedEmpty")));
+    return section;
+  }
+  const list = el("div", "reader-marked-list");
+  entries.forEach(({ word, status, count }) => {
+    const button = el("button", `reader-marked-chip ${status}`.trim());
+    button.type = "button";
+    button.title = [
+      word.reading || "",
+      stateLabels[status]?.[app.lang] || "",
+      count > 1 ? `${formatNumber(count)}x` : "",
+    ].filter(Boolean).join(" · ");
+    button.append(
+      el("span", "reader-marked-word", word.word || ""),
+      el("span", "reader-marked-state", stateLabels[status]?.[app.lang] || ""),
+    );
+    button.addEventListener("click", () => {
+      selectReaderWord(word.word);
+    });
+    list.append(button);
+  });
+  section.append(list);
+  return section;
+}
+
+function readerMarkedWordsForCurrentUnit() {
+  const { unit } = currentReaderSelectionSource();
+  if (!unit?.documents?.length) {
+    return [];
+  }
+  const entries = new Map();
+  unit.documents.forEach((document) => {
+    asArray(document.lines).forEach((line) => {
+      asArray(line.matches).forEach((match) => {
+        const word = findWord(match.word);
+        if (!word) {
+          return;
+        }
+        const status = statusFor(word);
+        if (status === "none") {
+          return;
+        }
+        const current = entries.get(word.word) || { word, status, count: 0 };
+        current.status = status;
+        current.count += 1;
+        entries.set(word.word, current);
+      });
+    });
+  });
+  return [...entries.values()].sort(compareReaderMarkedWords);
+}
+
+function currentReaderSelectionSource() {
+  const sourceType = app.reader.sourceType === "all" ? null : app.reader.sourceType;
+  const groups = buildSourceGroups(sourceType);
+  const source = groups.find((group) => group.key === app.reader.groupKey) || groups[0] || null;
+  if (!source) {
+    return { source: null, unit: null };
+  }
+  const units = readerUnitsForSource(source);
+  const unit = units.find((item) => item.key === app.reader.documentKey) || units[0] || null;
+  return { source, unit };
+}
+
+function compareReaderMarkedWords(left, right) {
+  return readerMarkedStatusRank(left.status) - readerMarkedStatusRank(right.status)
+    || compareKana(left.word, right.word);
+}
+
+function readerMarkedStatusRank(status) {
+  return {
+    learning: 0,
+    uncertain: 1,
+    known: 2,
+    ignored: 3,
+  }[status] ?? 4;
 }
 
 function canUseReaderAi() {
@@ -2833,6 +2941,7 @@ function renderExamples(word, options = {}) {
 function renderExampleCard(word, example, options = {}) {
   const revealAnnotations = options.revealAnnotations ?? true;
   const allowAiExplain = app.mode !== "read" && (app.mode !== "study" || revealAnnotations);
+  const allowStudyAction = app.mode === "browse";
   const sourceClass = exampleSourceClass(example);
   const item = el("div", `example example-${sourceClass}`);
   const lines = el("div", "example-lines");
@@ -2843,7 +2952,7 @@ function renderExampleCard(word, example, options = {}) {
   appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
   lines.append(current);
   appendContextBlock(lines, afterLines, "after");
-  lines.append(renderExampleFooter(word, example, sourceClass, allowAiExplain));
+  lines.append(renderExampleFooter(word, example, sourceClass, { allowAiExplain, allowStudyAction }));
   item.append(lines);
   const annotationBlock = renderExampleAnnotationBlock(word, example, {
     allowAiExplain,
@@ -2858,11 +2967,18 @@ function renderExampleCard(word, example, options = {}) {
   };
 }
 
-function renderExampleFooter(word, example, sourceClass, allowAiExplain) {
+function renderExampleFooter(word, example, sourceClass, options = {}) {
   const footer = el("div", "example-footer");
   footer.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
-  if (allowAiExplain) {
-    footer.append(renderExampleExplainButton(word, example, exampleExplanationKey(word, example)));
+  const actions = el("div", "example-footer-actions");
+  if (options.allowStudyAction) {
+    actions.append(renderExampleStudyButton(word));
+  }
+  if (options.allowAiExplain) {
+    actions.append(renderExampleExplainButton(word, example, exampleExplanationKey(word, example)));
+  }
+  if (actions.childNodes.length > 0) {
+    footer.append(actions);
   }
   return footer;
 }
@@ -2936,6 +3052,20 @@ function renderExampleExplainButton(word, example, key) {
   return button;
 }
 
+function renderExampleStudyButton(word) {
+  const status = statusFor(word);
+  const active = status === "learning" || status === "uncertain";
+  const known = status === "known";
+  const button = el("button", `example-study-button ${active ? "active" : ""}`.trim());
+  button.type = "button";
+  button.textContent = known ? t("readerKnown") : active ? t("exampleInStudy") : t("exampleAddStudy");
+  button.disabled = known;
+  button.addEventListener("click", () => {
+    addWordToStudyFromExample(word);
+  });
+  return button;
+}
+
 async function startExampleExplanation(word, example, key) {
   app.exampleExplanations[key] = {
     status: "loading",
@@ -2965,6 +3095,13 @@ async function startExampleExplanation(word, example, key) {
     };
   }
   renderDetail();
+}
+
+function addWordToStudyFromExample(word) {
+  addWordToStudyFromReader(word);
+  renderWordList();
+  renderDetail();
+  renderMaintenance();
 }
 
 function renderExampleColumnControl() {
