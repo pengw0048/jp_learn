@@ -108,6 +108,10 @@ const LEXICAL_POS_LABELS_ZH = {
   "Yodan verb with 'ru' ending (archaic)": "古典四段动词",
   unclassified: "未分类",
 };
+const HIDDEN_LEXICAL_POS_LABELS_ZH = new Set([
+  "名词",
+  "未分类",
+]);
 
 const text = {
   zh: {
@@ -201,6 +205,7 @@ const text = {
     sourceInventoryWords: "词",
     sourceInventoryExamples: "例句",
     sourceInventoryFiles: "文件",
+    sourceInventoryVersions: "版本",
     sourceInventoryTokens: "词形",
     sourceInventoryAnnotated: "标注",
     sourceInventoryUnknown: "未知来源",
@@ -224,10 +229,11 @@ const text = {
     readerWordListStudy: "今日学习",
     readerCurrentHint: "点高亮词查看解释",
     readerNoSelection: "点正文里的高亮词查看解释",
-    readerContextTitle: "当前阅读",
-    readerExplain: "解释这里",
-    readerExplainLoading: "正在解释…",
+    readerContextTitle: "当前语境",
+    readerExplain: "AI 讲解",
+    readerExplainLoading: "AI 正在讲解…",
     readerExplainFailed: "解释失败：{error}",
+    readerExplainUnavailable: "先在维护里配置 LLM 后再使用",
     readerTranslation: "这句意思",
     readerUsage: "这里的用法",
     llmHelp: "使用配置里的 Provider；会先查本地缓存，缺失时才调用模型。任务中断后，重跑会复用已完成的缓存结果。",
@@ -358,6 +364,7 @@ const text = {
     sourceInventoryWords: "Words",
     sourceInventoryExamples: "Examples",
     sourceInventoryFiles: "Files",
+    sourceInventoryVersions: "Versions",
     sourceInventoryTokens: "Tokens",
     sourceInventoryAnnotated: "Annotated",
     sourceInventoryUnknown: "Unknown source",
@@ -381,10 +388,11 @@ const text = {
     readerWordListStudy: "Today",
     readerCurrentHint: "Click highlighted words to inspect them",
     readerNoSelection: "Click a highlighted word in the text to inspect it",
-    readerContextTitle: "Current passage",
-    readerExplain: "Explain here",
-    readerExplainLoading: "Explaining…",
+    readerContextTitle: "Current context",
+    readerExplain: "Ask AI",
+    readerExplainLoading: "AI is explaining…",
     readerExplainFailed: "Explanation failed: {error}",
+    readerExplainUnavailable: "Configure an LLM in Maintenance first",
     readerTranslation: "Meaning here",
     readerUsage: "Usage here",
     llmHelp: "Uses the configured provider. Local cache is checked before model calls; reruns reuse completed cached results after interruptions.",
@@ -1181,7 +1189,7 @@ function subtitleDocumentChildren(source) {
     .sort(compareSubtitleChildren)
     .map((entry) => ({
       label: entry.label,
-      meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryFiles")}` : "",
+      meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryVersions")}` : "",
       lines: entry.lines,
       files: [...entry.files].sort(),
     }));
@@ -1211,7 +1219,7 @@ function subtitleEpisodeChildren(source) {
     .sort(compareSubtitleChildren)
     .map((entry) => ({
       label: entry.label,
-      meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryFiles")}` : "",
+      meta: entry.files.size > 1 ? `${formatNumber(entry.files.size)} ${t("sourceInventoryVersions")}` : "",
       examples: entry.examples,
       files: [...entry.files].sort(),
     }));
@@ -1392,7 +1400,8 @@ function renderSourceChildren(children, sourceType, options = {}) {
   children.forEach((child) => {
     const row = el("div", "source-child-row");
     row.append(strong(child.label));
-    row.append(el("span", "", child.meta || ""));
+    const meta = showFileDetails || sourceType !== "subtitle" ? child.meta || "" : "";
+    row.append(el("span", "", meta));
     if (child.examples || child.lines) {
       const count = child.examples || child.lines;
       const label = child.examples ? t("sourceInventoryExamples") : t("sourceInventoryLines");
@@ -2374,7 +2383,10 @@ function renderDetail() {
   if (readerContext) {
     nodes.push(readerContext);
   }
-  nodes.push(renderExamples(word));
+  nodes.push(renderLexicalNotes(word));
+  nodes.push(renderExamples(word, {
+    allowActions: app.mode !== "read",
+  }));
   refs.wordDetail.replaceChildren(...nodes);
 }
 
@@ -2423,7 +2435,7 @@ function renderDetailHeader(word) {
     meanings.append(el("div", "meaning-alt", t("missingMeaning")));
   }
 
-  header.append(titleRow, meanings, renderLexicalNotes(word), renderStatusActions(word));
+  header.append(titleRow, meanings, renderStatusActions(word));
   return header;
 }
 
@@ -2440,7 +2452,11 @@ function renderReaderContextPanel(word) {
   const actions = el("div", "reader-context-actions");
   const explain = el("button", "reader-explain-button", t("readerExplain"));
   explain.type = "button";
-  explain.disabled = !app.maintenance.enabled || app.reader.explanation?.status === "loading";
+  const canExplain = canUseReaderAi();
+  explain.disabled = !canExplain || app.reader.explanation?.status === "loading";
+  if (!canExplain) {
+    explain.title = t("readerExplainUnavailable");
+  }
   explain.addEventListener("click", () => startReaderExplanation(word, selection));
   actions.append(explain);
   top.append(actions);
@@ -2460,6 +2476,15 @@ function renderReaderContextPanel(word) {
     section.append(explanation);
   }
   return section;
+}
+
+function canUseReaderAi() {
+  const llm = app.maintenance.llm || {};
+  return Boolean(
+    app.maintenance.enabled
+    && llm.api_key_configured
+    && (llm.provider === "apple" || llm.model),
+  );
 }
 
 function renderReaderExplanation(selection) {
@@ -3602,12 +3627,24 @@ function lexicalTextNodes(values, className = "lexical-chip") {
     .map((value) => el("span", className, value));
 }
 
+function uniqueStrings(values) {
+  const seen = new Set();
+  return asArray(values).filter((value) => {
+    const textValue = String(value || "").trim();
+    if (!textValue || seen.has(textValue)) {
+      return false;
+    }
+    seen.add(textValue);
+    return true;
+  });
+}
+
 function lexicalPosNodes(values) {
   const labels = asArray(values)
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const visibleLabels = app.lang === "zh"
-    ? labels.map(labelLexicalPosZh).filter((label) => label !== "名词")
+    ? uniqueStrings(labels.map(labelLexicalPosZh)).filter((label) => !HIDDEN_LEXICAL_POS_LABELS_ZH.has(label))
     : labels;
   return lexicalTextNodes(visibleLabels);
 }
