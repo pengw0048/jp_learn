@@ -719,19 +719,8 @@ select {
   opacity: 0.58;
 }
 
-.reader-context-lines {
-  display: grid;
-  gap: 4px;
-}
-
-.reader-context-current {
-  font-family: var(--font-ja);
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+.reader-context-reference {
+  justify-self: start;
 }
 
 .reader-explanation {

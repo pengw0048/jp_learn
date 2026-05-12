@@ -2316,12 +2316,11 @@ function renderDetail() {
   }
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
-  const nodes = [renderDetailHeader(word)];
+  const nodes = [renderDetailHeader(word), renderLexicalNotes(word)];
   const readerContext = renderReaderContextPanel(word);
   if (readerContext) {
     nodes.push(readerContext);
   }
-  nodes.push(renderLexicalNotes(word));
   nodes.push(renderExamples(word));
   refs.wordDetail.replaceChildren(...nodes);
 }
@@ -2397,15 +2396,7 @@ function renderReaderContextPanel(word) {
   actions.append(explain);
   top.append(actions);
   section.append(top);
-
-  const lines = el("div", "reader-context-lines");
-  appendContextBlock(lines, example.context_before || [], "before");
-  const current = el("div", "reader-context-current");
-  appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
-  lines.append(current);
-  appendContextBlock(lines, example.context_after || [], "after");
-  lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
-  section.append(lines);
+  section.append(el("small", `reader-context-reference reference reference-${sourceClass}`, formatReference(example)));
 
   const explanation = renderReaderExplanation(selection);
   if (explanation) {
