@@ -3450,8 +3450,8 @@ function renderLexicalNotes(word) {
   const section = el("section", "lexical-notes");
   section.append(el("h3", "section-title", t("lexicalNotes")));
   const body = el("div", "lexical-note-grid");
-  const spellingNodes = lexicalFormNodes(lexicalUsefulForms(notes.spellings, word.word));
-  const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, word.reading));
+  const spellingNodes = lexicalFormNodes(lexicalUsefulForms(notes.spellings, [word.word]));
+  const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, [word.reading, word.word]));
   const posNodes = lexicalPosNodes(notes.parts_of_speech);
   const senseNodes = app.lang === "zh" ? [] : lexicalSenseNodes(notes.senses);
   const kanjiNodes = app.lang === "zh" ? [] : lexicalKanjiNodes(notes.kanji, word);
@@ -3495,12 +3495,34 @@ function appendLexicalRow(parent, label, nodes, valueClassName = "lexical-note-v
   parent.append(row);
 }
 
-function lexicalUsefulForms(values, currentValue) {
-  const forms = asArray(values).filter((form) => String(form.text || "").trim());
-  if (forms.length <= 1 && forms[0]?.text === currentValue) {
+function lexicalUsefulForms(values, currentValues = []) {
+  const currentKeys = new Set(asArray(currentValues).flatMap(lexicalFormKeys).filter(Boolean));
+  const seenKeys = new Set();
+  return asArray(values)
+    .filter((form) => String(form.text || "").trim())
+    .filter((form) => {
+      const key = lexicalFormKey(form.text);
+      if (!key || currentKeys.has(key) || seenKeys.has(key)) {
+        return false;
+      }
+      seenKeys.add(key);
+      return true;
+    });
+}
+
+function lexicalFormKey(value) {
+  return String(value || "").normalize("NFKC").trim();
+}
+
+function lexicalFormKeys(value) {
+  const key = lexicalFormKey(value);
+  if (!key) {
     return [];
   }
-  return forms;
+  return [
+    key,
+    ...key.split(/[;；,，、/・･\s]+/u).map(lexicalFormKey).filter(Boolean),
+  ];
 }
 
 function lexicalFormNodes(values) {
