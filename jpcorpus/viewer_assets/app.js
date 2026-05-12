@@ -215,6 +215,7 @@ const text = {
     readerNoSelection: "点正文里的高亮词查看解释",
     readerContextTitle: "当前语境",
     readerExplain: "AI 讲解",
+    exampleExplainTitle: "AI 讲解这一条例句",
     readerExplainLoading: "AI 正在讲解…",
     readerExplainFailed: "解释失败：{error}",
     readerExplainUnavailable: "先在维护里配置 LLM 后再使用",
@@ -355,6 +356,7 @@ const text = {
     readerNoSelection: "Click a highlighted word in the text to inspect it",
     readerContextTitle: "Current context",
     readerExplain: "Ask AI",
+    exampleExplainTitle: "Explain this example with AI",
     readerExplainLoading: "AI is explaining…",
     readerExplainFailed: "Explanation failed: {error}",
     readerExplainUnavailable: "Configure an LLM in Maintenance first",
@@ -429,6 +431,7 @@ const app = {
     showAnswer: false,
     session: readStudySession(),
   },
+  exampleExplanations: {},
   maintenance: {
     enabled: false,
     job: null,
@@ -1638,6 +1641,14 @@ function readerSelectionKey(wordText, example) {
   ].join("\u0000");
 }
 
+function exampleExplanationKey(word, example) {
+  const sourceFile = example.source_file || example.subtitle_file || "";
+  return readerSelectionKey(word.word || "", {
+    ...example,
+    source_file: sourceFile,
+  });
+}
+
 function selectReaderWord(wordText, selection = null) {
   const word = findWord(wordText);
   if (!word) {
@@ -2401,12 +2412,11 @@ function canUseReaderAi() {
   );
 }
 
-function renderReaderExplanation(selection) {
-  const explanation = app.reader.explanation;
-  if (!explanation || explanation.key !== selection.key) {
+function renderExplanationResult(explanation, loadingClass = "reader-explanation") {
+  if (!explanation) {
     return null;
   }
-  const block = el("div", `reader-explanation ${explanation.status || ""}`.trim());
+  const block = el("div", `${loadingClass} ${explanation.status || ""}`.trim());
   if (explanation.status === "loading") {
     block.append(el("div", "annotation-line", t("readerExplainLoading")));
     return block;
@@ -2423,6 +2433,14 @@ function renderReaderExplanation(selection) {
     block.append(el("div", "annotation-line", `${t("readerUsage")}: ${result.usage_note_zh}`));
   }
   return block.childNodes.length ? block : null;
+}
+
+function renderReaderExplanation(selection) {
+  const explanation = app.reader.explanation;
+  if (!explanation || explanation.key !== selection.key) {
+    return null;
+  }
+  return renderExplanationResult(explanation);
 }
 
 async function startReaderExplanation(word, selection) {
@@ -2814,6 +2832,7 @@ function renderExamples(word, options = {}) {
 
 function renderExampleCard(word, example, options = {}) {
   const revealAnnotations = options.revealAnnotations ?? true;
+  const allowAiExplain = app.mode !== "read" && (app.mode !== "study" || revealAnnotations);
   const sourceClass = exampleSourceClass(example);
   const item = el("div", `example example-${sourceClass}`);
   const lines = el("div", "example-lines");
@@ -2827,6 +2846,7 @@ function renderExampleCard(word, example, options = {}) {
   lines.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
   item.append(lines);
   const annotationBlock = renderExampleAnnotationBlock(word, example, {
+    allowAiExplain,
     revealAnnotations,
   });
   if (annotationBlock) {
@@ -2869,22 +2889,78 @@ function exampleCardWeight(example, beforeLines, afterLines) {
 }
 
 function renderExampleAnnotationBlock(word, example, options = {}) {
+  const allowAiExplain = options.allowAiExplain ?? true;
   const revealAnnotations = options.revealAnnotations ?? true;
   const hasTranslation = revealAnnotations && example.translation_zh;
   const hasUsageNote = revealAnnotations && example.usage_note_zh;
-  if (!hasTranslation && !hasUsageNote) {
+  const key = exampleExplanationKey(word, example);
+  const explanation = app.exampleExplanations[key];
+  const explanationBlock = allowAiExplain ? renderExplanationResult(explanation, "example-explanation") : null;
+  if (!hasTranslation && !hasUsageNote && !allowAiExplain && !explanationBlock) {
     return null;
   }
   const block = el("div", "annotation-block");
-  const lines = el("div", "annotation-lines");
-  if (hasTranslation) {
-    lines.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
+  if (hasTranslation || hasUsageNote) {
+    const lines = el("div", "annotation-lines");
+    if (hasTranslation) {
+      lines.append(el("div", "annotation-line translation-line", `${t("translation")}: ${example.translation_zh}`));
+    }
+    if (hasUsageNote) {
+      lines.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
+    }
+    block.append(lines);
   }
-  if (hasUsageNote) {
-    lines.append(el("div", "annotation-line", `${t("usageNote")}: ${example.usage_note_zh}`));
+  if (explanationBlock) {
+    block.append(explanationBlock);
   }
-  block.append(lines);
+  if (allowAiExplain) {
+    block.append(renderExampleExplainActions(word, example, key));
+  }
   return block;
+}
+
+function renderExampleExplainActions(word, example, key) {
+  const actions = el("div", "example-explain-actions");
+  const button = el("button", "example-explain-button", "✨");
+  const canExplain = canUseReaderAi();
+  button.type = "button";
+  button.title = t(canExplain ? "exampleExplainTitle" : "readerExplainUnavailable");
+  button.setAttribute("aria-label", button.title);
+  button.disabled = !canExplain || app.exampleExplanations[key]?.status === "loading";
+  button.addEventListener("click", () => startExampleExplanation(word, example, key));
+  actions.append(button);
+  return actions;
+}
+
+async function startExampleExplanation(word, example, key) {
+  app.exampleExplanations[key] = {
+    status: "loading",
+  };
+  renderDetail();
+  try {
+    const response = await fetch("/api/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word: explanationWordPayload(word),
+        example,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    app.exampleExplanations[key] = {
+      status: "succeeded",
+      result: payload.explanation || {},
+    };
+  } catch (error) {
+    app.exampleExplanations[key] = {
+      status: "failed",
+      error: error.message || String(error),
+    };
+  }
+  renderDetail();
 }
 
 function renderExampleColumnControl() {

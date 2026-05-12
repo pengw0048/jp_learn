@@ -1047,6 +1047,8 @@ mark {
 
 .annotation-block {
   margin-top: 8px;
+  display: grid;
+  gap: 8px;
 }
 
 .annotation-lines {
@@ -1065,6 +1067,41 @@ mark {
 
 .translation-line {
   color: var(--text);
+}
+
+.example-explanation {
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent-2);
+  border-radius: 8px;
+  background: #fff8ed;
+}
+
+.example-explain-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.example-explain-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.example-explain-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.example-explain-button:disabled {
+  opacity: 0.58;
 }
 
 .maintenance-panel {
