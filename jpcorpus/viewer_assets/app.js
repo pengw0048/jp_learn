@@ -220,6 +220,10 @@ const text = {
     readerExplainUnavailable: "先在维护里配置 LLM 后再使用",
     readerTranslation: "这句意思",
     readerUsage: "这里的用法",
+    readerAddStudy: "加入学习",
+    readerKnown: "已认识",
+    readerIgnore: "忽略",
+    readerClearMark: "取消标记",
     maintenanceProvider: "Provider",
     maintenanceReloaded: "，页面已刷新",
     taskSyncMedia: "刷新",
@@ -356,6 +360,10 @@ const text = {
     readerExplainUnavailable: "Configure an LLM in Maintenance first",
     readerTranslation: "Meaning here",
     readerUsage: "Usage here",
+    readerAddStudy: "Add to study",
+    readerKnown: "Know it",
+    readerIgnore: "Ignore",
+    readerClearMark: "Clear",
     maintenanceProvider: "Provider",
     maintenanceReloaded: ", page refreshed",
     taskSyncMedia: "Refresh",
@@ -2534,6 +2542,9 @@ function renderStudyActions(word) {
 }
 
 function renderStatusActions(word) {
+  if (app.mode === "read") {
+    return renderReaderStudyActions(word);
+  }
   const wrap = el("div", "status-actions");
   ["learning", "uncertain", "known", "ignored", "none"].forEach((status) => {
     const button = el("button", "");
@@ -2547,6 +2558,55 @@ function renderStatusActions(word) {
     wrap.append(button);
   });
   return wrap;
+}
+
+function renderReaderStudyActions(word) {
+  const wrap = el("div", "status-actions reader-study-actions");
+  const status = statusFor(word);
+  [
+    {
+      label: t("readerAddStudy"),
+      active: status === "learning" || status === "uncertain",
+      className: "reader-study-primary",
+      action: () => addWordToStudyFromReader(word),
+    },
+    {
+      label: t("readerKnown"),
+      active: status === "known",
+      action: () => setStatus(word, "known"),
+    },
+    {
+      label: t("readerIgnore"),
+      active: status === "ignored",
+      action: () => setStatus(word, "ignored"),
+    },
+  ].forEach((item) => {
+    const button = el("button", item.className || "", item.label);
+    button.type = "button";
+    button.classList.toggle("active", item.active);
+    button.addEventListener("click", () => {
+      item.action();
+      app.reader.preserveScrollOnRender = true;
+      render();
+    });
+    wrap.append(button);
+  });
+  if (status !== "none") {
+    const clear = el("button", "", t("readerClearMark"));
+    clear.type = "button";
+    clear.addEventListener("click", () => {
+      setStatus(word, "none");
+      app.reader.preserveScrollOnRender = true;
+      render();
+    });
+    wrap.append(clear);
+  }
+  return wrap;
+}
+
+function addWordToStudyFromReader(word) {
+  setStatus(word, "learning");
+  scheduleStudyReview(word);
 }
 
 function selectWord(word, button) {

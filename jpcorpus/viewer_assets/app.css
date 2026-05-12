@@ -656,6 +656,17 @@ select {
   color: var(--accent);
 }
 
+.reader-study-actions .reader-study-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.reader-study-actions .reader-study-primary.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .reader-context-card {
   min-width: 0;
   display: grid;
