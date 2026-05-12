@@ -282,10 +282,9 @@ def analyze_media(
                 if not is_study_candidate(token.base, token.pos, token.pos_detail):
                     continue
                 reading = to_hiragana(token.reading) if token.reading else None
-                entry = jlpt_words.lookup(token.base, token.surface) or jlpt_words.lookup_reading(
-                    token.base,
-                    reading,
-                )
+                entry = jlpt_words.lookup(token.base, token.surface)
+                if entry is None and can_lookup_by_reading(token):
+                    entry = jlpt_words.lookup_reading(token.base, reading)
                 candidate_entry = entry or WordEntry(
                     surface=token.base,
                     reading=reading,
@@ -530,6 +529,10 @@ def is_study_candidate(base: str, pos: str | None, pos_detail: str | None = None
     return True
 
 
+def can_lookup_by_reading(token: Token) -> bool:
+    return not (has_cjk_text(token.surface) or has_cjk_text(token.base))
+
+
 def build_character_aliases(character_names: list[str], tokenizer: JapaneseTokenizer) -> set[str]:
     aliases: set[str] = set()
     for name in character_names:
@@ -579,6 +582,10 @@ def is_character_name_token(token: Token, aliases: set[str], *resolved_surfaces:
 
 def has_japanese_text(value: str) -> bool:
     return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff々〆ヵヶ]", value))
+
+
+def has_cjk_text(value: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff々〆]", value))
 
 
 def is_cjk_text(value: str) -> bool:

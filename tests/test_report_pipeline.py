@@ -119,6 +119,25 @@ def test_export_corpus_json(tmp_path: Path):
     assert output.exists()
 
 
+def test_kanji_tokens_do_not_fall_back_to_homophone_jlpt_entry(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    jlpt_path.write_text(
+        '[{"word":"司会","reading":"しかい","level":"N2","meaning":"host"}]',
+        encoding="utf-8",
+    )
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n視界が赤い。\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+    matches = analysis.source_documents[0].lines[0].matches
+
+    assert any(match.word == "視界" and match.matched_text == "視界" for match in matches)
+    assert all(match.word != "司会" for match in matches)
+
+
 def test_export_corpus_json_can_include_jmdict_matched_corpus_words(tmp_path: Path):
     jlpt_path = tmp_path / "jlpt.json"
     write_sample_jlpt(jlpt_path)
