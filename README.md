@@ -59,7 +59,7 @@ Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi musi
 
 Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh. The corpus importer will add them as `source_type: text`, using EPUB metadata when available and the file name as a fallback title.
 
-Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then starts a local corpus refresh. The optional unpacked Chrome extension in `browser_extension/` adds a right-click Add selection to jpcorpus action that calls the same local import endpoint.
+Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then starts a local corpus refresh. The optional unpacked Chrome extension in `browser_extension/` adds right-click selection import and a small page-area picker that call the same local import endpoint.
 
 Optional reader AI explanation uses Anthropic, OpenAI-compatible endpoints, or Apple Foundation Models configured through `.env` or the viewer Configuration form. The Apple provider compiles `jpcorpus/apple_fm_annotate.swift` into `~/.jpcorpus/apple_fm_annotate` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout for reader explanation requests.
 

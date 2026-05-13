@@ -4,6 +4,7 @@ const refs = {
   baseUrl: document.querySelector("#base-url"),
   saveUrl: document.querySelector("#save-url"),
   importSelection: document.querySelector("#import-selection"),
+  pickArea: document.querySelector("#pick-area"),
   status: document.querySelector("#status"),
 };
 
@@ -19,6 +20,7 @@ async function init() {
   refs.status.textContent = settings.lastStatus || "";
   refs.saveUrl.addEventListener("click", saveBaseUrl);
   refs.importSelection.addEventListener("click", importCurrentSelection);
+  refs.pickArea.addEventListener("click", startAreaPicker);
 }
 
 async function saveBaseUrl() {
@@ -61,4 +63,34 @@ async function importCurrentSelection() {
   } finally {
     refs.importSelection.disabled = false;
   }
+}
+
+async function startAreaPicker() {
+  refs.pickArea.disabled = true;
+  refs.status.textContent = "Starting area picker...";
+  try {
+    const tab = await activeTab();
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "START_AREA_PICKER" });
+    if (!response?.ok) {
+      throw new Error("Could not start area picker.");
+    }
+    refs.status.textContent = "Hover a text block, click to import, or press Esc.";
+    window.close();
+  } catch (error) {
+    refs.status.textContent = error.message || String(error);
+  } finally {
+    refs.pickArea.disabled = false;
+  }
+}
+
+async function activeTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    throw new Error("No active tab.");
+  }
+  return tab;
 }
