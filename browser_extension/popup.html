@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jpcorpus importer</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>jpcorpus importer</h1>
+      <p>Select Japanese text on a page, then import it into the local viewer.</p>
+      <label>
+        Local viewer URL
+        <input id="base-url" type="url" />
+      </label>
+      <button id="save-url" type="button">Save URL</button>
+      <button id="import-selection" type="button">Import current selection</button>
+      <p id="status" class="status"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

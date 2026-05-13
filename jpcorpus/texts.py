@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import posixpath
 import re
 import unicodedata
@@ -42,7 +43,11 @@ def text_file_from_path(path: Path, *, root: Path | None = None) -> TextFile:
             name = normalize_display_text(str(path.relative_to(root)))
         except ValueError:
             name = normalize_display_text(path.name)
-    metadata = read_epub_metadata(path) if path.suffix.lower() == ".epub" else EPUBMetadata()
+    metadata = (
+        read_epub_metadata(path)
+        if path.suffix.lower() == ".epub"
+        else read_text_sidecar_metadata(path)
+    )
     title = metadata.title or normalize_display_text(path.stem)
     return TextFile(title=title, path=path, name=name, author=metadata.creator)
 
@@ -105,6 +110,19 @@ def read_epub_metadata(path: Path) -> EPUBMetadata:
         title=first_child_text(root, ".//{*}metadata/{*}title"),
         creator=first_child_text(root, ".//{*}metadata/{*}creator"),
     )
+
+
+def read_text_sidecar_metadata(path: Path) -> EPUBMetadata:
+    metadata_path = path.with_name(f"{path.stem}.meta.json")
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return EPUBMetadata()
+    if not isinstance(payload, dict):
+        return EPUBMetadata()
+    title = normalize_display_text(payload.get("title") or "")
+    creator = normalize_display_text(payload.get("author") or payload.get("creator") or "")
+    return EPUBMetadata(title=title or None, creator=creator or None)
 
 
 def epub_rootfile_path(archive: zipfile.ZipFile) -> str | None:

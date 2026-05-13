@@ -5,6 +5,7 @@ from jpcorpus.viewer_jobs import (
     ViewerJobRunner,
     composite_maintenance_steps,
     explain_reader_usage,
+    import_text_document,
     llm_config_status,
     normalize_maintenance_spec,
     save_viewer_config,
@@ -229,6 +230,25 @@ def test_explain_reader_usage_answers_reader_question(monkeypatch):
     assert calls["question"] == "这里为什么用行く？"
     assert calls["closed"] is True
     assert result == {"answer": "这里的「行く」表示移动到学校。"}
+
+
+def test_import_text_document_writes_txt_and_metadata(tmp_path):
+    result = import_text_document(
+        {
+            "title": "テスト 記事",
+            "url": "https://example.com/article",
+            "text": " 一行目です。 \n\n\n 二行目です。 ",
+        },
+        directory=tmp_path / "texts" / "web",
+    )
+
+    text_path = tmp_path / result["path"]
+    metadata_path = tmp_path / result["metadata_path"]
+
+    assert text_path.name.endswith("-テスト-記事.txt")
+    assert text_path.read_text(encoding="utf-8") == "一行目です。\n\n二行目です。\n"
+    assert '"title": "テスト 記事"' in metadata_path.read_text(encoding="utf-8")
+    assert result["characters"] == len("一行目です。\n\n二行目です。")
 
 
 def test_viewer_config_status_reports_missing_keys(monkeypatch):

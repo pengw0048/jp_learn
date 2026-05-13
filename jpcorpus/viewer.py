@@ -10,7 +10,13 @@ from urllib.parse import unquote, urlparse
 import webbrowser
 
 from .env import load_dotenv
-from .viewer_jobs import ViewerJobRunner, explain_reader_usage, maintenance_status, save_viewer_config
+from .viewer_jobs import (
+    ViewerJobRunner,
+    explain_reader_usage,
+    import_text_document,
+    maintenance_status,
+    save_viewer_config,
+)
 
 
 ASSET_DIR = Path(__file__).with_name("viewer_assets")
@@ -61,7 +67,7 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request_path = unquote(urlparse(self.path).path)
-        if request_path not in {"/api/jobs/maintenance", "/api/config", "/api/explain"}:
+        if request_path not in {"/api/jobs/maintenance", "/api/config", "/api/explain", "/api/import-text"}:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
         if self.job_runner is None:
@@ -75,6 +81,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
                 return
             if request_path == "/api/explain":
                 self._send_json(explain_reader_usage(payload))
+                return
+            if request_path == "/api/import-text":
+                self._send_json({"imported": import_text_document(payload)}, status=HTTPStatus.CREATED)
                 return
             job = self.job_runner.start_maintenance(payload)
         except Exception as exc:

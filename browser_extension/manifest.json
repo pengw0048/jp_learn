@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "jpcorpus Web Importer",
+  "version": "0.1.0",
+  "description": "Send selected Japanese web text to the local jpcorpus viewer.",
+  "permissions": ["activeTab", "contextMenus", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "jpcorpus importer",
+    "default_popup": "popup.html"
+  }
+}

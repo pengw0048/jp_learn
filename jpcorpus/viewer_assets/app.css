@@ -1380,14 +1380,29 @@ mark {
 }
 
 .maintenance-grid input,
-.maintenance-grid select {
+.maintenance-grid select,
+.maintenance-grid textarea {
   width: 100%;
-  min-height: 36px;
   padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfc;
   color: var(--text);
+}
+
+.maintenance-grid input,
+.maintenance-grid select {
+  min-height: 36px;
+}
+
+.maintenance-grid textarea {
+  min-height: 140px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.maintenance-grid .wide {
+  grid-column: 1 / -1;
 }
 
 .config-form {

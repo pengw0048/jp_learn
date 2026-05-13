@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
+import unicodedata
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
@@ -20,6 +22,7 @@ from .llm import (
     OpenAICompatibleClient,
 )
 from .paths import DEFAULT_STATE_DB, ensure_parent
+from .texts import normalize_display_text
 
 
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
@@ -39,6 +42,8 @@ ALLOWED_MAINTENANCE_TASKS = {
 }
 CORPUS_RELOAD_TASKS = {"export_corpus"}
 CONFIG_ENV_PATH = Path(".env")
+DEFAULT_WEB_TEXT_DIR = Path("texts") / "web"
+MAX_IMPORTED_TEXT_CHARS = 1_500_000
 
 
 def _now_iso() -> str:
@@ -408,6 +413,74 @@ def compact_reader_example(example: dict[str, Any]) -> dict[str, Any]:
         "context_before": text_list_limit(example.get("context_before"), item_limit=800, count_limit=4),
         "context_after": text_list_limit(example.get("context_after"), item_limit=800, count_limit=4),
     }
+
+
+def import_text_document(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_TEXT_DIR) -> dict[str, Any]:
+    text = clean_imported_text(raw.get("text"))
+    if not text:
+        raise ValueError("Imported text is empty.")
+    if len(text) > MAX_IMPORTED_TEXT_CHARS:
+        raise ValueError(f"Imported text is too long. Limit: {MAX_IMPORTED_TEXT_CHARS} characters.")
+    title = normalize_display_text(raw.get("title") or "") or "Imported web text"
+    url = text_limit(raw.get("url"), 2000)
+    directory.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = unique_import_path(directory / f"{timestamp}-{slugify_import_title(title)}.txt")
+    path.write_text(text.rstrip() + "\n", encoding="utf-8")
+    metadata = {
+        "source": "web",
+        "title": title,
+        "url": url,
+        "imported_at": _now_iso(),
+        "characters": len(text),
+    }
+    metadata_path = path.with_name(f"{path.stem}.meta.json")
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "title": title,
+        "path": str(path),
+        "metadata_path": str(metadata_path),
+        "characters": len(text),
+        "url": url,
+    }
+
+
+def clean_imported_text(value: Any) -> str:
+    text = normalize_display_text_preserving_lines(value)
+    lines = [re.sub(r"[ \t　]+", " ", line).strip() for line in text.splitlines()]
+    cleaned_lines: list[str] = []
+    previous_blank = False
+    for line in lines:
+        blank = not line
+        if blank and previous_blank:
+            continue
+        cleaned_lines.append(line)
+        previous_blank = blank
+    return "\n".join(cleaned_lines).strip()
+
+
+def normalize_display_text_preserving_lines(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    return unicodedata.normalize("NFC", text)
+
+
+def slugify_import_title(title: str) -> str:
+    slug = re.sub(r"[^\w\u3040-\u30ff\u3400-\u9fff]+", "-", title, flags=re.UNICODE)
+    slug = slug.strip("-_")
+    return (slug[:80].strip("-_") or "web-text")
+
+
+def unique_import_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    for index in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}-{index}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"Could not find an available import path for {path}")
 
 
 def text_limit(value: Any, limit: int) -> str:

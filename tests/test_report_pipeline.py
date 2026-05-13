@@ -506,6 +506,22 @@ def test_text_file_title_and_name_are_nfc_normalized(tmp_path: Path):
     assert text_file.name == "ノベライズ.txt"
 
 
+def test_text_file_uses_sidecar_metadata_title(tmp_path: Path):
+    text = tmp_path / "web" / "imported.txt"
+    text.parent.mkdir()
+    text.write_text("今日は学校へ行く。", encoding="utf-8")
+    text.with_name("imported.meta.json").write_text(
+        '{"title": "ウェブ記事", "author": "Sample Author"}',
+        encoding="utf-8",
+    )
+
+    text_file = text_file_from_path(text, root=tmp_path)
+
+    assert text_file.title == "ウェブ記事"
+    assert text_file.author == "Sample Author"
+    assert text_file.name == "web/imported.txt"
+
+
 def test_discover_text_files_includes_txt_and_epub(tmp_path: Path):
     (tmp_path / "book.txt").write_text("今日は学校へ行く。", encoding="utf-8")
     write_sample_epub(tmp_path / "novel.epub")

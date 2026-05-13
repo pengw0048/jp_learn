@@ -247,6 +247,15 @@ const text = {
     maintenanceTaskExportCorpus: "不联网，只用现有本地数据重新生成网页语料",
     maintenanceTaskFetchLexicalResources: "下载 JMdict 和 KANJIDIC2；之后点“刷新语料”才会出现在页面里",
     maintenanceTaskRefreshAll: "词典、词表和动画库也一起更新；平时不用点这个",
+    importTextTitle: "导入网页文本",
+    importTextHelp: "粘贴网页正文或选中的一段文字，保存到 texts/web/ 后自动刷新语料。",
+    importTextPageTitle: "标题",
+    importTextSourceUrl: "URL",
+    importTextContent: "文本",
+    importTextSave: "保存并刷新",
+    importTextSaving: "正在保存…",
+    importTextSaved: "已保存《{title}》，正在刷新语料…",
+    importTextFailed: "导入失败：{error}",
     maintenanceDisabled: "维护 API 未启用",
     maintenanceIdle: "还没有运行任务",
     maintenanceRunningTask: "正在运行：{task}，开始 {time}",
@@ -400,6 +409,15 @@ const text = {
     maintenanceTaskExportCorpus: "Uses existing local data only and regenerates the viewer corpus",
     maintenanceTaskFetchLexicalResources: "Downloads JMdict and KANJIDIC2; refresh the corpus afterwards to show them",
     maintenanceTaskRefreshAll: "Also refetches dictionaries, word lists, and the anime database; rarely needed day to day",
+    importTextTitle: "Import web text",
+    importTextHelp: "Paste web article text or a selected passage. It is saved under texts/web/ and the corpus refresh starts automatically.",
+    importTextPageTitle: "Title",
+    importTextSourceUrl: "URL",
+    importTextContent: "Text",
+    importTextSave: "Save and refresh",
+    importTextSaving: "Saving...",
+    importTextSaved: "Saved {title}; refreshing corpus...",
+    importTextFailed: "Import failed: {error}",
     maintenanceDisabled: "Maintenance API disabled",
     maintenanceIdle: "No task has run yet",
     maintenanceRunningTask: "Running: {task}, started {time}",
@@ -508,6 +526,11 @@ const refs = {
   configLlmBaseUrl: $("#config-llm-base-url"),
   configLlmModel: $("#config-llm-model"),
   configLlmApiKey: $("#config-llm-api-key"),
+  importTextTitle: $("#import-text-title"),
+  importTextUrl: $("#import-text-url"),
+  importTextContent: $("#import-text-content"),
+  importTextSave: $("#import-text-save"),
+  importTextStatus: $("#import-text-status"),
   maintenanceProgress: $("#maintenance-progress"),
   maintenanceProgressFill: $("#maintenance-progress-fill"),
   maintenanceProgressLabel: $("#maintenance-progress-label"),
@@ -592,6 +615,7 @@ function bindControls() {
   });
   refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
+  refs.importTextSave.addEventListener("click", importTextFromMaintenance);
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
   });
@@ -870,6 +894,7 @@ function renderMaintenance() {
     button.disabled = !app.maintenance.enabled || job?.status === "running";
     button.classList.toggle("active", button.dataset.maintenanceTask === task && job?.status === "running");
   });
+  refs.importTextSave.disabled = !app.maintenance.enabled || job?.status === "running";
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
@@ -1775,6 +1800,36 @@ async function saveConfig() {
     refs.configSaveStatus.textContent = t("configSaveFailed", { error: error.message });
   } finally {
     refs.configSave.disabled = !app.maintenance.enabled;
+  }
+}
+
+async function importTextFromMaintenance() {
+  refs.importTextSave.disabled = true;
+  refs.importTextStatus.textContent = t("importTextSaving");
+  try {
+    const response = await fetch("/api/import-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: refs.importTextTitle.value.trim(),
+        url: refs.importTextUrl.value.trim(),
+        text: refs.importTextContent.value,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `HTTP ${response.status}`);
+    }
+    const title = result.imported?.title || refs.importTextTitle.value.trim() || t("sourceInventoryUnknown");
+    refs.importTextTitle.value = "";
+    refs.importTextUrl.value = "";
+    refs.importTextContent.value = "";
+    refs.importTextStatus.textContent = t("importTextSaved", { title });
+    await startMaintenanceJob("export_corpus");
+  } catch (error) {
+    refs.importTextStatus.textContent = t("importTextFailed", { error: error.message || String(error) });
+  } finally {
+    renderMaintenance();
   }
 }
 

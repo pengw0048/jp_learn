@@ -1,0 +1,64 @@
+const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
+
+const refs = {
+  baseUrl: document.querySelector("#base-url"),
+  saveUrl: document.querySelector("#save-url"),
+  importSelection: document.querySelector("#import-selection"),
+  status: document.querySelector("#status"),
+};
+
+init();
+
+async function init() {
+  const settings = await chrome.storage.local.get({
+    baseUrl: DEFAULT_BASE_URL,
+    lastStatus: "",
+    lastStatusAt: "",
+  });
+  refs.baseUrl.value = settings.baseUrl;
+  refs.status.textContent = settings.lastStatus || "";
+  refs.saveUrl.addEventListener("click", saveBaseUrl);
+  refs.importSelection.addEventListener("click", importCurrentSelection);
+}
+
+async function saveBaseUrl() {
+  const baseUrl = refs.baseUrl.value.trim().replace(/\/+$/, "") || DEFAULT_BASE_URL;
+  await chrome.storage.local.set({ baseUrl });
+  refs.baseUrl.value = baseUrl;
+  refs.status.textContent = "Saved local viewer URL.";
+}
+
+async function importCurrentSelection() {
+  refs.importSelection.disabled = true;
+  refs.status.textContent = "Reading current selection...";
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      throw new Error("No active tab.");
+    }
+    const [selection] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection()?.toString() || "",
+    });
+    const text = String(selection?.result || "").trim();
+    if (!text) {
+      throw new Error("No selected text to import.");
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: "IMPORT_TEXT",
+      payload: {
+        title: tab.title || "",
+        url: tab.url || "",
+        text,
+      },
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Import failed.");
+    }
+    refs.status.textContent = "Imported. Corpus refresh started.";
+  } catch (error) {
+    refs.status.textContent = error.message || String(error);
+  } finally {
+    refs.importSelection.disabled = false;
+  }
+}
