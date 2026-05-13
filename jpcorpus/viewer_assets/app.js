@@ -202,6 +202,11 @@ const text = {
     sourceInventoryExpand: "展开 {count} 集",
     sourceInventoryCollapse: "收起",
     sourceInventoryLines: "行",
+    sourceInventoryDelete: "删除",
+    sourceInventoryDeleteConfirm: "删除“{title}”？这会移除导入的网页文本并重建语料。",
+    sourceInventoryDeleting: "正在删除“{title}”…",
+    sourceInventoryDeleted: "已删除“{title}”，正在重建语料。",
+    sourceInventoryDeleteFailed: "删除失败：{error}",
     sourceReaderTitle: "阅读器",
     sourceReaderFallback: "当前 corpus 还没有完整阅读数据，先显示已抽取的例句片段；点“刷新”后会生成完整来源行。",
     sourceReaderEmpty: "这个来源还没有可显示的阅读内容",
@@ -365,6 +370,11 @@ const text = {
     sourceInventoryExpand: "Show {count} more",
     sourceInventoryCollapse: "Collapse",
     sourceInventoryLines: "Lines",
+    sourceInventoryDelete: "Delete",
+    sourceInventoryDeleteConfirm: "Delete \"{title}\"? This removes the imported web text and rebuilds the corpus.",
+    sourceInventoryDeleting: "Deleting \"{title}\"...",
+    sourceInventoryDeleted: "Deleted \"{title}\". Rebuilding the corpus.",
+    sourceInventoryDeleteFailed: "Delete failed: {error}",
     sourceReaderTitle: "Reader",
     sourceReaderFallback: "This corpus has no full reader data yet, so extracted examples are shown for now. Refresh to generate full source lines.",
     sourceReaderEmpty: "No readable content for this source yet",
@@ -449,6 +459,7 @@ const app = {
   source: "all",
   sourcePanelType: null,
   sourcePanelGroupKey: null,
+  sourceInventoryNotice: "",
   expandedSourceGroups: new Set(),
   reader: {
     sourceType: "all",
@@ -948,14 +959,21 @@ function renderSourceInventory() {
   const groups = buildSourceGroups(app.sourcePanelType);
   const selected = groups.find((group) => group.key === app.sourcePanelGroupKey);
   if (selected) {
-    refs.sourceInventory.replaceChildren(renderSourceGroupDetail(selected));
+    replaceSourceInventoryChildren(renderSourceGroupDetail(selected));
     return;
   }
   if (groups.length === 0) {
-    refs.sourceInventory.replaceChildren(emptyMessage(t("sourceInventoryEmpty")));
+    replaceSourceInventoryChildren(emptyMessage(t("sourceInventoryEmpty")));
     return;
   }
-  refs.sourceInventory.replaceChildren(...groups.map(renderSourceGroupItem));
+  replaceSourceInventoryChildren(...groups.map(renderSourceGroupItem));
+}
+
+function replaceSourceInventoryChildren(...children) {
+  const notice = app.sourceInventoryNotice
+    ? el("p", "source-inventory-notice", app.sourceInventoryNotice)
+    : null;
+  refs.sourceInventory.replaceChildren(...[notice, ...children].filter(Boolean));
 }
 
 function buildSourceItems() {
@@ -1265,6 +1283,9 @@ function renderSourceGroupItem(source) {
   });
   const actions = el("div", "source-card-actions");
   actions.append(action, readAction);
+  if (canDeleteImportedSource(source)) {
+    actions.append(renderDeleteImportedSourceButton(source));
+  }
 
   const top = el("div", "source-card-top");
   top.append(heading, actions);
@@ -1321,6 +1342,9 @@ function renderSourceGroupDetail(source) {
     openSourceInReader(source);
   });
   heading.append(readAction);
+  if (canDeleteImportedSource(source)) {
+    heading.append(renderDeleteImportedSourceButton(source));
+  }
   detail.append(heading, renderSourceMetrics(source));
 
   const children = renderSourceChildren(source.children, source.type, {
@@ -1343,6 +1367,57 @@ function openSourceInReader(source) {
   refs.maintenanceToggle.classList.remove("active");
   hideSourcePanel();
   render();
+}
+
+function renderDeleteImportedSourceButton(source) {
+  const deleteAction = el("button", "source-delete-button", t("sourceInventoryDelete"));
+  deleteAction.type = "button";
+  deleteAction.addEventListener("click", () => deleteImportedSource(source));
+  return deleteAction;
+}
+
+function canDeleteImportedSource(source) {
+  return importedSourceFiles(source).length > 0;
+}
+
+function importedSourceFiles(source) {
+  if (source.type !== "text") {
+    return [];
+  }
+  return [...new Set(asArray(source.sourceDocuments)
+    .map((document) => String(document.source_file || ""))
+    .filter((sourceFile) => sourceFile.startsWith("web/") && sourceFile.endsWith(".txt")))];
+}
+
+async function deleteImportedSource(source) {
+  const sourceFiles = importedSourceFiles(source);
+  if (!sourceFiles.length) {
+    return;
+  }
+  const title = source.title || t("sourceInventoryUnknown");
+  if (!window.confirm(t("sourceInventoryDeleteConfirm", { title }))) {
+    return;
+  }
+  app.sourceInventoryNotice = t("sourceInventoryDeleting", { title });
+  renderSourceInventory();
+  try {
+    const response = await fetch("/api/delete-imported-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_files: sourceFiles }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    app.sourcePanelGroupKey = null;
+    app.sourceInventoryNotice = t("sourceInventoryDeleted", { title });
+    renderSourceInventory();
+    await startMaintenanceJob("export_corpus");
+  } catch (error) {
+    app.sourceInventoryNotice = t("sourceInventoryDeleteFailed", { error: error.message || String(error) });
+    renderSourceInventory();
+  }
 }
 
 function renderSourceMetrics(source) {

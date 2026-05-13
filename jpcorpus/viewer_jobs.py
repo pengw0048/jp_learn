@@ -448,6 +448,57 @@ def import_text_document(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_T
     }
 
 
+def delete_imported_text_documents(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_TEXT_DIR) -> dict[str, Any]:
+    raw_files = raw.get("source_files")
+    if raw_files is None:
+        raw_files = [raw.get("source_file")]
+    if not isinstance(raw_files, list):
+        raise ValueError("source_files must be a list.")
+    source_files = [str(item or "").strip() for item in raw_files if str(item or "").strip()]
+    if not source_files:
+        raise ValueError("No imported text file was specified.")
+
+    deleted: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for source_file in source_files:
+        path = resolve_imported_text_path(source_file, directory=directory)
+        metadata_path = path.with_name(f"{path.stem}.meta.json")
+        existed = path.exists() or metadata_path.exists()
+        if not existed:
+            missing.append(source_file)
+            continue
+        path.unlink(missing_ok=True)
+        metadata_path.unlink(missing_ok=True)
+        deleted.append({
+            "source_file": source_file,
+            "path": str(path),
+            "metadata_path": str(metadata_path),
+        })
+
+    return {
+        "deleted": deleted,
+        "missing": missing,
+    }
+
+
+def resolve_imported_text_path(source_file: str, *, directory: Path = DEFAULT_WEB_TEXT_DIR) -> Path:
+    if "\x00" in source_file:
+        raise ValueError("Invalid imported text path.")
+    raw_path = Path(source_file)
+    if raw_path.is_absolute():
+        candidate = raw_path
+    elif raw_path.parts and raw_path.parts[0] == directory.name:
+        candidate = directory.parent / raw_path
+    else:
+        candidate = directory / raw_path
+
+    root = directory.resolve()
+    path = candidate.resolve()
+    if path.suffix != ".txt" or root not in path.parents:
+        raise ValueError("Only imported web text files can be deleted.")
+    return path
+
+
 def clean_imported_text(value: Any) -> str:
     text = normalize_display_text_preserving_lines(value)
     lines = [re.sub(r"[ \t　]+", " ", line).strip() for line in text.splitlines()]

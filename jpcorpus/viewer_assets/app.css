@@ -1726,6 +1726,7 @@ mark {
 
 .source-view-button,
 .source-read-button,
+.source-delete-button,
 .source-back-button,
 .source-word-button,
 .source-expand-button {
@@ -1742,6 +1743,7 @@ mark {
 
 .source-view-button:hover,
 .source-read-button:hover,
+.source-delete-button:hover,
 .source-back-button:hover,
 .source-word-button:hover,
 .source-expand-button:hover {
@@ -1754,8 +1756,27 @@ mark {
   border-color: var(--accent);
 }
 
+.source-delete-button {
+  color: var(--source);
+}
+
+.source-delete-button:hover {
+  border-color: var(--source);
+}
+
 .source-expand-button {
   justify-self: start;
+}
+
+.source-inventory-notice {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 55%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent), white 93%);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 680;
 }
 
 .source-child-list,

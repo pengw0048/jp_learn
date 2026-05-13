@@ -12,6 +12,7 @@ import webbrowser
 from .env import load_dotenv
 from .viewer_jobs import (
     ViewerJobRunner,
+    delete_imported_text_documents,
     explain_reader_usage,
     import_text_document,
     maintenance_status,
@@ -67,7 +68,13 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request_path = unquote(urlparse(self.path).path)
-        if request_path not in {"/api/jobs/maintenance", "/api/config", "/api/explain", "/api/import-text"}:
+        if request_path not in {
+            "/api/jobs/maintenance",
+            "/api/config",
+            "/api/explain",
+            "/api/import-text",
+            "/api/delete-imported-text",
+        }:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
         if self.job_runner is None:
@@ -84,6 +91,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
                 return
             if request_path == "/api/import-text":
                 self._send_json({"imported": import_text_document(payload)}, status=HTTPStatus.CREATED)
+                return
+            if request_path == "/api/delete-imported-text":
+                self._send_json(delete_imported_text_documents(payload))
                 return
             job = self.job_runner.start_maintenance(payload)
         except Exception as exc:
