@@ -1750,6 +1750,16 @@ mark {
   border-color: var(--accent);
 }
 
+.source-view-button:disabled,
+.source-read-button:disabled,
+.source-delete-button:disabled,
+.source-back-button:disabled,
+.source-word-button:disabled,
+.source-expand-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .source-read-button {
   background: var(--accent);
   color: #ffffff;

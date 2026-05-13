@@ -460,6 +460,8 @@ const app = {
   sourcePanelType: null,
   sourcePanelGroupKey: null,
   sourceInventoryNotice: "",
+  sourceInventoryBusy: false,
+  sourceInventoryNoticeJobId: null,
   expandedSourceGroups: new Set(),
   reader: {
     sourceType: "all",
@@ -1262,6 +1264,7 @@ function compareSourceInventoryItems(left, right) {
 
 function renderSourceGroupItem(source) {
   const item = el("article", `source-card source-card-${source.type || "unknown"}`);
+  const actionsDisabled = sourceInventoryActionsDisabled();
   const heading = el("div", "source-card-heading");
   const kind = el("span", "source-kind", sourceLabel(source.type));
   const title = el("strong", "source-title", source.title || t("sourceInventoryUnknown"));
@@ -1272,12 +1275,14 @@ function renderSourceGroupItem(source) {
 
   const action = el("button", "source-view-button", t("sourceInventoryView"));
   action.type = "button";
+  action.disabled = actionsDisabled;
   action.addEventListener("click", () => {
     app.sourcePanelGroupKey = source.key;
     renderSourceInventory();
   });
   const readAction = el("button", "source-read-button", t("sourceInventoryRead"));
   readAction.type = "button";
+  readAction.disabled = actionsDisabled;
   readAction.addEventListener("click", () => {
     openSourceInReader(source);
   });
@@ -1310,6 +1315,7 @@ function renderSourceGroupItem(source) {
         : t("sourceInventoryExpand", { count: formatNumber(source.children.length - collapsedPreviewLimit) }),
     );
     toggle.type = "button";
+    toggle.disabled = actionsDisabled;
     toggle.addEventListener("click", () => {
       if (expanded) {
         app.expandedSourceGroups.delete(source.key);
@@ -1325,8 +1331,10 @@ function renderSourceGroupItem(source) {
 
 function renderSourceGroupDetail(source) {
   const detail = el("article", `source-detail source-card-${source.type || "unknown"}`);
+  const actionsDisabled = sourceInventoryActionsDisabled();
   const back = el("button", "source-back-button", `‹ ${t("sourceInventoryBack")}`);
   back.type = "button";
+  back.disabled = actionsDisabled;
   back.addEventListener("click", () => {
     app.sourcePanelGroupKey = null;
     renderSourceInventory();
@@ -1338,6 +1346,7 @@ function renderSourceGroupDetail(source) {
   }
   const readAction = el("button", "source-read-button", t("sourceInventoryRead"));
   readAction.type = "button";
+  readAction.disabled = actionsDisabled;
   readAction.addEventListener("click", () => {
     openSourceInReader(source);
   });
@@ -1372,8 +1381,13 @@ function openSourceInReader(source) {
 function renderDeleteImportedSourceButton(source) {
   const deleteAction = el("button", "source-delete-button", t("sourceInventoryDelete"));
   deleteAction.type = "button";
+  deleteAction.disabled = sourceInventoryActionsDisabled();
   deleteAction.addEventListener("click", () => deleteImportedSource(source));
   return deleteAction;
+}
+
+function sourceInventoryActionsDisabled() {
+  return app.sourceInventoryBusy || app.maintenance.job?.status === "running";
 }
 
 function canDeleteImportedSource(source) {
@@ -1398,6 +1412,8 @@ async function deleteImportedSource(source) {
   if (!window.confirm(t("sourceInventoryDeleteConfirm", { title }))) {
     return;
   }
+  app.sourceInventoryBusy = true;
+  app.sourceInventoryNoticeJobId = null;
   app.sourceInventoryNotice = t("sourceInventoryDeleting", { title });
   renderSourceInventory();
   try {
@@ -1413,8 +1429,18 @@ async function deleteImportedSource(source) {
     app.sourcePanelGroupKey = null;
     app.sourceInventoryNotice = t("sourceInventoryDeleted", { title });
     renderSourceInventory();
-    await startMaintenanceJob("export_corpus");
+    const job = await startMaintenanceJob("export_corpus");
+    if (job?.id) {
+      app.sourceInventoryNoticeJobId = job.id;
+      renderSourceInventory();
+    } else {
+      app.sourceInventoryBusy = false;
+      app.sourceInventoryNotice = t("sourceInventoryDeleteFailed", { error: app.maintenance.job?.log?.[0] || "could not start rebuild" });
+      renderSourceInventory();
+    }
   } catch (error) {
+    app.sourceInventoryBusy = false;
+    app.sourceInventoryNoticeJobId = null;
     app.sourceInventoryNotice = t("sourceInventoryDeleteFailed", { error: error.message || String(error) });
     renderSourceInventory();
   }
@@ -3166,12 +3192,14 @@ async function startMaintenanceJob(taskOverride = null) {
     app.maintenance.reloadedJobId = null;
     renderMaintenance();
     pollMaintenanceJob();
+    return payload.job;
   } catch (error) {
     app.maintenance.job = {
       status: "failed",
       log: [String(error.message || error)],
     };
     renderMaintenance();
+    return null;
   }
 }
 
@@ -3200,16 +3228,31 @@ async function refreshMaintenanceJob() {
       clearInterval(app.maintenance.pollTimer);
       app.maintenance.pollTimer = null;
     }
+    const clearsSourceNotice = app.sourceInventoryNoticeJobId === job.id;
     if (job.status === "succeeded" && job.result?.reload_corpus && app.maintenance.reloadedJobId !== job.id) {
       app.maintenance.reloadedJobId = job.id;
       await reloadCorpus();
+    }
+    if (clearsSourceNotice) {
+      app.sourceInventoryBusy = false;
+      app.sourceInventoryNoticeJobId = null;
+      app.sourceInventoryNotice = job.status === "succeeded"
+        ? ""
+        : t("sourceInventoryDeleteFailed", { error: job.error || job.log?.at(-1) || "rebuild failed" });
+      renderSourceInventory();
     }
   } catch (error) {
     app.maintenance.job = {
       status: "failed",
       log: [String(error.message || error)],
     };
+    if (app.sourceInventoryBusy) {
+      app.sourceInventoryBusy = false;
+      app.sourceInventoryNoticeJobId = null;
+      app.sourceInventoryNotice = t("sourceInventoryDeleteFailed", { error: error.message || String(error) });
+    }
     renderMaintenance();
+    renderSourceInventory();
   }
 }
 
