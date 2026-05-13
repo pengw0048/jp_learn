@@ -169,22 +169,22 @@
           <div class="maintenance-section-header">
             <div>
               <h3 data-i18n="importTextTitle">导入网页文本</h3>
-              <p class="maintenance-help" data-i18n="importTextHelp">粘贴网页正文或选中的一段文字，保存到 texts/web/ 后自动刷新语料。</p>
+              <p class="maintenance-help" data-i18n="importTextHelp">只有文本必填；标题和 URL 只是用来之后识别来源。</p>
             </div>
             <button id="import-text-save" class="secondary-button" type="button" data-i18n="importTextSave">保存并刷新</button>
           </div>
           <div class="maintenance-grid import-text-grid">
             <label>
-              <span data-i18n="importTextPageTitle">标题</span>
+              <span data-i18n="importTextPageTitle">标题（可选）</span>
               <input id="import-text-title" type="text" autocomplete="off" />
             </label>
             <label>
-              <span data-i18n="importTextSourceUrl">URL</span>
+              <span data-i18n="importTextSourceUrl">URL（可选）</span>
               <input id="import-text-url" type="url" autocomplete="off" />
             </label>
             <label class="wide">
-              <span data-i18n="importTextContent">文本</span>
-              <textarea id="import-text-content" rows="7"></textarea>
+              <span data-i18n="importTextContent">文本（必填）</span>
+              <textarea id="import-text-content" rows="7" data-i18n-placeholder="importTextPlaceholder"></textarea>
             </label>
           </div>
           <p id="import-text-status" class="maintenance-help"></p>

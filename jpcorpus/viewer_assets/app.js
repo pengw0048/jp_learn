@@ -248,10 +248,11 @@ const text = {
     maintenanceTaskFetchLexicalResources: "下载 JMdict 和 KANJIDIC2；之后点“刷新语料”才会出现在页面里",
     maintenanceTaskRefreshAll: "词典、词表和动画库也一起更新；平时不用点这个",
     importTextTitle: "导入网页文本",
-    importTextHelp: "粘贴网页正文或选中的一段文字，保存到 texts/web/ 后自动刷新语料。",
-    importTextPageTitle: "标题",
-    importTextSourceUrl: "URL",
-    importTextContent: "文本",
+    importTextHelp: "只有文本必填；标题和 URL 只是用来之后识别来源。保存后会写入 texts/web/ 并自动刷新语料。",
+    importTextPageTitle: "标题（可选）",
+    importTextSourceUrl: "URL（可选）",
+    importTextContent: "文本（必填）",
+    importTextPlaceholder: "粘贴网页正文，或者从网页选中一段文字后用浏览器扩展导入。",
     importTextSave: "保存并刷新",
     importTextSaving: "正在保存…",
     importTextSaved: "已保存《{title}》，正在刷新语料…",
@@ -410,10 +411,11 @@ const text = {
     maintenanceTaskFetchLexicalResources: "Downloads JMdict and KANJIDIC2; refresh the corpus afterwards to show them",
     maintenanceTaskRefreshAll: "Also refetches dictionaries, word lists, and the anime database; rarely needed day to day",
     importTextTitle: "Import web text",
-    importTextHelp: "Paste web article text or a selected passage. It is saved under texts/web/ and the corpus refresh starts automatically.",
-    importTextPageTitle: "Title",
-    importTextSourceUrl: "URL",
-    importTextContent: "Text",
+    importTextHelp: "Only text is required. Title and URL are just source metadata. Saving writes to texts/web/ and refreshes the corpus.",
+    importTextPageTitle: "Title (optional)",
+    importTextSourceUrl: "URL (optional)",
+    importTextContent: "Text (required)",
+    importTextPlaceholder: "Paste web article text here, or import a selected passage with the browser extension.",
     importTextSave: "Save and refresh",
     importTextSaving: "Saving...",
     importTextSaved: "Saved {title}; refreshing corpus...",
@@ -616,6 +618,7 @@ function bindControls() {
   refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
   refs.importTextSave.addEventListener("click", importTextFromMaintenance);
+  refs.importTextContent.addEventListener("input", renderMaintenance);
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
   });
@@ -894,7 +897,10 @@ function renderMaintenance() {
     button.disabled = !app.maintenance.enabled || job?.status === "running";
     button.classList.toggle("active", button.dataset.maintenanceTask === task && job?.status === "running");
   });
-  refs.importTextSave.disabled = !app.maintenance.enabled || job?.status === "running";
+  refs.importTextSave.disabled =
+    !app.maintenance.enabled
+    || job?.status === "running"
+    || !refs.importTextContent.value.trim();
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
