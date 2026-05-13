@@ -19,3 +19,5 @@ For pages with many nested spans or ruby annotations, Add main article strips `r
 The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh.
 
 If the viewer is running on another local port, update the Local viewer URL in the extension popup.
+
+If the popup says the local viewer returned HTML or an old API, stop the running viewer and start `uv run jpcorpus` again, then reload this extension in `chrome://extensions`.

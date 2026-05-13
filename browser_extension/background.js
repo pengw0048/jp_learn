@@ -51,7 +51,7 @@ async function importSelectedText(payload) {
   }
   await setStatus("Importing selected text...");
   const baseUrl = await localBaseUrl();
-  const importResponse = await fetch(`${baseUrl}/api/import-text`, {
+  const importPayload = await requestJson(`${baseUrl}/api/import-text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -59,20 +59,12 @@ async function importSelectedText(payload) {
       url: payload.url || "",
       text,
     }),
-  });
-  const importPayload = await importResponse.json();
-  if (!importResponse.ok) {
-    throw new Error(importPayload.error || `Import failed with HTTP ${importResponse.status}`);
-  }
-  const refreshResponse = await fetch(`${baseUrl}/api/jobs/maintenance`, {
+  }, "Import");
+  const refreshPayload = await requestJson(`${baseUrl}/api/jobs/maintenance`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "export_corpus" }),
-  });
-  const refreshPayload = await refreshResponse.json();
-  if (!refreshResponse.ok) {
-    throw new Error(refreshPayload.error || `Refresh failed with HTTP ${refreshResponse.status}`);
-  }
+  }, "Corpus refresh");
   const title = importPayload.imported?.title || "web text";
   await setStatus(`Imported ${title}. Corpus refresh started.`);
   await chrome.action.setBadgeText({ text: "OK" });
@@ -103,6 +95,32 @@ async function ensureContentScript(tabId) {
 async function localBaseUrl() {
   const settings = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL });
   return String(settings.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
+
+async function requestJson(url, options, action) {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (error) {
+    throw new Error(`${action} could not reach the local viewer. Start or restart uv run jpcorpus, then reload this extension.`);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      const hint = response.status === 404
+        ? "The local viewer is probably an old running process without the web import API."
+        : "The local viewer returned HTML or another non-JSON response.";
+      throw new Error(`${action} failed: ${hint} Restart uv run jpcorpus and reload the extension.`);
+    }
+  }
+  if (!response.ok) {
+    throw new Error(payload?.error || `${action} failed with HTTP ${response.status}`);
+  }
+  return payload || {};
 }
 
 async function setStatus(message) {
