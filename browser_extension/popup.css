@@ -62,3 +62,7 @@ button:disabled {
   min-height: 18px;
   font-size: 12px;
 }
+
+.tip {
+  font-size: 12px;
+}

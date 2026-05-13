@@ -19,6 +19,8 @@
     stopPicker();
     picker = {
       target: null,
+      candidates: [],
+      candidateIndex: 0,
       overlay: document.createElement("div"),
       label: document.createElement("div"),
       previousCursor: document.documentElement.style.cursor,
@@ -47,7 +49,7 @@
       font: "12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       display: "none",
     });
-    picker.label.textContent = "Click to import this text block. Esc to cancel.";
+    picker.label.textContent = "Click to import. [ smaller, ] larger, Esc cancel.";
     document.documentElement.append(picker.overlay, picker.label);
     document.documentElement.style.cursor = "crosshair";
     window.addEventListener("mousemove", onMouseMove, true);
@@ -72,14 +74,33 @@
     if (!picker) {
       return;
     }
-    const target = bestTextBlock(event.target);
-    picker.target = target;
-    if (!target) {
+    const candidates = textBlockCandidates(event.target);
+    if (!candidates.length) {
+      picker.target = null;
+      picker.candidates = [];
+      picker.candidateIndex = 0;
       picker.overlay.style.display = "none";
       picker.label.style.display = "none";
       return;
     }
+    const previousTarget = picker.target;
+    picker.candidates = candidates;
+    if (previousTarget && candidates.includes(previousTarget)) {
+      picker.candidateIndex = candidates.indexOf(previousTarget);
+    } else {
+      picker.candidateIndex = defaultCandidateIndex(candidates);
+    }
+    updatePickerTarget();
+  }
+
+  function updatePickerTarget() {
+    if (!picker?.candidates.length) {
+      return;
+    }
+    const target = picker.candidates[picker.candidateIndex] || picker.candidates[0];
+    picker.target = target;
     const rect = target.getBoundingClientRect();
+    const textLength = visibleText(target).length;
     Object.assign(picker.overlay.style, {
       display: "block",
       left: `${Math.max(0, rect.left)}px`,
@@ -92,6 +113,12 @@
       left: `${Math.max(8, Math.min(window.innerWidth - 370, rect.left))}px`,
       top: `${Math.max(8, rect.top - 34)}px`,
     });
+    picker.label.textContent = [
+      `Click to import ${textLength} chars.`,
+      picker.candidateIndex > 0 ? "[ smaller" : "",
+      picker.candidateIndex < picker.candidates.length - 1 ? "] larger" : "",
+      "Esc cancel",
+    ].filter(Boolean).join(" · ");
   }
 
   function onClick(event) {
@@ -117,15 +144,35 @@
       event.preventDefault();
       event.stopPropagation();
       stopPicker();
+      return;
+    }
+    if (event.key === "[" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!picker.candidates.length) {
+        return;
+      }
+      picker.candidateIndex = Math.max(0, picker.candidateIndex - 1);
+      updatePickerTarget();
+      return;
+    }
+    if (event.key === "]" || event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!picker.candidates.length) {
+        return;
+      }
+      picker.candidateIndex = Math.min(picker.candidates.length - 1, picker.candidateIndex + 1);
+      updatePickerTarget();
     }
   }
 
-  function bestTextBlock(node) {
+  function textBlockCandidates(node) {
     if (!(node instanceof Element)) {
-      return null;
+      return [];
     }
     if (node.id === "jpcorpus-picker-overlay" || node.id === "jpcorpus-picker-label") {
-      return picker?.target;
+      return picker?.candidates || [];
     }
     const candidates = [];
     let current = node;
@@ -135,10 +182,15 @@
       }
       current = current.parentElement;
     }
-    if (!candidates.length) {
-      return null;
+    return candidates;
+  }
+
+  function defaultCandidateIndex(candidates) {
+    const usefulIndex = candidates.findIndex((candidate) => visibleText(candidate).length >= 80);
+    if (usefulIndex >= 0) {
+      return usefulIndex;
     }
-    return candidates.find((candidate) => visibleText(candidate).length >= 80) || candidates[0];
+    return 0;
   }
 
   function isUsableTextBlock(element) {
