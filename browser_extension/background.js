@@ -1,6 +1,7 @@
 const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
 const MENU_IMPORT_SELECTION = "jpcorpus-import-selection";
 const MENU_IMPORT_ARTICLE = "jpcorpus-import-article";
+const NOTIFICATION_ICON = "icon.svg";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
@@ -66,9 +67,11 @@ async function importSelectedText(payload) {
     body: JSON.stringify({ type: "export_corpus" }),
   }, "Corpus refresh");
   const title = importPayload.imported?.title || "web text";
-  await setStatus(`Imported ${title}. Corpus refresh started.`);
+  const message = `Imported ${title}. Corpus refresh started.`;
+  await setStatus(message);
   await chrome.action.setBadgeText({ text: "OK" });
   await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
+  await notify("jpcorpus import started", message);
   return { imported: importPayload.imported, job: refreshPayload.job };
 }
 
@@ -131,7 +134,30 @@ async function setStatus(message) {
 }
 
 async function reportImportError(error) {
-  await setStatus(error.message || String(error));
+  const message = error.message || String(error);
+  await setStatus(message);
   await chrome.action.setBadgeText({ text: "ERR" });
   await chrome.action.setBadgeBackgroundColor({ color: "#b75a35" });
+  await notify("jpcorpus import failed", message);
+}
+
+async function notify(title, message) {
+  if (!chrome.notifications) {
+    return;
+  }
+  try {
+    await chrome.notifications.create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL(NOTIFICATION_ICON),
+      title,
+      message: truncateMessage(message),
+    });
+  } catch {
+    // Notifications are only a convenience; the popup status and badge still show the result.
+  }
+}
+
+function truncateMessage(message) {
+  const text = String(message || "");
+  return text.length > 220 ? `${text.slice(0, 217)}...` : text;
 }

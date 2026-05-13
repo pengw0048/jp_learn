@@ -203,7 +203,7 @@
 
   function isUsableTextBlock(element) {
     const tag = element.tagName.toLowerCase();
-    if (["script", "style", "input", "textarea", "select", "button", "nav", "header", "footer"].includes(tag)) {
+    if (isSkippableElement(element) || ["input", "textarea", "select", "button"].includes(tag)) {
       return false;
     }
     const text = readableText(element);
@@ -218,6 +218,10 @@
   }
 
   function extractMainArticle() {
+    const siteSpecificArticle = siteSpecificMainArticle();
+    if (siteSpecificArticle) {
+      return siteSpecificArticle;
+    }
     const candidates = articleCandidates();
     const best = candidates
       .map((element) => ({ element, score: articleScore(element), text: readableText(element) }))
@@ -245,10 +249,14 @@
       ".article",
       ".article-body",
       ".articleBody",
+      ".article-main",
+      ".article__body",
       ".content",
       ".main",
       ".news_textbody",
+      ".news_body",
       ".body",
+      "[itemprop='articleBody']",
     ];
     const candidates = new Set();
     document.querySelectorAll(selectors.join(",")).forEach((element) => {
@@ -276,7 +284,7 @@
       return false;
     }
     const tag = element.tagName.toLowerCase();
-    if (["script", "style", "nav", "header", "footer", "form", "aside"].includes(tag)) {
+    if (isSkippableElement(element) || ["script", "style", "form"].includes(tag)) {
       return false;
     }
     const text = readableText(element);
@@ -293,20 +301,77 @@
       .map((link) => readableText(link))
       .join("");
     const linkDensity = text.length ? linkText.length / text.length : 1;
+    const linkCount = element.querySelectorAll("a").length;
     const paragraphCount = Array.from(element.querySelectorAll("p, h1, h2, h3, li"))
       .filter((node) => readableText(node).length >= 20)
       .length;
-    const selectorBonus = element.matches("article, main, [role='main'], #js-article-body, .article-body, .articleBody, .news_textbody")
+    const selectorBonus = element.matches("article, main, [role='main'], #js-article-body, .article-body, .articleBody, .article-main, .article__body, .news_textbody, .news_body, [itemprop='articleBody']")
       ? 600
       : 0;
     const japaneseCount = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+    const effectiveLength = Math.min(text.length, 4500);
+    const excessiveLengthPenalty = Math.max(0, text.length - 7000) * 0.6;
+    const linkCountPenalty = Math.max(0, linkCount - paragraphCount - 3) * 80;
     return (
-      text.length
-      + paragraphCount * 120
-      + japaneseCount * 0.4
+      effectiveLength
+      + paragraphCount * 220
+      + japaneseCount * 0.3
       + selectorBonus
-      - linkDensity * 1800
+      - linkDensity * 3200
+      - excessiveLengthPenalty
+      - linkCountPenalty
     );
+  }
+
+  function siteSpecificMainArticle() {
+    return nhkEasyArticle();
+  }
+
+  function nhkEasyArticle() {
+    if (!location.hostname.includes("nhk") || !location.pathname.includes("/news/easy/")) {
+      return null;
+    }
+    const title = articleTitle(document.body) || document.title || "";
+    const roots = Array.from(document.querySelectorAll("article, main, [role='main'], #main, #content, #contents"));
+    if (!roots.length) {
+      roots.push(document.body);
+    }
+    const seen = new Set();
+    const paragraphs = [];
+    roots.forEach((root) => {
+      root.querySelectorAll("p").forEach((paragraph) => {
+        const text = readableText(paragraph);
+        if (!isArticleParagraph(text) || seen.has(text)) {
+          return;
+        }
+        seen.add(text);
+        paragraphs.push(text);
+      });
+    });
+    const bodyText = paragraphs.join("\n\n");
+    if (bodyText.length < 160) {
+      return null;
+    }
+    return {
+      title,
+      url: location.href,
+      text: cleanText([title, bodyText].filter(Boolean).join("\n\n")),
+    };
+  }
+
+  function isArticleParagraph(text) {
+    const clean = cleanText(text);
+    if (clean.length < 24 || clean.length > 800) {
+      return false;
+    }
+    if (/^(NHK|ニュースを聞く|漢字の読み方|シェア|関連ニュース|もっと見る|戻る|閉じる)/.test(clean)) {
+      return false;
+    }
+    const japaneseCount = (clean.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+    if (japaneseCount / clean.length < 0.35) {
+      return false;
+    }
+    return /[。、！？!?]|です|ます|ました|ません|います|予定|話/.test(clean);
   }
 
   function articleTitle(element) {
@@ -332,7 +397,7 @@
       return;
     }
     const tag = node.tagName.toLowerCase();
-    if (["rt", "rp", "script", "style", "noscript", "svg", "canvas", "button", "input", "select", "textarea", "form"].includes(tag)) {
+    if (["rt", "rp", "script", "style", "noscript", "svg", "canvas", "button", "input", "select", "textarea", "form"].includes(tag) || isSkippableElement(node)) {
       return;
     }
     const style = window.getComputedStyle(node);
@@ -354,6 +419,34 @@
       "figure", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main",
       "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul",
     ].includes(tag);
+  }
+
+  function isSkippableElement(element) {
+    const tag = element.tagName.toLowerCase();
+    if (["aside", "dialog", "footer", "header", "iframe", "nav"].includes(tag)) {
+      return true;
+    }
+    if (element.getAttribute("aria-hidden") === "true") {
+      return true;
+    }
+    const role = (element.getAttribute("role") || "").toLowerCase();
+    if (["banner", "complementary", "contentinfo", "dialog", "navigation", "search"].includes(role)) {
+      return true;
+    }
+    const marker = [
+      element.id,
+      classNameText(element),
+      element.getAttribute("aria-label") || "",
+      element.getAttribute("data-testid") || "",
+    ].join(" ").toLowerCase();
+    return /(^|[-_\s])(ad|ads|advert|banner|breadcrumb|cookie|globalnav|menu|nav|pager|pagination|pickup|promo|recommend|related|ranking|share|sidebar|sns|social|toolbar)([-_\s]|$)/.test(marker);
+  }
+
+  function classNameText(element) {
+    if (typeof element.className === "string") {
+      return element.className;
+    }
+    return element.className?.baseVal || "";
   }
 
   function cleanText(text) {
