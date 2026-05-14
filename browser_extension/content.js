@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.9";
+  const SCRIPT_VERSION = "0.1.10";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -21,10 +21,13 @@
       saving: "保存中...",
       cannotUpdateStudy: "无法更新学习状态。",
       addedStudy: "已加入学习：{word}",
+      updatedStudy: "已更新学习状态：{word}",
       addStudy: "加入学习",
       known: "已认识",
       studying: "复习中",
+      ignore: "忽略",
       ignored: "已忽略",
+      clearStatus: "取消标记",
       pickerInitial: "点击导入高亮文本。Esc 取消。",
       pickerLabel: "点击导入 {count} 字 · Esc 取消",
       noReadableArticle: "没有在这个页面找到可读正文。",
@@ -43,10 +46,13 @@
       saving: "Saving...",
       cannotUpdateStudy: "Could not update study status.",
       addedStudy: "Added to study: {word}",
+      updatedStudy: "Updated study status: {word}",
       addStudy: "Add to study",
       known: "Known",
       studying: "Reviewing",
+      ignore: "Ignore",
       ignored: "Ignored",
+      clearStatus: "Clear",
       pickerInitial: "Click to import highlighted text. Esc cancel.",
       pickerLabel: "Click to import {count} chars. · Esc cancel",
       noReadableArticle: "No readable article text found on this page.",
@@ -372,47 +378,60 @@
     if (detail.textContent) {
       panel.append(detail);
     }
-    panel.append(renderReaderStudyButton(annotation));
+    panel.append(renderReaderStudyActions(annotation));
     document.documentElement.append(panel);
     positionReaderPanel(panel, anchor);
     reader.panel = panel;
   }
 
-  function renderReaderStudyButton(annotation) {
+  function renderReaderStudyActions(annotation) {
     const row = document.createElement("div");
     row.className = "jpcorpus-reader-panel-actions";
+    refreshReaderStudyActions(row, annotation);
+    return row;
+  }
+
+  function refreshReaderStudyActions(row, annotation) {
+    row.replaceChildren();
+    const currentStatus = normalizeReaderStatus(annotation.status);
+    row.append(
+      renderReaderStatusButton(row, annotation, {
+        status: "learning",
+        label: currentStatus === "learning" || currentStatus === "uncertain" ? tr("studying") : tr("addStudy"),
+      }),
+      renderReaderStatusButton(row, annotation, {
+        status: "known",
+        label: tr("known"),
+      }),
+      renderReaderStatusButton(row, annotation, {
+        status: "ignored",
+        label: currentStatus === "ignored" ? tr("ignored") : tr("ignore"),
+      }),
+    );
+    if (currentStatus !== "none") {
+      row.append(renderReaderStatusButton(row, annotation, {
+        status: "none",
+        label: tr("clearStatus"),
+      }));
+    }
+  }
+
+  function renderReaderStatusButton(row, annotation, options) {
     const button = document.createElement("button");
     button.type = "button";
-    updateReaderStudyButton(button, annotation.status);
+    button.className = "jpcorpus-reader-status-button";
+    button.textContent = options.label;
+    const isActive = normalizeReaderStatus(annotation.status) === options.status
+      || (options.status === "learning" && normalizeReaderStatus(annotation.status) === "uncertain");
+    if (isActive && options.status !== "none") {
+      button.classList.add("active");
+    }
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      button.disabled = true;
-      button.textContent = tr("saving");
-      try {
-        const response = await chrome.runtime.sendMessage({
-          type: "SET_WORD_STATUS",
-          payload: {
-            word: annotation.word,
-            status: "learning",
-          },
-        });
-        if (!response?.ok) {
-          throw new Error(response?.error || tr("cannotUpdateStudy"));
-        }
-        annotation.status = response.result?.status || "learning";
-        annotation.study_count = response.result?.study_count || annotation.study_count || 0;
-        updateReaderAnnotationsForWord(annotation.word, annotation.status, annotation.study_count);
-        updateReaderStudyButton(button, annotation.status);
-        showToast(tr("addedStudy", { word: annotation.word }));
-      } catch (error) {
-        button.disabled = false;
-        button.textContent = tr("addStudy");
-        showToast(error.message || String(error), "error");
-      }
+      setReaderWordStatus(row, annotation, options.status, button);
     });
-    row.append(button);
-    return row;
+    return button;
   }
 
   function updateReaderAnnotationsForWord(word, status, studyCount) {
@@ -425,21 +444,38 @@
     });
   }
 
-  function updateReaderStudyButton(button, status) {
-    button.className = "jpcorpus-reader-study-button";
-    button.disabled = status === "known" || status === "ignored" || status === "learning" || status === "uncertain";
-    if (status === "known") {
-      button.textContent = tr("known");
-      button.classList.add("saved");
-    } else if (status === "learning" || status === "uncertain") {
-      button.textContent = tr("studying");
-      button.classList.add("saved");
-    } else if (status === "ignored") {
-      button.textContent = tr("ignored");
-      button.classList.add("saved");
-    } else {
-      button.textContent = tr("addStudy");
+  async function setReaderWordStatus(row, annotation, status, button) {
+    const word = annotation.word || annotation.surface || "";
+    if (!word) {
+      showToast(tr("cannotUpdateStudy"), "error");
+      return;
     }
+    const buttons = Array.from(row.querySelectorAll("button"));
+    buttons.forEach((item) => {
+      item.disabled = true;
+    });
+    button.textContent = tr("saving");
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "SET_WORD_STATUS",
+        payload: { word, status },
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error || tr("cannotUpdateStudy"));
+      }
+      annotation.status = normalizeReaderStatus(response.result?.status || status);
+      annotation.study_count = response.result?.study_count || 0;
+      updateReaderAnnotationsForWord(word, annotation.status, annotation.study_count);
+      refreshReaderStudyActions(row, annotation);
+      showToast(tr(status === "learning" ? "addedStudy" : "updatedStudy", { word }));
+    } catch (error) {
+      refreshReaderStudyActions(row, annotation);
+      showToast(error.message || String(error), "error");
+    }
+  }
+
+  function normalizeReaderStatus(status) {
+    return ["learning", "uncertain", "known", "ignored", "none"].includes(status) ? status : "none";
   }
 
   function positionReaderPanel(panel, anchor) {
@@ -540,25 +576,40 @@
       }
       .jpcorpus-reader-panel-actions {
         display: flex !important;
+        flex-wrap: wrap !important;
         gap: 8px !important;
         margin-top: 14px !important;
       }
-      .jpcorpus-reader-study-button {
+      .jpcorpus-reader-status-button {
         min-height: 34px !important;
         padding: 6px 12px !important;
-        border: 1px solid #147d73 !important;
+        border: 1px solid #d6e0e3 !important;
         border-radius: 8px !important;
-        background: #147d73 !important;
-        color: #ffffff !important;
+        background: #ffffff !important;
+        color: #657178 !important;
         font: 760 13px/1 ${CJK_FONT_CSS} !important;
         cursor: pointer !important;
       }
-      .jpcorpus-reader-study-button.saved,
-      .jpcorpus-reader-study-button:disabled {
-        border-color: #d6e0e3 !important;
+      .jpcorpus-reader-status-button:hover {
+        border-color: #147d73 !important;
+        color: #147d73 !important;
+      }
+      .jpcorpus-reader-status-button.active {
+        border-color: #147d73 !important;
         background: #eef5f4 !important;
-        color: #657178 !important;
+        color: #147d73 !important;
+      }
+      .jpcorpus-reader-status-button:disabled {
+        opacity: 0.7 !important;
         cursor: default !important;
+      }
+      .jpcorpus-reader-status-button:disabled:hover {
+        border-color: #d6e0e3 !important;
+        color: #657178 !important;
+      }
+      .jpcorpus-reader-status-button.active:disabled:hover {
+        border-color: #147d73 !important;
+        color: #147d73 !important;
       }
     `;
     document.documentElement.append(style);
