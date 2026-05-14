@@ -36,42 +36,22 @@ const {
   searchScore,
   searchTerms,
 } = window.JPCORPUS_SEARCH;
+const {
+  asArray,
+  badge,
+  clampNumber,
+  contextPreview,
+  el,
+  emptyMessage,
+  statChip,
+  strong,
+} = window.JPCORPUS_DOM;
 const WORD_LIST_PAGE_SIZE = 600;
 const SPLIT_LIMITS = {
   browse: { minLeft: 300, minRight: 420 },
   study: { minLeft: 300, minRight: 420 },
   read: { minLeft: 420, minRight: 340 },
 };
-const LEXICAL_POS_LABELS_ZH = {
-  "noun or participle which takes the aux. verb suru": "する名词",
-  "nouns which may take the genitive case particle 'no'": "の名词",
-  "adverb taking the 'to' particle": "と副词",
-  "expressions (phrases, clauses, etc.)": "表达",
-  "noun or verb acting prenominally": "连体用法",
-  "suru verb - special class": "サ变",
-  "suru verb - included": "サ变",
-  "numeric": "数词",
-  "noun, used as a prefix": "名词・接头",
-  "Ichidan verb - zuru verb (alternative form of -jiru verbs)": "一段・ずる",
-  "'taru' adjective": "たる形容词",
-  "pre-noun adjectival (rentaishi)": "连体词",
-  "Godan verb with 'ru' ending (irregular verb)": "五段・る特殊",
-  "Godan verb - -aru special class": "五段・ある",
-  "Godan verb with 'u' ending (special class)": "五段・う特殊",
-  "su verb - precursor to the modern suru": "す动词",
-  "'ku' adjective (archaic)": "く形容词・古语",
-  "auxiliary": "助动词",
-  "'shiku' adjective (archaic)": "しく形容词・古语",
-  "Nidan verb (lower class) with 'u' ending and 'we' conjugation (archaic)": "古典二段动词",
-  "Nidan verb (upper class) with 'ru' ending (archaic)": "古典二段动词",
-  "Nidan verb (lower class) with 'ru' ending (archaic)": "古典二段动词",
-  "Yodan verb with 'ru' ending (archaic)": "古典四段动词",
-  unclassified: "未分类",
-};
-const HIDDEN_LEXICAL_POS_LABELS_ZH = new Set([
-  "名词",
-  "未分类",
-]);
 
 const text = window.JPCORPUS_TEXT;
 
@@ -143,6 +123,25 @@ const app = {
 };
 let studySyncTimer = null;
 const pendingStudySyncWords = new Set();
+const {
+  displayMeaningRaw,
+  renderLexicalNotes,
+  renderMeaningValue,
+} = window.JPCORPUS_LEXICAL.createLexicalHelpers({
+  el,
+  t,
+  getLanguage: () => app.lang,
+});
+const {
+  exampleSourceClass,
+  fileStem,
+  formatNumber,
+  formatReference,
+  formatTimestamp,
+  normalizedTextTitle,
+} = window.JPCORPUS_FORMAT.createFormatHelpers({
+  getLanguage: () => app.lang,
+});
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -428,13 +427,6 @@ function clampedSplitRatio(ratio, availableWidth) {
   const minRatio = Math.min(limits.minLeft / availableWidth, 0.82);
   const maxRatio = Math.max(1 - limits.minRight / availableWidth, minRatio);
   return clampNumber(Number(ratio), minRatio, maxRatio);
-}
-
-function clampNumber(value, min, max) {
-  if (!Number.isFinite(value)) {
-    return min;
-  }
-  return Math.min(Math.max(value, min), max);
 }
 
 function renderHeader() {
@@ -3342,262 +3334,6 @@ function chooseInitialWord(words = app.words) {
   return words[0] || null;
 }
 
-function displayMeaningRaw(word) {
-  if (app.lang === "zh") {
-    return word.meaning_zh || word.meaning || "";
-  }
-  return word.meaning || word.meaning_zh || "";
-}
-
-function renderMeaningValue(word, className) {
-  return renderParsedMeaning(parseMeaning(displayMeaningRaw(word)), className);
-}
-
-function renderParsedMeaning(meaning, className) {
-  const wrap = el("div", className);
-  if (!meaning.raw) {
-    return wrap;
-  }
-  if (meaning.accent) {
-    wrap.append(el("span", "meaning-chip meaning-accent", meaning.accent));
-  }
-  if (meaning.pos) {
-    wrap.append(el("span", "meaning-chip meaning-pos", meaning.pos));
-  }
-  wrap.append(el("span", "meaning-text", meaning.text || meaning.raw));
-  return wrap;
-}
-
-function renderLexicalNotes(word) {
-  const notes = word.lexical_notes;
-  if (!notes || typeof notes !== "object") {
-    return document.createDocumentFragment();
-  }
-  const section = el("section", "lexical-notes");
-  section.append(el("h3", "section-title", t("lexicalNotes")));
-  const body = el("div", "lexical-note-grid");
-  const spellingNodes = lexicalFormNodes(lexicalUsefulForms(notes.spellings, [word.word]));
-  const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, [word.reading, word.word]));
-  const posNodes = lexicalPosNodes(notes.parts_of_speech);
-  const dictionaryExampleNodes = lexicalDictionaryExampleNodes(notes.dictionary_examples);
-  const hasUsefulNotes =
-    spellingNodes.length > 0
-    || readingNodes.length > 0
-    || posNodes.length > 0
-    || dictionaryExampleNodes.length > 0;
-  if (!hasUsefulNotes) {
-    return document.createDocumentFragment();
-  }
-  appendLexicalRow(body, t("lexicalSpellings"), spellingNodes);
-  appendLexicalRow(body, t("lexicalReadings"), readingNodes);
-  appendLexicalRow(body, t("lexicalPos"), posNodes);
-  appendLexicalRow(
-    body,
-    t("lexicalExamples"),
-    dictionaryExampleNodes,
-    "lexical-note-values lexical-example-values",
-  );
-  if (!body.childElementCount) {
-    return document.createDocumentFragment();
-  }
-  section.append(body);
-  return section;
-}
-
-function appendLexicalRow(parent, label, nodes, valueClassName = "lexical-note-values") {
-  if (!nodes.length) {
-    return;
-  }
-  const row = el("div", "lexical-note-row");
-  row.append(el("span", "lexical-note-label", label));
-  const values = el("div", valueClassName);
-  nodes.forEach((node) => values.append(node));
-  row.append(values);
-  parent.append(row);
-}
-
-function lexicalUsefulForms(values, currentValues = []) {
-  const currentKeys = new Set(asArray(currentValues).flatMap(lexicalFormKeys).filter(Boolean));
-  const seenKeys = new Set();
-  return asArray(values)
-    .filter((form) => String(form.text || "").trim())
-    .filter((form) => {
-      const key = lexicalFormKey(form.text);
-      if (!key || currentKeys.has(key) || seenKeys.has(key)) {
-        return false;
-      }
-      seenKeys.add(key);
-      return true;
-    });
-}
-
-function lexicalFormKey(value) {
-  return String(value || "").normalize("NFKC").trim();
-}
-
-function lexicalFormKeys(value) {
-  const key = lexicalFormKey(value);
-  if (!key) {
-    return [];
-  }
-  return [
-    key,
-    ...key.split(/[;；,，、/・･\s]+/u).map(lexicalFormKey).filter(Boolean),
-  ];
-}
-
-function lexicalFormNodes(values) {
-  return asArray(values).map((form) => {
-    const chip = el("span", "lexical-chip lexical-form-chip");
-    chip.append(document.createTextNode(String(form.text || "")));
-    const tags = asArray(form.tags).filter(Boolean).join(" / ");
-    if (tags) {
-      chip.title = tags;
-    }
-    return chip;
-  }).filter((node) => node.textContent.trim());
-}
-
-function lexicalTextNodes(values, className = "lexical-chip") {
-  return asArray(values)
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .map((value) => el("span", className, value));
-}
-
-function uniqueStrings(values) {
-  const seen = new Set();
-  return asArray(values).filter((value) => {
-    const textValue = String(value || "").trim();
-    if (!textValue || seen.has(textValue)) {
-      return false;
-    }
-    seen.add(textValue);
-    return true;
-  });
-}
-
-function lexicalPosNodes(values) {
-  const labels = asArray(values)
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  const visibleLabels = app.lang === "zh"
-    ? uniqueStrings(labels.map(labelLexicalPosZh)).filter((label) => !HIDDEN_LEXICAL_POS_LABELS_ZH.has(label))
-    : labels;
-  return lexicalTextNodes(visibleLabels);
-}
-
-function labelLexicalPosZh(value) {
-  return LEXICAL_POS_LABELS_ZH[value] || value;
-}
-
-function lexicalDictionaryExampleNodes(values) {
-  return asArray(values).map((example) => {
-    const japanese = String(example.japanese || example.sentence || "").trim();
-    if (!japanese) {
-      return null;
-    }
-    const item = el("div", "lexical-dictionary-example");
-    item.append(el("div", "lexical-dictionary-example-ja", japanese));
-    const translation = lexicalExampleTranslation(example);
-    if (translation) {
-      item.append(el("div", "lexical-dictionary-example-translation", translation));
-    }
-    return item;
-  }).filter(Boolean);
-}
-
-function lexicalExampleTranslation(example) {
-  const translations = example.translations || {};
-  if (typeof translations === "string") {
-    return translations.trim();
-  }
-  if (!translations || typeof translations !== "object") {
-    return "";
-  }
-  if (app.lang === "zh") {
-    return ["cmn", "zh", "zho", "chi"]
-      .map((lang) => String(translations[lang] || "").trim())
-      .find(Boolean) || "";
-  }
-  const preferred = ["eng", "en", "cmn", "zh", "zho", "chi"];
-  for (const lang of preferred) {
-    const value = String(translations[lang] || "").trim();
-    if (value) {
-      return value;
-    }
-  }
-  return Object.values(translations)
-    .map((value) => String(value || "").trim())
-    .find(Boolean) || "";
-}
-
-function parseMeaning(value) {
-  let textValue = String(value || "").trim();
-  const raw = textValue;
-  let accent = "";
-  let pos = "";
-  const accentMatch = textValue.match(/^([⓪①②③④⑤⑥⑦⑧⑨]+)\s*/u);
-  if (accentMatch) {
-    accent = accentMatch[1];
-    textValue = textValue.slice(accentMatch[0].length).trim();
-  }
-  const bracketPosMatch = textValue.match(/^【([^】]+)】\s*/u);
-  if (bracketPosMatch) {
-    pos = bracketPosMatch[1];
-    textValue = textValue.slice(bracketPosMatch[0].length).trim();
-  } else {
-    const prefix = meaningPosPrefix(textValue);
-    if (prefix) {
-      pos = normalizeMeaningPos(prefix);
-      textValue = textValue.slice(prefix.length).trim();
-    }
-  }
-  return { raw, accent, pos, text: textValue };
-}
-
-function meaningPosPrefix(value) {
-  const prefixes = [
-    "助动词",
-    "连体词",
-    "接续词",
-    "感叹词",
-    "形容词",
-    "自动1",
-    "自动2",
-    "自动3",
-    "他动1",
-    "他动2",
-    "他动3",
-    "名词",
-    "代词",
-    "副词",
-    "数词",
-    "助词",
-    "动1",
-    "动2",
-    "动3",
-    "イ形",
-    "ナ形",
-    "连体",
-    "名",
-    "代",
-    "副",
-    "数",
-  ];
-  return prefixes.find((prefix) => value.startsWith(`${prefix} `) || value.startsWith(`${prefix}　`)) || "";
-}
-
-function normalizeMeaningPos(value) {
-  const mapping = {
-    名词: "名",
-    代词: "代",
-    副词: "副",
-    数词: "数",
-  };
-  return mapping[value] || value;
-}
-
 function examplesForWord(word) {
   const examples = Array.isArray(word.examples) ? word.examples : [];
   if (app.source === "all") {
@@ -3721,97 +3457,6 @@ function formatJobTime(value) {
 function sourceCount(word, sourceType) {
   const counts = word.source_type_counts || {};
   return counts[sourceType] || 0;
-}
-
-function formatReference(example) {
-  if (example.source_type === "lyrics") {
-    return formatLyricReference(example);
-  }
-  if (example.source_type === "text") {
-    return formatTextReference(example);
-  }
-
-  const parts = [];
-  if (example.source_title) {
-    parts.push(example.source_title);
-  }
-  if (Number.isInteger(example.episode)) {
-    parts.push(`EP${String(example.episode).padStart(2, "0")}`);
-  } else if (example.subtitle_file) {
-    parts.push(example.subtitle_file);
-  }
-  if (Number.isInteger(example.start_ms)) {
-    parts.push(formatTimestamp(example.start_ms));
-  }
-  return parts.join(" ");
-}
-
-function formatTextReference(example) {
-  const parts = [];
-  const title = String(example.source_title || "").trim();
-  const author = String(example.source_artist || "").trim();
-  const file = String(example.subtitle_file || "").trim();
-  if (title) {
-    parts.push(title);
-  }
-  if (author) {
-    parts.push(author);
-  }
-  if (file && normalizedTextTitle(fileStem(file)) !== normalizedTextTitle(title)) {
-    parts.push(file);
-  }
-  return parts.join(" · ");
-}
-
-function fileStem(value) {
-  const name = value.split(/[\\/]/u).pop() || value;
-  return name.replace(/\.[^.]+$/u, "");
-}
-
-function normalizedTextTitle(value) {
-  return String(value || "")
-    .normalize("NFC")
-    .replace(/[\s\u3000]+/gu, " ")
-    .trim();
-}
-
-function formatLyricReference(example) {
-  const parts = [];
-  if (example.source_title) {
-    parts.push(`♪ ${example.source_title}`);
-  }
-  if (example.source_artist) {
-    parts.push(example.source_artist);
-  }
-  if (example.source_album && example.source_album !== example.source_title) {
-    parts.push(`《${example.source_album}》`);
-  }
-  if (Number.isInteger(example.start_ms)) {
-    parts.push(formatTimestamp(example.start_ms));
-  }
-  return parts.join(" · ");
-}
-
-function exampleSourceClass(example) {
-  if (example.source_type === "lyrics") {
-    return "lyrics";
-  }
-  if (example.source_type === "text") {
-    return "text";
-  }
-  return "subtitle";
-}
-
-function formatTimestamp(milliseconds) {
-  let seconds = Math.floor(milliseconds / 1000);
-  const hours = Math.floor(seconds / 3600);
-  seconds -= hours * 3600;
-  const minutes = Math.floor(seconds / 60);
-  seconds -= minutes * 60;
-  if (hours > 0) {
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  }
-  return `${pad(minutes)}:${pad(seconds)}`;
 }
 
 function statusFor(word) {
@@ -4049,18 +3694,6 @@ function statusDot(status) {
   return dot;
 }
 
-function badge(value) {
-  return el("span", "level-badge", value);
-}
-
-function statChip(value) {
-  return el("span", "stat-chip", value);
-}
-
-function emptyMessage(value) {
-  return el("div", "empty-list", value);
-}
-
 function renderLoadError(error) {
   refs.wordDetail.hidden = true;
   refs.emptyState.hidden = false;
@@ -4074,55 +3707,4 @@ function t(key, values = {}) {
     value = value.replace(`{${name}}`, replacement);
   });
   return value;
-}
-
-function el(tag, className = "", value = "") {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (value !== "") {
-    node.textContent = value;
-  }
-  return node;
-}
-
-function strong(value) {
-  return el("strong", "", String(value));
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function formatNumber(value) {
-  return new Intl.NumberFormat(app.lang === "zh" ? "zh-CN" : "en-US").format(value || 0);
-}
-
-function pad(value) {
-  return String(value).padStart(2, "0");
-}
-
-function contextPreview(value, position, minChars = 40, maxLines = 3) {
-  const lines = Array.isArray(value) ? value.filter(Boolean) : [];
-  const selected = [];
-  let charCount = 0;
-  if (position === "before") {
-    for (let index = lines.length - 1; index >= 0 && selected.length < maxLines; index -= 1) {
-      selected.unshift(lines[index]);
-      charCount += lines[index].length;
-      if (charCount >= minChars) {
-        break;
-      }
-    }
-    return selected;
-  }
-  for (let index = 0; index < lines.length && selected.length < maxLines; index += 1) {
-    selected.push(lines[index]);
-    charCount += lines[index].length;
-    if (charCount >= minChars) {
-      break;
-    }
-  }
-  return selected;
 }
