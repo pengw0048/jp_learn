@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.4";
+  const SCRIPT_VERSION = "0.1.5";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -478,8 +478,6 @@
     stopPicker();
     picker = {
       target: null,
-      candidates: [],
-      candidateIndex: 0,
       overlay: document.createElement("div"),
       label: document.createElement("div"),
       previousCursor: document.documentElement.style.cursor,
@@ -508,7 +506,7 @@
       font: "12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       display: "none",
     });
-    picker.label.textContent = "Click to import. [ smaller, ] larger, Esc cancel.";
+    picker.label.textContent = "Click to import highlighted text. Esc cancel.";
     document.documentElement.append(picker.overlay, picker.label);
     document.documentElement.style.cursor = "crosshair";
     window.addEventListener("mousemove", onMouseMove, true);
@@ -533,31 +531,21 @@
     if (!picker) {
       return;
     }
-    const candidates = textBlockCandidates(event.target);
-    if (!candidates.length) {
+    const target = textBlockCandidate(event.target);
+    if (!target) {
       picker.target = null;
-      picker.candidates = [];
-      picker.candidateIndex = 0;
       picker.overlay.style.display = "none";
       picker.label.style.display = "none";
       return;
     }
-    const previousTarget = picker.target;
-    picker.candidates = candidates;
-    if (previousTarget && candidates.includes(previousTarget)) {
-      picker.candidateIndex = candidates.indexOf(previousTarget);
-    } else {
-      picker.candidateIndex = defaultCandidateIndex(candidates);
-    }
-    updatePickerTarget();
+    picker.target = target;
+    updatePickerTarget(target);
   }
 
-  function updatePickerTarget() {
-    if (!picker?.candidates.length) {
+  function updatePickerTarget(target) {
+    if (!picker || !target) {
       return;
     }
-    const target = picker.candidates[picker.candidateIndex] || picker.candidates[0];
-    picker.target = target;
     const rect = target.getBoundingClientRect();
     const textLength = readableText(target).length;
     Object.assign(picker.overlay.style, {
@@ -574,8 +562,6 @@
     });
     picker.label.textContent = [
       `Click to import ${textLength} chars.`,
-      picker.candidateIndex > 0 ? "[ smaller" : "",
-      picker.candidateIndex < picker.candidates.length - 1 ? "] larger" : "",
       "Esc cancel",
     ].filter(Boolean).join(" · ");
   }
@@ -603,53 +589,24 @@
       event.preventDefault();
       event.stopPropagation();
       stopPicker();
-      return;
-    }
-    if (event.key === "[" || event.key === "ArrowUp") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!picker.candidates.length) {
-        return;
-      }
-      picker.candidateIndex = Math.max(0, picker.candidateIndex - 1);
-      updatePickerTarget();
-      return;
-    }
-    if (event.key === "]" || event.key === "ArrowDown") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!picker.candidates.length) {
-        return;
-      }
-      picker.candidateIndex = Math.min(picker.candidates.length - 1, picker.candidateIndex + 1);
-      updatePickerTarget();
     }
   }
 
-  function textBlockCandidates(node) {
+  function textBlockCandidate(node) {
     if (!(node instanceof Element)) {
-      return [];
+      return null;
     }
     if (node.id === "jpcorpus-picker-overlay" || node.id === "jpcorpus-picker-label") {
-      return picker?.candidates || [];
+      return picker?.target || null;
     }
-    const candidates = [];
     let current = node;
     while (current && current !== document.body && current !== document.documentElement) {
       if (isUsableTextBlock(current)) {
-        candidates.push(current);
+        return current;
       }
       current = current.parentElement;
     }
-    return candidates;
-  }
-
-  function defaultCandidateIndex(candidates) {
-    const usefulIndex = candidates.findIndex((candidate) => readableText(candidate).length >= 80);
-    if (usefulIndex >= 0) {
-      return usefulIndex;
-    }
-    return 0;
+    return null;
   }
 
   function isUsableTextBlock(element) {

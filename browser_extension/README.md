@@ -12,7 +12,7 @@ This unpacked Chrome extension sends selected web text to the local jpcorpus vie
    - right-click and choose Add selection to jpcorpus, or
    - right-click the page and choose Add main article to jpcorpus, or
    - open the extension popup and click Import current selection, or
-   - click Pick page area, hover a visible text block, then click it. Press `[` for a smaller block, `]` for a larger block, or Esc to cancel.
+   - click Pick page area, hover a visible text block, then click it. Press Esc to cancel.
 6. For temporary on-page lookup, open the popup and click Toggle page reading mode, or right-click the page and choose Toggle jpcorpus reading mode. This does not save the page; it highlights known words and shows a floating glossary panel when a highlighted word is clicked. Click Add to study in that panel to add the word to the viewer's study list.
 
 For pages with many nested spans or ruby annotations, Add main article strips `rt`/`rp` ruby text before importing. Selecting the exact text first is still the most precise option for a small snippet.
