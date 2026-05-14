@@ -11,9 +11,7 @@ const MESSAGES = {
     noSelection: "没有选中文字可导入。",
     importingToJpcorpus: "正在导入 jpcorpus...",
     alreadyImported: "已经导入过 {title}，无需刷新。",
-    corpusRefreshRunning: "语料刷新已经在运行。",
-    corpusRefreshStarted: "语料刷新已开始。",
-    imported: "已导入 {title}。{refresh}",
+    imported: "已导入 {title}。",
     importFailedTitle: "jpcorpus 导入失败",
     readerFailedTitle: "jpcorpus 网页阅读模式失败",
     readingMode: "网页阅读模式",
@@ -43,9 +41,7 @@ const MESSAGES = {
     noSelection: "No selected text to import.",
     importingToJpcorpus: "Importing to jpcorpus...",
     alreadyImported: "Already imported {title}. No refresh needed.",
-    corpusRefreshRunning: "Corpus refresh is already running.",
-    corpusRefreshStarted: "Corpus refresh started.",
-    imported: "Imported {title}. {refresh}",
+    imported: "Imported {title}.",
     importFailedTitle: "jpcorpus import failed",
     readerFailedTitle: "jpcorpus reading mode failed",
     readingMode: "Reading mode",
@@ -222,10 +218,7 @@ async function importSelectedText(payload) {
     return { imported: importPayload.imported, job: null, duplicate: true };
   }
   const refreshPayload = await startCorpusRefresh(baseUrl);
-  const refreshMessage = refreshPayload.alreadyRunning
-    ? t(lang, "corpusRefreshRunning")
-    : t(lang, "corpusRefreshStarted");
-  const message = t(lang, "imported", { title, refresh: refreshMessage });
+  const message = t(lang, "imported", { title });
   await clearStoredStatus();
   await clearActionBadge();
   await showPageToast(payload.tabId, message);
