@@ -1220,33 +1220,6 @@ mark {
   font-weight: 760;
 }
 
-.example-study-button {
-  flex: 0 0 auto;
-  min-height: 28px;
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfc;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.example-study-button.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.example-study-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.example-study-button:disabled {
-  opacity: 0.58;
-}
-
 .example-explain-button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);

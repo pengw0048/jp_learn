@@ -242,8 +242,6 @@ const text = {
     readerMarkedTitle: "本篇学习中",
     readerMarkedEmpty: "这篇还没有学习中的词",
     readerMarkedCount: "{count} 个词",
-    exampleAddStudy: "+ 学习",
-    exampleInStudy: "复习中",
     maintenanceProvider: "Provider",
     maintenanceReloaded: "，页面已刷新",
     taskSyncMedia: "刷新",
@@ -412,8 +410,6 @@ const text = {
     readerMarkedTitle: "Studying in this piece",
     readerMarkedEmpty: "No study words in this piece yet",
     readerMarkedCount: "{count} words",
-    exampleAddStudy: "+ Study",
-    exampleInStudy: "Reviewing",
     maintenanceProvider: "Provider",
     maintenanceReloaded: ", page refreshed",
     taskSyncMedia: "Refresh",
@@ -3461,7 +3457,6 @@ function renderExamples(word, options = {}) {
 function renderExampleCard(word, example, options = {}) {
   const revealAnnotations = options.revealAnnotations ?? true;
   const allowAiExplain = app.mode !== "read" && (app.mode !== "study" || revealAnnotations);
-  const allowStudyAction = app.mode === "browse";
   const sourceClass = exampleSourceClass(example);
   const item = el("div", `example example-${sourceClass}`);
   const lines = el("div", "example-lines");
@@ -3472,7 +3467,7 @@ function renderExampleCard(word, example, options = {}) {
   appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
   lines.append(current);
   appendContextBlock(lines, afterLines, "after");
-  lines.append(renderExampleFooter(word, example, sourceClass, { allowAiExplain, allowStudyAction }));
+  lines.append(renderExampleFooter(word, example, sourceClass, { allowAiExplain }));
   item.append(lines);
   const annotationBlock = renderExampleAnnotationBlock(word, example, {
     allowAiExplain,
@@ -3491,9 +3486,6 @@ function renderExampleFooter(word, example, sourceClass, options = {}) {
   const footer = el("div", "example-footer");
   footer.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
   const actions = el("div", "example-footer-actions");
-  if (options.allowStudyAction) {
-    actions.append(renderExampleStudyButton(word));
-  }
   if (options.allowAiExplain) {
     actions.append(renderExampleExplainButton(word, example, exampleExplanationKey(word, example)));
   }
@@ -3572,20 +3564,6 @@ function renderExampleExplainButton(word, example, key) {
   return button;
 }
 
-function renderExampleStudyButton(word) {
-  const status = statusFor(word);
-  const active = status === "learning" || status === "uncertain";
-  const known = status === "known";
-  const button = el("button", `example-study-button ${active ? "active" : ""}`.trim());
-  button.type = "button";
-  button.textContent = known ? t("readerKnown") : active ? t("exampleInStudy") : t("exampleAddStudy");
-  button.disabled = known;
-  button.addEventListener("click", () => {
-    addWordToStudyFromExample(word);
-  });
-  return button;
-}
-
 async function startExampleExplanation(word, example, key) {
   app.exampleExplanations[key] = {
     status: "loading",
@@ -3615,13 +3593,6 @@ async function startExampleExplanation(word, example, key) {
     };
   }
   renderDetail();
-}
-
-function addWordToStudyFromExample(word) {
-  addWordToStudyFromReader(word);
-  renderWordList();
-  renderDetail();
-  renderMaintenance();
 }
 
 function renderExampleColumnControl() {
