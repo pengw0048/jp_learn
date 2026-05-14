@@ -1,30 +1,40 @@
-const STORAGE_LANG = "jpcorpus.viewer.lang";
-const STORAGE_STATUS = "jpcorpus.viewer.status.v1";
-const STORAGE_STUDY_COUNTS = "jpcorpus.viewer.studyCounts.v1";
-const STORAGE_STUDY_SESSION = "jpcorpus.viewer.studySession.v2";
-const STORAGE_STUDY_SCHEDULE = "jpcorpus.viewer.studySchedule.v1";
-const STORAGE_EXAMPLE_COLUMNS = "jpcorpus.viewer.exampleColumns.v1";
-const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
-const STORAGE_SPLIT_RATIOS = "jpcorpus.viewer.splitRatios.v1";
-const STORAGE_READER_WORD_LIST = "jpcorpus.viewer.readerWordList.v1";
-const STORAGE_READER_POSITIONS = "jpcorpus.viewer.readerPositions.v1";
+const {
+  STORAGE_LANG,
+  STORAGE_STATUS,
+  STORAGE_STUDY_COUNTS,
+  STORAGE_STUDY_SESSION,
+  STORAGE_STUDY_SCHEDULE,
+  STORAGE_EXAMPLE_COLUMNS,
+  STORAGE_MODE,
+  STORAGE_SPLIT_RATIOS,
+  STORAGE_READER_WORD_LIST,
+  STORAGE_READER_POSITIONS,
+  DAILY_STUDY_LIMIT,
+  STUDY_REVIEW_DELAY_DAYS,
+  STUDY_TARGET_COUNT,
+  EXAMPLE_COLUMN_VALUES,
+  MODE_VALUES,
+  READER_WORD_LIST_VALUES,
+  SPLIT_DEFAULT_RATIOS,
+  readStatuses,
+  readStudyCounts,
+  todayKey,
+  addDaysKey,
+  readStudySession,
+  readStudySchedule,
+  readExampleColumns,
+  readSplitRatios,
+  readMode,
+  readReaderWordList,
+  readReaderPositions,
+  clampStudyCount,
+} = window.JPCORPUS_STORAGE;
 const WORD_LIST_PAGE_SIZE = 600;
-const DAILY_STUDY_LIMIT = 30;
-const STUDY_REVIEW_DELAY_DAYS = 1;
-const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
-const MODE_VALUES = new Set(["browse", "study", "read"]);
-const READER_WORD_LIST_VALUES = new Set(["all", "study", "piece", "N5", "N4", "N3", "N2", "N1"]);
-const SPLIT_DEFAULT_RATIOS = {
-  browse: 0.28,
-  study: 0.28,
-  read: 0.72,
-};
 const SPLIT_LIMITS = {
   browse: { minLeft: 300, minRight: 420 },
   study: { minLeft: 300, minRight: 420 },
   read: { minLeft: 420, minRight: 340 },
 };
-const STUDY_TARGET_COUNT = 7;
 const SEARCH_PUNCTUATION_RE = /[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~、。，．・･；;：:！？!?「」『』【】（）()［］\[\]〈〉《》…〜～·]+/gu;
 const GODAN_ENDINGS = {
   "う": { a: "わ", i: "い", e: "え", o: "お", te: "って", ta: "った" },
@@ -4320,14 +4330,6 @@ function clearStudySchedule(word) {
   writeStudySchedule();
 }
 
-function clampStudyCount(value) {
-  const count = Number.parseInt(value, 10);
-  if (!Number.isFinite(count) || count <= 0) {
-    return 0;
-  }
-  return Math.min(count, STUDY_TARGET_COUNT);
-}
-
 function studyCheckLabel(word) {
   return t("studyChecks", {
     count: formatNumber(studyCountFor(word)),
@@ -4344,84 +4346,6 @@ function renderStudyCountBadge(word) {
   node.textContent = count >= STUDY_TARGET_COUNT ? t("studyMastered") : `${count}/${STUDY_TARGET_COUNT}`;
   node.title = studyCheckLabel(word);
   return node;
-}
-
-function readStatuses() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_STATUS) || "{}");
-    return value && typeof value === "object" ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-function readStudyCounts() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_COUNTS) || "{}");
-    if (!value || typeof value !== "object") {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(value)
-        .map(([word, count]) => [word, clampStudyCount(count)])
-        .filter(([, count]) => count > 0),
-    );
-  } catch {
-    return {};
-  }
-}
-
-function todayKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function addDaysKey(dateKey, days) {
-  const [year, month, day] = String(dateKey || todayKey()).split("-").map((part) => Number.parseInt(part, 10));
-  const date = Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)
-    ? new Date(year, month - 1, day)
-    : new Date();
-  date.setDate(date.getDate() + days);
-  return todayKey(date);
-}
-
-function readStudySession() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_SESSION) || "{}");
-    if (!value || typeof value !== "object") {
-      return { date: todayKey(), words: [] };
-    }
-    const date = typeof value.date === "string" ? value.date : todayKey();
-    const words = asArray(value.words)
-      .map((word) => String(word || "").trim())
-      .filter(Boolean)
-      .slice(0, DAILY_STUDY_LIMIT);
-    return { date, words };
-  } catch {
-    return { date: todayKey(), words: [] };
-  }
-}
-
-function readStudySchedule() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_STUDY_SCHEDULE) || "{}");
-    if (!value || typeof value !== "object") {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(value)
-        .map(([word, schedule]) => {
-          const lastSeen = typeof schedule?.last_seen === "string" ? schedule.last_seen : "";
-          const dueDate = typeof schedule?.due_date === "string" ? schedule.due_date : todayKey();
-          return [word, { last_seen: lastSeen, due_date: dueDate }];
-        })
-        .filter(([word]) => word),
-    );
-  } catch {
-    return {};
-  }
 }
 
 function writeStudySchedule() {
@@ -4554,60 +4478,6 @@ function sameStudySession(left, right) {
   const rightWords = asArray(right.words);
   return leftWords.length === rightWords.length
     && leftWords.every((word, index) => word === rightWords[index]);
-}
-
-function readExampleColumns() {
-  const value = localStorage.getItem(STORAGE_EXAMPLE_COLUMNS) || "auto";
-  return EXAMPLE_COLUMN_VALUES.has(value) ? value : "auto";
-}
-
-function readSplitRatios() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_SPLIT_RATIOS) || "{}");
-    if (!value || typeof value !== "object") {
-      return { ...SPLIT_DEFAULT_RATIOS };
-    }
-    return Object.fromEntries(
-      [...MODE_VALUES].map((mode) => {
-        const ratio = Number(value[mode]);
-        const fallback = SPLIT_DEFAULT_RATIOS[mode] ?? 0.3;
-        return [mode, Number.isFinite(ratio) ? clampNumber(ratio, 0.15, 0.85) : fallback];
-      }),
-    );
-  } catch {
-    return { ...SPLIT_DEFAULT_RATIOS };
-  }
-}
-
-function readMode() {
-  const value = localStorage.getItem(STORAGE_MODE) || "browse";
-  return MODE_VALUES.has(value) ? value : "browse";
-}
-
-function readReaderWordList() {
-  const value = localStorage.getItem(STORAGE_READER_WORD_LIST) || "all";
-  return READER_WORD_LIST_VALUES.has(value) ? value : "all";
-}
-
-function readReaderPositions() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_READER_POSITIONS) || "{}");
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(value)
-        .map(([key, entry]) => {
-          const scrollTop = Math.max(0, Math.round(Number(entry?.scrollTop) || 0));
-          const progress = Math.min(100, Math.max(0, Math.round(Number(entry?.progress) || 0)));
-          const updatedAt = Math.max(0, Math.round(Number(entry?.updatedAt) || 0));
-          return [key, { scrollTop, progress, updatedAt }];
-        })
-        .filter(([key]) => key),
-    );
-  } catch {
-    return {};
-  }
 }
 
 function persistReaderPositions() {
