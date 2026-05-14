@@ -20,11 +20,9 @@ from .viewer_jobs import (
     load_viewer_source_details,
     load_viewer_word_detail,
     maintenance_status,
-    save_viewer_study_state,
-    update_viewer_word_status,
-    viewer_study_state,
 )
 from .viewer_config import save_viewer_config
+from .viewer_study import save_viewer_study_state, update_viewer_word_status, viewer_study_state
 
 
 ASSET_DIR = Path(__file__).with_name("viewer_assets")
