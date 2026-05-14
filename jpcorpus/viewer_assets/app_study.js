@@ -22,6 +22,7 @@ window.JPCORPUS_STUDY = (() => {
       todayKey,
     } = storage;
     let studySyncTimer = null;
+    let lastRemoteStudyUpdatedAt = "";
     const pendingStudySyncWords = new Set();
 
     function statusFor(word) {
@@ -121,38 +122,68 @@ window.JPCORPUS_STUDY = (() => {
       localStorage.setItem(STORAGE_STUDY_SCHEDULE, JSON.stringify(app.studySchedule));
     }
 
-    async function mergeRemoteStudyState() {
+    async function mergeRemoteStudyState(options = {}) {
+      const preferRemote = options.preferRemote ?? false;
       try {
         const state = await api.studyState();
         if (!state) {
-          return;
+          return false;
+        }
+        const remoteUpdatedAt = typeof state.updated_at === "string" ? state.updated_at : "";
+        const remoteStatuses = normalizeRemoteStatusMap(state.statuses);
+        const remoteCounts = normalizeRemoteStudyCounts(state.study_counts);
+        const remoteSchedule = normalizeRemoteStudySchedule(state.study_schedule);
+        const hasRemoteContent = Object.keys(remoteStatuses).length > 0
+          || Object.keys(remoteCounts).length > 0
+          || Object.keys(remoteSchedule).length > 0;
+        if (preferRemote && !remoteUpdatedAt && !hasRemoteContent) {
+          return false;
+        }
+        if (preferRemote && remoteUpdatedAt && remoteUpdatedAt === lastRemoteStudyUpdatedAt) {
+          return false;
         }
         let changed = false;
-        for (const [word, status] of Object.entries(normalizeRemoteStatusMap(state.statuses))) {
-          const localStatus = app.statuses[word];
-          if (!localStatus || localStatus === "none") {
-            app.statuses[word] = status;
-            changed = true;
+        if (preferRemote) {
+          changed = JSON.stringify(app.statuses) !== JSON.stringify(remoteStatuses)
+            || JSON.stringify(app.studyCounts) !== JSON.stringify(remoteCounts)
+            || JSON.stringify(app.studySchedule) !== JSON.stringify(remoteSchedule);
+          if (changed) {
+            app.statuses = remoteStatuses;
+            app.studyCounts = remoteCounts;
+            app.studySchedule = remoteSchedule;
+          }
+        } else {
+          for (const [word, status] of Object.entries(remoteStatuses)) {
+            const localStatus = app.statuses[word];
+            if (!localStatus || localStatus === "none") {
+              app.statuses[word] = status;
+              changed = true;
+            }
+          }
+          for (const [word, count] of Object.entries(remoteCounts)) {
+            const localCount = clampStudyCount(app.studyCounts[word] || 0);
+            if (count > localCount) {
+              app.studyCounts[word] = count;
+              changed = true;
+            }
+          }
+          for (const [word, schedule] of Object.entries(remoteSchedule)) {
+            if (!app.studySchedule[word]) {
+              app.studySchedule[word] = schedule;
+              changed = true;
+            }
           }
         }
-        for (const [word, count] of Object.entries(normalizeRemoteStudyCounts(state.study_counts))) {
-          const localCount = clampStudyCount(app.studyCounts[word] || 0);
-          if (count > localCount) {
-            app.studyCounts[word] = count;
-            changed = true;
-          }
-        }
-        for (const [word, schedule] of Object.entries(normalizeRemoteStudySchedule(state.study_schedule))) {
-          if (!app.studySchedule[word]) {
-            app.studySchedule[word] = schedule;
-            changed = true;
-          }
+        if (remoteUpdatedAt) {
+          lastRemoteStudyUpdatedAt = remoteUpdatedAt;
         }
         if (changed) {
           writeLocalStudyState();
         }
+        return changed;
       } catch {
         // The viewer still works offline; web-extension study additions sync when the local API is available.
+        return false;
       }
     }
 

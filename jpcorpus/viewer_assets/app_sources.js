@@ -392,7 +392,11 @@ window.JPCORPUS_SOURCES = (() => {
 
       const top = el("div", "source-card-top");
       top.append(heading, actions);
-      item.append(top, renderSourceMetrics(source));
+      item.append(top);
+      const summary = renderSourceSummary(source);
+      if (summary) {
+        item.append(summary);
+      }
 
       const collapsedPreviewLimit = source.type === "subtitle" ? 4 : 6;
       const canToggle = source.type === "subtitle" && source.children.length > collapsedPreviewLimit;
@@ -452,7 +456,11 @@ window.JPCORPUS_SOURCES = (() => {
       if (canDeleteImportedSource(source)) {
         heading.append(renderDeleteImportedSourceButton(source));
       }
-      detail.append(heading, renderSourceMetrics(source));
+      detail.append(heading);
+      const summary = renderSourceSummary(source);
+      if (summary) {
+        detail.append(summary);
+      }
 
       const children = renderSourceChildren(source.children, source.type, {
         showFileDetails: true,
@@ -536,26 +544,17 @@ window.JPCORPUS_SOURCES = (() => {
       }
     }
 
-    function renderSourceMetrics(source) {
-      const metrics = el("div", "source-metrics");
+    function renderSourceSummary(source) {
       const childLabel = source.type === "lyrics" ? t("sourceInventoryTracks") : t("sourceInventoryEpisodes");
-      [
-        [source.type === "text" ? t("sourceInventoryFiles") : childLabel, source.children?.length || 0],
-        [t("sourceInventoryFiles"), source.fileCount || source.files.size],
-        [t("sourceInventoryTokens"), source.tokens],
-        [t("sourceInventoryWords"), source.words.size],
-        [t("sourceInventoryLines"), source.readerLineCount],
-        [t("sourceInventoryExamples"), source.exampleCount],
-        [t("sourceInventoryAnnotated"), `${formatNumber(source.annotated)}/${formatNumber(source.exampleCount)}`],
-      ].forEach(([label, value], index) => {
-        if ((value === 0 || value === "0/0") || (index === 1 && source.type === "text")) {
-          return;
-        }
-        const metric = el("span", "source-metric");
-        metric.append(el("span", "", label), strong(value));
-        metrics.append(metric);
-      });
-      return metrics;
+      const childCount = source.type === "text"
+        ? source.fileCount || source.files.size || source.children?.length || 0
+        : source.children?.length || 0;
+      const parts = [
+        childCount ? `${formatNumber(childCount)} ${source.type === "text" ? t("sourceInventoryFiles") : childLabel}` : "",
+        source.readerLineCount ? `${formatNumber(source.readerLineCount)} ${t("sourceInventoryLines")}` : "",
+        !source.readerLineCount && source.exampleCount ? `${formatNumber(source.exampleCount)} ${t("sourceInventoryExamples")}` : "",
+      ].filter(Boolean);
+      return parts.length ? el("div", "source-summary", parts.join(" · ")) : null;
     }
 
     function renderSourceChildren(children, sourceType, options = {}) {

@@ -400,16 +400,19 @@ const {
   t,
 });
 
+let remoteStudyRefreshInFlight = false;
+
 init();
 
 async function init() {
   bindControls();
+  bindRemoteStudyStateRefresh();
   applyLanguage();
   await loadMaintenanceStatus();
   try {
     app.corpus = await api.loadCorpusIndex();
     app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
-    await mergeRemoteStudyState();
+    await mergeRemoteStudyState({ preferRemote: true });
     app.selectedWord = chooseInitialWord(currentWordSet());
     render();
     if (app.maintenance.enabled) {
@@ -417,6 +420,33 @@ async function init() {
     }
   } catch (error) {
     renderLoadError(error);
+  }
+}
+
+function bindRemoteStudyStateRefresh() {
+  window.addEventListener("focus", refreshRemoteStudyState);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      refreshRemoteStudyState();
+    }
+  });
+}
+
+async function refreshRemoteStudyState() {
+  if (!app.corpus || remoteStudyRefreshInFlight) {
+    return;
+  }
+  remoteStudyRefreshInFlight = true;
+  try {
+    const changed = await mergeRemoteStudyState({ preferRemote: true });
+    if (changed) {
+      if (app.mode === "read") {
+        app.reader.preserveScrollOnRender = true;
+      }
+      render();
+    }
+  } finally {
+    remoteStudyRefreshInFlight = false;
   }
 }
 
@@ -976,7 +1006,7 @@ function renderReadingPane() {
   app.reader.positionKey = positionKey;
   scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
   scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller), { passive: true });
-  scroller.append(
+  scroller.append(...[
     renderReaderModeSummary(selected, selectedUnit),
     renderReaderMarkedWordsPanel(),
     detailsReady
@@ -986,7 +1016,7 @@ function renderReadingPane() {
         documents: selectedUnit?.documents || [],
       })
       : emptyMessage(t("sourceDetailLoading")),
-  );
+  ].filter(Boolean));
   pane.append(scroller);
   refs.wordList.replaceChildren(pane);
   const restoredScrollTop = previousScrollTop ?? (app.reader.positions[positionKey]?.scrollTop || 0);
@@ -1178,6 +1208,9 @@ function renderReaderContextPanel(word) {
 
 function renderReaderMarkedWordsPanel() {
   const entries = readerMarkedWordsForCurrentUnit();
+  if (entries.length === 0) {
+    return null;
+  }
   const section = el("details", "reader-marked-card");
   section.open = app.reader.markedOpen;
   section.addEventListener("toggle", () => {
@@ -1188,11 +1221,6 @@ function renderReaderMarkedWordsPanel() {
   top.append(el("span", "reader-marked-count", t("readerMarkedCount", { count: formatNumber(entries.length) })));
   section.append(top);
   const body = el("div", "reader-marked-body");
-  if (entries.length === 0) {
-    body.append(emptyMessage(t("readerMarkedEmpty")));
-    section.append(body);
-    return section;
-  }
   const list = el("div", "reader-marked-list");
   entries.forEach(({ word, status, count, selection, lineKey }) => {
     const button = el("button", `reader-marked-chip ${status}`.trim());
@@ -1422,7 +1450,7 @@ async function reloadCorpus() {
   app.sourceDetailFailures.clear();
   app.corpus = await api.loadCorpusIndex();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
-  await mergeRemoteStudyState();
+  await mergeRemoteStudyState({ preferRemote: true });
   app.selectedWord = readMode
     ? app.words.find((word) => word.word === selectedWord) || null
     : app.words.find((word) => word.word === selectedWord) || chooseInitialWord();

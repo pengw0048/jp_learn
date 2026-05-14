@@ -1720,25 +1720,10 @@ mark {
   font-size: 12px;
 }
 
-.source-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.source-metric {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: #f4f7f7;
+.source-summary {
   color: var(--muted);
   font-size: 12px;
-}
-
-.source-metric strong {
-  color: var(--text);
+  font-weight: 650;
 }
 
 .source-view-button,
