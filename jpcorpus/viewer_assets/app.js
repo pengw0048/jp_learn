@@ -107,9 +107,6 @@ const app = {
     pendingReloadJob: null,
     syncApplying: false,
     syncError: "",
-    dictionaryAudit: null,
-    dictionaryAuditLoading: false,
-    dictionaryAuditError: "",
   },
 };
 const {
@@ -202,8 +199,6 @@ const refs = {
   maintenanceProgressLabel: $("#maintenance-progress-label"),
   maintenanceStatus: $("#maintenance-status"),
   maintenanceLog: $("#maintenance-log"),
-  dictionaryAudit: $("#dictionary-audit"),
-  dictionaryAuditRefresh: $("#dictionary-audit-refresh"),
   corpusSyncBanner: $("#corpus-sync-banner"),
   corpusSyncMessage: $("#corpus-sync-message"),
   corpusSyncApply: $("#corpus-sync-apply"),
@@ -507,7 +502,6 @@ function bindControls() {
     refs.maintenanceToggle.classList.toggle("active", !refs.maintenancePanel.hidden);
     if (!refs.maintenancePanel.hidden) {
       hideSourcePanel();
-      maybeLoadDictionaryAudit();
     }
     renderMaintenance();
   });
@@ -521,7 +515,6 @@ function bindControls() {
   refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
   refs.importTextSave.addEventListener("click", importTextFromMaintenance);
-  refs.dictionaryAuditRefresh.addEventListener("click", () => loadDictionaryAudit());
   refs.corpusSyncApply.addEventListener("click", applyPendingCorpusReload);
   refs.importTextContent.addEventListener("input", renderMaintenance);
   refs.configForm.addEventListener("toggle", () => {
@@ -687,130 +680,10 @@ function renderMaintenance() {
     !app.maintenance.enabled
     || job?.status === "running"
     || !refs.importTextContent.value.trim();
-  refs.dictionaryAuditRefresh.disabled =
-    !app.maintenance.enabled
-    || app.maintenance.dictionaryAuditLoading
-    || job?.status === "running";
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(visibleJob);
   refs.maintenanceLog.textContent = visibleJob?.log?.join("\n") || "";
-  renderDictionaryAudit();
   renderCorpusSyncBanner();
-}
-
-function maybeLoadDictionaryAudit() {
-  if (
-    !app.maintenance.enabled
-    || app.maintenance.dictionaryAudit
-    || app.maintenance.dictionaryAuditLoading
-  ) {
-    return;
-  }
-  loadDictionaryAudit();
-}
-
-async function loadDictionaryAudit() {
-  app.maintenance.dictionaryAuditLoading = true;
-  app.maintenance.dictionaryAuditError = "";
-  renderMaintenance();
-  try {
-    app.maintenance.dictionaryAudit = await api.loadDictionaryAudit();
-  } catch (error) {
-    app.maintenance.dictionaryAuditError = error.message || String(error);
-  } finally {
-    app.maintenance.dictionaryAuditLoading = false;
-    renderMaintenance();
-  }
-}
-
-function renderDictionaryAudit() {
-  if (!refs.dictionaryAudit) {
-    return;
-  }
-  if (app.maintenance.dictionaryAuditLoading && !app.maintenance.dictionaryAudit) {
-    refs.dictionaryAudit.replaceChildren(emptyMessage(t("dictionaryAuditLoading")));
-    return;
-  }
-  if (app.maintenance.dictionaryAuditError) {
-    refs.dictionaryAudit.replaceChildren(emptyMessage(t("dictionaryAuditFailed", {
-      error: app.maintenance.dictionaryAuditError,
-    })));
-    return;
-  }
-  const audit = app.maintenance.dictionaryAudit;
-  if (!audit) {
-    refs.dictionaryAudit.replaceChildren(emptyMessage(t("dictionaryAuditEmpty")));
-    return;
-  }
-  const summary = audit.summary || {};
-  const counts = audit.counts || {};
-  const statRow = el("div", "dictionary-audit-stats");
-  [
-    ["dictionaryAuditTotal", summary.exported_word_count],
-    ["dictionaryAuditWithChinese", summary.exported_zh_meaning_word_count],
-    ["dictionaryAuditMissingChinese", summary.exported_missing_zh_meaning_word_count ?? counts.missing_zh],
-    ["dictionaryAuditWithJmdict", summary.exported_jmdict_word_count],
-    ["dictionaryAuditNoJmdict", summary.exported_no_jmdict_word_count ?? counts.no_jmdict],
-    ["dictionaryAuditWithExamples", summary.exported_dictionary_example_word_count],
-  ].forEach(([labelKey, value]) => {
-    statRow.append(statChip(`${t(labelKey)} ${formatNumber(value || 0)}`));
-  });
-  const groups = el("div", "dictionary-audit-groups");
-  dictionaryAuditGroups().forEach(([key, labelKey, helpKey]) => {
-    groups.append(renderDictionaryAuditGroup(key, t(labelKey), t(helpKey), audit));
-  });
-  refs.dictionaryAudit.replaceChildren(statRow, groups);
-}
-
-function dictionaryAuditGroups() {
-  return [
-    ["missing_zh", "dictionaryAuditMissingZhTitle", "dictionaryAuditMissingZhHelp"],
-    ["english_only", "dictionaryAuditEnglishOnlyTitle", "dictionaryAuditEnglishOnlyHelp"],
-    ["no_jmdict", "dictionaryAuditNoJmdictTitle", "dictionaryAuditNoJmdictHelp"],
-    ["no_dictionary_examples", "dictionaryAuditNoExamplesTitle", "dictionaryAuditNoExamplesHelp"],
-    ["raw_pos", "dictionaryAuditRawPosTitle", "dictionaryAuditRawPosHelp"],
-  ];
-}
-
-function renderDictionaryAuditGroup(key, title, help, audit) {
-  const counts = audit.counts || {};
-  const items = asArray(audit.categories?.[key]);
-  const card = el("section", "dictionary-audit-group");
-  const heading = el("div", "dictionary-audit-group-heading");
-  heading.append(
-    el("strong", "", title),
-    el("span", "", formatNumber(counts[key] || items.length)),
-  );
-  card.append(heading, el("p", "maintenance-help", help));
-  if (!items.length) {
-    card.append(el("p", "dictionary-audit-ok", t("dictionaryAuditNoIssues")));
-    return card;
-  }
-  const list = el("div", "dictionary-audit-list");
-  items.forEach((item) => list.append(renderDictionaryAuditItem(item)));
-  card.append(list);
-  return card;
-}
-
-function renderDictionaryAuditItem(item) {
-  const button = el("button", "dictionary-audit-item");
-  button.type = "button";
-  button.addEventListener("click", () => {
-    refs.maintenancePanel.hidden = true;
-    refs.maintenanceToggle.classList.remove("active");
-    openWordFromSource(item.word);
-  });
-  const title = el("strong", "", item.word || "");
-  const meta = [
-    item.reading,
-    item.level,
-    item.count ? t("countWithValue", { count: formatNumber(item.count) }) : "",
-  ].filter(Boolean).join(" · ");
-  const meaning = app.lang === "zh"
-    ? item.meaning_zh || item.meaning || ""
-    : item.meaning || item.meaning_zh || "";
-  button.append(title, el("span", "", meta), el("small", "", meaning || t("missingMeaning")));
-  return button;
 }
 
 function renderConfigStatus() {
@@ -1598,8 +1471,6 @@ async function reloadCorpus() {
   app.sourceDetails.clear();
   app.sourceDetailRequests.clear();
   app.sourceDetailFailures.clear();
-  app.maintenance.dictionaryAudit = null;
-  app.maintenance.dictionaryAuditError = "";
   app.corpus = await api.loadCorpusIndex();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
   await mergeRemoteStudyState({ preferRemote: true });

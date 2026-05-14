@@ -201,3 +201,103 @@ def test_maintenance_status_hides_successful_imported_text_refresh():
         """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_lexical_notes_hide_sense_pos_repeated_by_global_pos():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        global.document = {{
+          createDocumentFragment: () => makeNode("fragment"),
+          createTextNode: (value) => makeTextNode(value),
+        }};
+
+        function makeTextNode(value) {{
+          return {{
+            get textContent() {{
+              return String(value || "");
+            }},
+          }};
+        }}
+
+        function makeNode(tag, className = "", value = "") {{
+          return {{
+            tag,
+            className,
+            title: "",
+            children: [],
+            value: String(value || ""),
+            append(...items) {{
+              this.children.push(...items.map((item) => typeof item === "string" ? makeTextNode(item) : item));
+            }},
+            get childElementCount() {{
+              return this.children.filter((child) => child && child.tag).length;
+            }},
+            get textContent() {{
+              return this.value + this.children.map((child) => child.textContent || "").join("");
+            }},
+            set textContent(nextValue) {{
+              this.value = String(nextValue || "");
+              this.children = [];
+            }},
+          }};
+        }}
+
+        require({str(VIEWER_ASSET_DIR / "app_lexical.js")!r});
+        const helpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
+          el: makeNode,
+          t: (key) => ({{
+            lexicalNotes: "词语知识",
+            lexicalPos: "语法",
+            lexicalSenses: "词典义项",
+            lexicalEnglishSenses: "英文义项",
+          }}[key] || key),
+          getLanguage: () => "zh",
+        }});
+        const section = helpers.renderLexicalNotes({{
+          word: "やる",
+          reading: "やる",
+          meaning_zh: "做",
+          lexical_notes: {{
+            parts_of_speech: ["五段・る", "他动", "自动", "接尾词"],
+            senses: [
+              {{
+                glosses: ["to do", "to undertake"],
+                parts_of_speech: ["五段・る", "他动"],
+              }},
+            ],
+          }},
+        }});
+        const text = section.textContent;
+
+        assert.equal((text.match(/五段・る/g) || []).length, 1);
+        assert.equal((text.match(/他动/g) || []).length, 1);
+        assert.equal(text.includes("to do"), false);
+        assert.equal(text.includes("词典义项"), false);
+
+        const fallbackSection = helpers.renderLexicalNotes({{
+          word: "やる",
+          reading: "やる",
+          lexical_notes: {{
+            parts_of_speech: ["五段・る", "他动"],
+            senses: [
+              {{
+                glosses: ["to do", "to undertake"],
+                parts_of_speech: ["五段・る", "他动"],
+              }},
+            ],
+          }},
+        }});
+        const fallbackText = fallbackSection.textContent;
+
+        assert.equal((fallbackText.match(/五段・る/g) || []).length, 1);
+        assert.equal((fallbackText.match(/他动/g) || []).length, 1);
+        assert.match(fallbackText, /英文义项1to do/);
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)

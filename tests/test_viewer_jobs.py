@@ -7,7 +7,6 @@ from jpcorpus.viewer_jobs import (
     ViewerJobRunner,
     composite_maintenance_steps,
     explain_reader_usage,
-    load_viewer_dictionary_audit,
     load_viewer_source_details,
     load_viewer_word_detail,
     normalize_maintenance_spec,
@@ -212,75 +211,6 @@ def test_viewer_detail_loaders_prefer_split_files(tmp_path):
     assert load_viewer_word_detail(corpus, "約束")["word"]["reading"] == "やくそく"
     payload = load_viewer_source_details(corpus, [source["source_key"]])
     assert payload["sources"][0]["lines"][0]["text"] == "私は約束を見る。"
-
-
-def test_load_viewer_dictionary_audit_reports_suspicious_words(tmp_path):
-    corpus = tmp_path / "corpus.json"
-    words = [
-        {"word": "約束", "reading": "やくそく", "count": 10, "meaning_zh": "约定"},
-        {"word": "やる", "reading": "やる", "count": 20, "meaning": "to do"},
-        {"word": "武士", "reading": "ぶし", "count": 5, "meaning_zh": "武士"},
-        {"word": "生", "reading": "せい", "count": 3, "meaning": "raw"},
-    ]
-    corpus.write_text(
-        json.dumps(
-            {
-                "summary": {"word_source_coverage": {"exported_word_count": 4}},
-                "words": words,
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    write_json_file(
-        word_detail_path(corpus, "約束"),
-        {
-            **words[0],
-            "lexical_notes": {
-                "senses": [{"glosses": ["promise"], "parts_of_speech": ["名词"]}],
-                "dictionary_examples": [{"japanese": "約束を守る。"}],
-            },
-        },
-    )
-    write_json_file(
-        word_detail_path(corpus, "やる"),
-        {
-            **words[1],
-            "lexical_notes": {
-                "senses": [{"glosses": ["to do"], "parts_of_speech": ["五段・る"]}],
-            },
-        },
-    )
-    write_json_file(word_detail_path(corpus, "武士"), words[2])
-    write_json_file(
-        word_detail_path(corpus, "生"),
-        {
-            **words[3],
-            "lexical_notes": {
-                "senses": [
-                    {
-                        "glosses": ["raw"],
-                        "parts_of_speech": [
-                            "noun or participle which takes the aux. verb suru",
-                        ],
-                    }
-                ],
-            },
-        },
-    )
-
-    audit = load_viewer_dictionary_audit(corpus)
-
-    assert audit["counts"]["missing_zh"] == 2
-    assert [item["word"] for item in audit["categories"]["missing_zh"]] == ["やる", "生"]
-    assert audit["counts"]["english_only"] == 2
-    assert audit["counts"]["no_jmdict"] == 1
-    assert audit["categories"]["no_jmdict"][0]["word"] == "武士"
-    assert audit["counts"]["no_dictionary_examples"] == 2
-    assert audit["counts"]["raw_pos"] == 1
-    assert audit["summary"]["exported_zh_meaning_word_count"] == 2
-    assert audit["summary"]["exported_jmdict_word_count"] == 3
-    assert audit["summary"]["exported_dictionary_example_word_count"] == 1
 
 
 def test_explain_reader_usage_calls_llm_directly(monkeypatch):
