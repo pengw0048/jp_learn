@@ -130,6 +130,23 @@ def test_kanji_tokens_do_not_fall_back_to_homophone_jlpt_entry(tmp_path: Path):
     assert all(match.word != "司会" for match in matches)
 
 
+def test_chinese_glossary_does_not_use_reading_for_kanji_homophones(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    jlpt_path.write_text(
+        '[{"word":"音","reading":"おと","level":"N5","meaning":"sound"}]',
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(
+        analysis,
+        zh_glossary=ChineseGlossary({"おと": "wrong homophone fallback"}),
+    )
+    word = next(word for word in payload["words"] if word["word"] == "音")
+
+    assert word["meaning_zh"] is None
+
+
 def test_export_corpus_json_can_include_jmdict_matched_corpus_words(tmp_path: Path):
     jlpt_path = tmp_path / "jlpt.json"
     write_sample_jlpt(jlpt_path)
@@ -266,6 +283,10 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
     assert notes["kanji"][0]["literal"] == "約"
     assert notes["kanji"][0]["on_readings"] == ["ヤク"]
     assert notes["kanji"][0]["meanings"] == ["promise"]
+    coverage = payload["summary"]["word_source_coverage"]
+    assert coverage["exported_dictionary_example_word_count"] >= 1
+    assert coverage["exported_no_jmdict_word_count"] >= 0
+    assert coverage["exported_missing_zh_meaning_word_count"] >= 0
 
 
 def test_jmdict_notes_prefer_common_entry_over_exact_kana_suffix(tmp_path: Path):
@@ -297,6 +318,61 @@ def test_jmdict_notes_prefer_common_entry_over_exact_kana_suffix(tmp_path: Path)
     assert notes is not None
     assert notes["senses"][0]["glosses"] == ["time"]
     assert index.canonical_surface("とき", "とき") == "時"
+
+
+def test_jmdict_notes_do_not_use_reading_fallback_for_kanji_homophones(tmp_path: Path):
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<k_ele><keb>司会</keb></k_ele>"
+        "<r_ele><reb>しかい</reb></r_ele>"
+        "<sense><pos>noun (common) (futsuumeishi)</pos><gloss>host</gloss></sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+
+    index = LexicalResourceIndex.load_optional(
+        jmdict_path=jmdict,
+        kanjidic2_path=None,
+        target_keys={"視界", "しかい"},
+    )
+
+    assert index.notes_for("視界", "しかい") is None
+    assert not index.has_jmdict_entry("視界", "しかい")
+    assert index.notes_for("しかい", "しかい")["senses"][0]["glosses"] == ["host"]
+
+
+def test_chinese_glossary_can_use_jmdict_spelling_for_kana_words(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    jlpt_path.write_text(
+        '[{"word":"とき","reading":"とき","level":"N5","meaning":"time"}]',
+        encoding="utf-8",
+    )
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<k_ele><keb>時</keb><ke_pri>news1</ke_pri></k_ele>"
+        "<r_ele><reb>とき</reb><re_pri>news1</re_pri></r_ele>"
+        "<sense><pos>noun (common) (futsuumeishi)</pos><gloss>time</gloss></sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(
+        analysis,
+        jmdict_path=jmdict,
+        zh_glossary=ChineseGlossary({"時": "时候"}),
+    )
+    word = next(word for word in payload["words"] if word["word"] == "とき")
+
+    assert word["meaning_zh"] == "时候"
 
 
 def test_jmdict_pos_labels_cover_verbose_english_tags():

@@ -358,7 +358,7 @@ class LexicalResourceIndex:
         )
         if entries:
             return entries[:MAX_JMDICT_ENTRIES_PER_WORD]
-        if reading:
+        if reading and is_kana_text(surface):
             entries = self._dedupe_jmdict_entries(self.jmdict_by_key.get(reading, []), seen)
         return entries[:MAX_JMDICT_ENTRIES_PER_WORD]
 

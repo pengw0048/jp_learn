@@ -10,6 +10,7 @@ from typing import Any
 from .analysis import CorpusAnalysis, SourceDocument, SourceLine, SourceLineMatch, WordExample, WordStats
 from .lexical_notes import (
     LexicalResourceIndex,
+    is_kana_text,
     target_kanji_for_words,
     target_keys_for_words,
 )
@@ -494,7 +495,7 @@ def _word_to_dict(
         "level": f"N{word.entry.level}" if word.entry.level > 0 else None,
         "level_number": word.entry.level if word.entry.level > 0 else None,
         "meaning": meaning,
-        "meaning_zh": _meaning_zh(word, zh_glossary),
+        "meaning_zh": _meaning_zh(word, zh_glossary, notes=notes),
         "count": word.count,
         "source_type_counts": dict(word.source_type_counts),
         "subtitle_count": word.source_type_counts.get("subtitle", 0),
@@ -555,7 +556,18 @@ def _word_source_coverage(
         "exported_jmdict_word_count": sum(
             1 for word in word_payloads if word.get("lexical_notes", {}).get("senses")
         ),
+        "exported_no_jmdict_word_count": sum(
+            1 for word in word_payloads if not word.get("lexical_notes", {}).get("senses")
+        ),
+        "exported_dictionary_example_word_count": sum(
+            1
+            for word in word_payloads
+            if word.get("lexical_notes", {}).get("dictionary_examples")
+        ),
         "exported_zh_meaning_word_count": sum(1 for word in word_payloads if word.get("meaning_zh")),
+        "exported_missing_zh_meaning_word_count": sum(
+            1 for word in word_payloads if not word.get("meaning_zh")
+        ),
         "exported_english_only_word_count": sum(
             1
             for word in word_payloads
@@ -640,12 +652,42 @@ def _stable_example_rank(example: WordExample) -> int:
     return int.from_bytes(digest, byteorder="big")
 
 
-def _meaning_zh(word: WordStats, zh_glossary: ChineseGlossary | None) -> str | None:
+def _meaning_zh(
+    word: WordStats,
+    zh_glossary: ChineseGlossary | None,
+    *,
+    notes: dict[str, object] | None = None,
+) -> str | None:
     if zh_glossary:
-        meaning = zh_glossary.lookup(word.entry.surface, word.display_reading)
+        meaning = zh_glossary.lookup(*_zh_lookup_keys(word, notes=notes))
         if meaning:
             return meaning
     return word.entry.meaning_zh
+
+
+def _zh_lookup_keys(word: WordStats, *, notes: dict[str, object] | None) -> list[str]:
+    surface = word.entry.surface
+    keys = [surface]
+    if is_kana_text(surface):
+        keys.extend(_lexical_spelling_texts(notes))
+        keys.append(word.display_reading)
+    return keys
+
+
+def _lexical_spelling_texts(notes: dict[str, object] | None) -> list[str]:
+    if not notes:
+        return []
+    spellings = notes.get("spellings")
+    if not isinstance(spellings, list):
+        return []
+    values: list[str] = []
+    for spelling in spellings:
+        if not isinstance(spelling, dict):
+            continue
+        text = spelling.get("text")
+        if isinstance(text, str) and text:
+            values.append(text)
+    return values
 
 
 def _example_to_dict(example: WordExample) -> dict[str, Any]:
