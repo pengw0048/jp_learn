@@ -20,8 +20,16 @@ from .corpus_export import (
     analysis_to_dict,
     corpus_index_from_payload,
     corpus_index_path,
+    corpus_source_details_dir,
+    corpus_word_details_dir,
+    source_detail_path,
+    source_index_entry_from_detail,
     source_document_key,
+    word_detail_path,
+    word_index_entry_from_detail,
+    write_corpus_detail_json,
     write_corpus_index_json,
+    write_json_file,
 )
 from .jlpt import JLPTWords, load_jlpt_words
 from .llm import (
@@ -743,6 +751,9 @@ def load_viewer_word_detail(corpus_path: Path, word_text: str) -> dict[str, Any]
     target = str(word_text or "").strip()
     if not target:
         raise ValueError("Missing word.")
+    detail = load_split_word_detail(corpus_path, target)
+    if detail:
+        return {"word": detail}
     payload = load_corpus_payload(corpus_path)
     for word in payload.get("words") or []:
         if isinstance(word, dict) and word.get("word") == target:
@@ -754,17 +765,44 @@ def load_viewer_source_details(corpus_path: Path, source_keys: list[str]) -> dic
     targets = {str(key or "").strip() for key in source_keys if str(key or "").strip()}
     if not targets:
         raise ValueError("Missing source key.")
+    sources = []
+    missing_targets = set(targets)
+    for target in sorted(targets):
+        source = load_split_source_detail(corpus_path, target)
+        if source:
+            source.setdefault("source_key", source_document_key(source))
+            sources.append(source)
+            missing_targets.discard(target)
+    if not missing_targets:
+        return {"sources": sources, "missing": []}
     payload = load_corpus_payload(corpus_path)
-    sources = [
+    fallback_sources = [
         source
         for source in payload.get("sources") or []
-        if isinstance(source, dict) and source_document_key(source) in targets
+        if isinstance(source, dict) and source_document_key(source) in missing_targets
     ]
-    for source in sources:
+    for source in fallback_sources:
         source.setdefault("source_key", source_document_key(source))
+    sources.extend(fallback_sources)
     found = {source_document_key(source) for source in sources}
     missing = sorted(targets - found)
     return {"sources": sources, "missing": missing}
+
+
+def load_split_word_detail(corpus_path: Path, word_text: str) -> dict[str, Any] | None:
+    return read_json_dict(word_detail_path(corpus_path.resolve(), word_text))
+
+
+def load_split_source_detail(corpus_path: Path, source_key: str) -> dict[str, Any] | None:
+    return read_json_dict(source_detail_path(corpus_path.resolve(), source_key))
+
+
+def read_json_dict(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def load_corpus_payload(corpus_path: Path) -> dict[str, Any]:
@@ -794,20 +832,15 @@ def file_mtime(path: Path) -> float:
 
 def load_annotation_index(corpus_path: Path) -> AnnotationIndex:
     resolved = corpus_path.resolve()
-    try:
-        mtime = resolved.stat().st_mtime
-    except FileNotFoundError:
-        mtime = 0.0
-    key = (str(resolved), mtime)
+    corpus_mtime = file_mtime(resolved)
+    index_mtime = file_mtime(corpus_index_path(resolved))
+    key = (str(resolved), corpus_mtime, index_mtime)
     cached = _ANNOTATION_INDEX_CACHE.get(key)
     if cached:
         return cached
 
     words_by_surface: dict[str, dict[str, Any]] = {}
-    try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        payload = {}
+    payload = load_viewer_corpus_index(resolved)
     word_items = payload.get("words", []) if isinstance(payload, dict) else []
     for word in word_items:
         if not isinstance(word, dict):
@@ -838,6 +871,10 @@ def load_annotation_index(corpus_path: Path) -> AnnotationIndex:
 
 def corpus_word_surfaces(word: dict[str, Any]) -> list[str]:
     surfaces: list[str] = []
+    for surface in word.get("annotation_surfaces") or []:
+        text = str(surface or "").strip()
+        if text:
+            surfaces.append(text)
     primary = str(word.get("word") or "").strip()
     if primary:
         surfaces.append(primary)
@@ -1157,6 +1194,8 @@ def refresh_imported_texts_corpus(
     corpus_path: Path,
     directory: Path = DEFAULT_WEB_TEXT_DIR,
 ) -> dict[str, Any]:
+    if split_corpus_available(corpus_path):
+        return refresh_imported_texts_split(corpus_path=corpus_path, directory=directory)
     payload = json.loads(corpus_path.read_text(encoding="utf-8"))
     old_files = {
         str(source.get("source_file") or "")
@@ -1181,10 +1220,125 @@ def refresh_imported_texts_corpus(
     )
     ensure_parent(corpus_path)
     corpus_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_corpus_detail_json(merged, corpus_path)
     write_corpus_index_json(merged, corpus_index_path(corpus_path))
     return {
         "output": str(corpus_path),
         **stats,
+    }
+
+
+def split_corpus_available(corpus_path: Path) -> bool:
+    resolved = corpus_path.resolve()
+    return (
+        corpus_index_path(resolved).exists()
+        and corpus_word_details_dir(resolved).is_dir()
+        and corpus_source_details_dir(resolved).is_dir()
+    )
+
+
+def refresh_imported_texts_split(
+    *,
+    corpus_path: Path,
+    directory: Path = DEFAULT_WEB_TEXT_DIR,
+) -> dict[str, Any]:
+    resolved = corpus_path.resolve()
+    index_path = corpus_index_path(resolved)
+    index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+    old_sources = [
+        source
+        for source in as_dict_list(index_payload.get("sources"))
+        if is_imported_text_source(source)
+    ]
+    old_files = {str(source.get("source_file") or "") for source in old_sources}
+    current_paths = sorted(directory.glob("*.txt")) if directory.exists() else []
+    current_files_by_path = {
+        path: text_file_from_path(path, root=directory.parent).name
+        for path in current_paths
+    }
+    current_files = set(current_files_by_path.values())
+    new_paths = [
+        path
+        for path, source_file in current_files_by_path.items()
+        if source_file not in old_files
+    ]
+    removed_source_details = [
+        source
+        for source in (
+            load_split_source_detail(resolved, str(source.get("source_key") or ""))
+            for source in old_sources
+            if str(source.get("source_file") or "") not in current_files
+        )
+        if source
+    ]
+    web_payload = imported_texts_payload(directory=directory, paths=new_paths)
+    new_sources = [
+        source
+        for source in as_dict_list(web_payload.get("sources"))
+        if is_imported_text_source(source)
+    ]
+    new_words = {
+        str(word.get("word") or ""): word
+        for word in active_imported_words(web_payload)
+        if word.get("word")
+    }
+    removed_contributions = imported_source_contributions(removed_source_details)
+    words_by_key = {
+        str(word.get("word")): word
+        for word in as_dict_list(index_payload.get("words"))
+        if word.get("word")
+    }
+    affected_words = set(removed_contributions) | set(new_words)
+    for word_text in affected_words:
+        detail = load_split_word_detail(resolved, word_text) or words_by_key.get(word_text) or {"word": word_text}
+        if word_text in removed_contributions:
+            subtract_imported_word_contribution(detail, removed_contributions[word_text])
+        if word_text in new_words:
+            merge_imported_word(detail, new_words[word_text])
+        if removable_zero_candidate(detail):
+            word_detail_path(resolved, word_text).unlink(missing_ok=True)
+            words_by_key.pop(word_text, None)
+            continue
+        write_json_file(word_detail_path(resolved, word_text), detail)
+        words_by_key[word_text] = word_index_entry_from_detail(detail)
+
+    removed_keys = {
+        str(source.get("source_key") or "")
+        for source in old_sources
+        if str(source.get("source_file") or "") not in current_files
+    }
+    for key in removed_keys:
+        if key:
+            source_detail_path(resolved, key).unlink(missing_ok=True)
+    for source in new_sources:
+        key = str(source.get("source_key") or source_document_key(source))
+        source["source_key"] = key
+        write_json_file(source_detail_path(resolved, key), source)
+
+    kept_sources = [
+        source
+        for source in old_sources
+        if str(source.get("source_file") or "") in current_files
+    ]
+    index_payload["sources"] = [
+        source
+        for source in as_dict_list(index_payload.get("sources"))
+        if not is_imported_text_source(source)
+    ] + kept_sources + [source_index_entry_from_detail(source) for source in new_sources]
+    index_payload["words"] = sorted(words_by_key.values(), key=word_payload_sort_key)
+    update_imported_text_summary(index_payload, web_payload, removed_source_details, new_sources)
+    update_imported_text_shows(index_payload, web_payload, removed_source_details)
+    index_payload["generated_at"] = datetime.now().isoformat(timespec="seconds")
+    write_json_file(index_path, index_payload)
+    current_sources = kept_sources + [source_index_entry_from_detail(source) for source in new_sources]
+    return {
+        "output": str(index_path),
+        "split_output": True,
+        "old_imported_text_count": len(old_sources),
+        "imported_text_count": len(current_sources),
+        "imported_text_token_count": sum_source_tokens(current_sources),
+        "refreshed_imported_text_count": len(new_sources),
+        "removed_imported_text_count": len(removed_source_details),
     }
 
 
@@ -1479,11 +1633,12 @@ def update_imported_text_summary(
     coverage = dict(summary.get("word_source_coverage") or {})
     words = as_dict_list(merged.get("words"))
     coverage["exported_word_count"] = len(words)
-    coverage["exported_jmdict_word_count"] = sum(
-        1
-        for word in words
-        if isinstance(word.get("lexical_notes"), dict) and word["lexical_notes"].get("senses")
-    )
+    if any(isinstance(word.get("lexical_notes"), dict) for word in words):
+        coverage["exported_jmdict_word_count"] = sum(
+            1
+            for word in words
+            if isinstance(word.get("lexical_notes"), dict) and word["lexical_notes"].get("senses")
+        )
     coverage["exported_zh_meaning_word_count"] = sum(1 for word in words if word.get("meaning_zh"))
     coverage["exported_english_only_word_count"] = sum(
         1

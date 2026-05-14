@@ -16,4 +16,6 @@ data/lyrics-cache/
 *.apkg
 report*.md
 corpus*.json
+corpus.words/
+corpus.sources/
 texts/

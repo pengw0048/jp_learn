@@ -53,7 +53,7 @@ The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, t
 
 The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/viewer_assets/app.js` so future UI work can add more languages without chasing hard-coded labels.
 
-The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. It also writes a compact `corpus.index.json` sidecar for faster viewer startup; full word examples, lexical notes, and source lines are loaded on demand. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency view. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
+The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. It also writes a compact `corpus.index.json` sidecar plus `corpus.words/` and `corpus.sources/` detail shards, so the viewer can start from the index and load full word examples, lexical notes, and source lines on demand. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency view. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
 
 Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi music collections, splits album subjects into track rows through Bangumi episodes, searches LRCLIB, and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated refreshes skip BGM/OST misses by default. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 
@@ -73,6 +73,9 @@ data/
   lyrics-cache/                # downloaded .lrc/.txt lyric files
 texts/                         # optional local Japanese .txt/.epub books/articles
 texts/web/                     # web selections imported by the viewer or extension
+corpus.index.json              # compact viewer index
+corpus.words/                  # per-word detail shards
+corpus.sources/                # per-source reader/detail shards
 browser_extension/             # optional unpacked Chrome extension for web import and page annotation
 ~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index, versioned caches
 ```

@@ -9,13 +9,21 @@ from jpcorpus.viewer_jobs import (
     explain_reader_usage,
     import_text_document,
     load_viewer_source_details,
+    load_viewer_word_detail,
     llm_config_status,
     merge_imported_text_payload,
     normalize_maintenance_spec,
+    refresh_imported_texts_corpus,
     save_viewer_config,
     viewer_config_status,
 )
-from jpcorpus.corpus_export import source_document_key
+from jpcorpus.corpus_export import (
+    corpus_index_path,
+    source_detail_path,
+    source_document_key,
+    word_detail_path,
+    write_json_file,
+)
 
 
 def test_normalize_maintenance_spec_accepts_fetch_lyrics_options():
@@ -162,6 +170,47 @@ def test_load_viewer_source_details_returns_full_lines(tmp_path):
 
     assert payload["missing"] == []
     assert payload["sources"][0]["source_key"] == source_document_key(source)
+    assert payload["sources"][0]["lines"][0]["text"] == "私は約束を見る。"
+
+
+def test_viewer_detail_loaders_prefer_split_files(tmp_path):
+    corpus = tmp_path / "corpus.json"
+    source = {
+        "source_type": "subtitle",
+        "source_title": "Split subtitles",
+        "source_artist": "",
+        "source_album": "",
+        "source_file": "split.srt",
+        "episode": 1,
+        "token_count": 3,
+        "lines": [
+            {
+                "text": "私は約束を見る。",
+                "matches": [{"word": "約束", "matched_text": "約束"}],
+            }
+        ],
+    }
+    source["source_key"] = source_document_key(source)
+    word = {
+        "word": "約束",
+        "reading": "やくそく",
+        "examples": [{"sentence": "私は約束を見る。"}],
+    }
+    write_json_file(word_detail_path(corpus, "約束"), word)
+    write_json_file(source_detail_path(corpus, source["source_key"]), source)
+    corpus.write_text(
+        json.dumps(
+            {
+                "words": [{"word": "約束", "reading": "stale"}],
+                "sources": [{**source, "lines": []}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_viewer_word_detail(corpus, "約束")["word"]["reading"] == "やくそく"
+    payload = load_viewer_source_details(corpus, [source["source_key"]])
     assert payload["sources"][0]["lines"][0]["text"] == "私は約束を見る。"
 
 
@@ -519,6 +568,108 @@ def test_merge_imported_text_payload_keeps_unchanged_web_sources():
     assert stats["removed_imported_text_count"] == 0
     assert merged["sources"][0]["source_file"] == "web/old.txt"
     assert merged["words"][0]["word"] == "専門語"
+
+
+def test_refresh_imported_texts_uses_split_files_without_rewriting_corpus(tmp_path):
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text("legacy corpus payload", encoding="utf-8")
+    source = {
+        "source_type": "text",
+        "source_title": "Old Web",
+        "source_file": "web/old.txt",
+        "token_count": 1,
+        "lines": [
+            {
+                "text": "古い記事へ行く。",
+                "matches": [{"word": "行く", "matched_text": "行く"}],
+            }
+        ],
+    }
+    source["source_key"] = source_document_key(source)
+    word = {
+        "word": "行く",
+        "reading": "いく",
+        "level": "N5",
+        "level_number": 5,
+        "meaning": "to go",
+        "count": 1,
+        "source_type_counts": {"text": 1},
+        "subtitle_count": 0,
+        "lyrics_count": 0,
+        "text_count": 1,
+        "sources": [{"title": "Old Web", "count": 1}],
+        "examples": [
+            {
+                "sentence": "古い記事へ行く。",
+                "source_type": "text",
+                "source_title": "Old Web",
+                "subtitle_file": "web/old.txt",
+                "matched_text": "行く",
+                "reference": {"source_file": "web/old.txt"},
+            }
+        ],
+    }
+    write_json_file(word_detail_path(corpus, "行く"), word)
+    write_json_file(source_detail_path(corpus, source["source_key"]), source)
+    write_json_file(
+        corpus_index_path(corpus),
+        {
+            "index_schema_version": 2,
+            "schema_version": 13,
+            "generated_at": "old",
+            "summary": {
+                "text_file_count": 1,
+                "total_tokens": 1,
+                "source_type_counts": {"text": 1},
+                "word_source_coverage": {"exported_word_count": 1},
+            },
+            "shows": [{"title": "Old Web", "total_tokens": 1}],
+            "sources": [
+                {
+                    "source_key": source["source_key"],
+                    "source_type": "text",
+                    "source_title": "Old Web",
+                    "source_file": "web/old.txt",
+                    "token_count": 1,
+                    "line_count": 1,
+                    "match_count": 1,
+                    "words": ["行く"],
+                }
+            ],
+            "words": [
+                {
+                    "word": "行く",
+                    "reading": "いく",
+                    "level": "N5",
+                    "level_number": 5,
+                    "meaning": "to go",
+                    "count": 1,
+                    "source_type_counts": {"text": 1},
+                    "subtitle_count": 0,
+                    "lyrics_count": 0,
+                    "text_count": 1,
+                    "example_count": 1,
+                    "has_detail": True,
+                    "search_terms": ["行く", "いく"],
+                    "annotation_surfaces": ["行く"],
+                }
+            ],
+        },
+    )
+
+    result = refresh_imported_texts_corpus(corpus_path=corpus, directory=tmp_path / "texts" / "web")
+
+    assert result["split_output"] is True
+    assert result["removed_imported_text_count"] == 1
+    assert corpus.read_text(encoding="utf-8") == "legacy corpus payload"
+    assert not source_detail_path(corpus, source["source_key"]).exists()
+    updated_word = json.loads(word_detail_path(corpus, "行く").read_text(encoding="utf-8"))
+    assert updated_word["count"] == 0
+    assert updated_word["text_count"] == 0
+    assert updated_word["examples"] == []
+    updated_index = json.loads(corpus_index_path(corpus).read_text(encoding="utf-8"))
+    assert updated_index["sources"] == []
+    assert updated_index["words"][0]["count"] == 0
 
 
 def test_viewer_config_status_reports_missing_keys(monkeypatch):

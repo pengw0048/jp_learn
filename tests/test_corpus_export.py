@@ -13,7 +13,17 @@ from jpcorpus.analysis import (
     to_hiragana,
 )
 from jpcorpus.anki_export import export_anki_deck
-from jpcorpus.corpus_export import _select_examples, analysis_to_dict, corpus_index_path, write_corpus_json
+from jpcorpus.corpus_export import (
+    _select_examples,
+    analysis_to_dict,
+    corpus_index_path,
+    corpus_source_details_dir,
+    corpus_word_details_dir,
+    source_document_key,
+    source_detail_path,
+    word_detail_path,
+    write_corpus_json,
+)
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.lexical_notes import LexicalResourceIndex, label_pos
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
@@ -90,6 +100,15 @@ def test_export_corpus_json(tmp_path: Path):
     assert index_payload["sources"][0]["line_count"] == 1
     assert index_payload["sources"][0]["words"] == ["約束"]
     assert "lines" not in index_payload["sources"][0]
+    assert index_payload["words"][0]["annotation_surfaces"] == ["約束"]
+    word_detail = json.loads(word_detail_path(output, "約束").read_text(encoding="utf-8"))
+    source_detail = json.loads(
+        source_detail_path(output, source_document_key(payload["sources"][0])).read_text(encoding="utf-8")
+    )
+    assert word_detail["examples"][0]["sentence"] == "私は約束を見る。"
+    assert source_detail["lines"][0]["text"] == "私は約束を見る。"
+    assert corpus_word_details_dir(output).is_dir()
+    assert corpus_source_details_dir(output).is_dir()
 
 
 def test_analysis_to_dict_can_skip_zero_count_words(tmp_path: Path):

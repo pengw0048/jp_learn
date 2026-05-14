@@ -147,6 +147,7 @@ def write_corpus_json(
         kanjidic2_path=kanjidic2_path,
     )
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_corpus_detail_json(payload, output)
     write_corpus_index_json(payload, corpus_index_path(output))
     return output
 
@@ -155,10 +156,62 @@ def corpus_index_path(output: Path) -> Path:
     return output.with_name(f"{output.stem}.index.json")
 
 
+def corpus_word_details_dir(output: Path) -> Path:
+    return output.with_name(f"{output.stem}.words")
+
+
+def corpus_source_details_dir(output: Path) -> Path:
+    return output.with_name(f"{output.stem}.sources")
+
+
+def word_detail_path(output: Path, word_text: str) -> Path:
+    return corpus_word_details_dir(output) / f"{detail_hash(word_text)}.json"
+
+
+def source_detail_path(output: Path, source_key: str) -> Path:
+    return corpus_source_details_dir(output) / f"{detail_hash(source_key)}.json"
+
+
+def detail_hash(value: str) -> str:
+    return hashlib.blake2s(str(value or "").encode("utf-8"), digest_size=16).hexdigest()
+
+
+def write_corpus_detail_json(payload: dict[str, Any], output: Path) -> None:
+    word_dir = corpus_word_details_dir(output)
+    source_dir = corpus_source_details_dir(output)
+    refresh_detail_dir(word_dir)
+    refresh_detail_dir(source_dir)
+    for word in payload.get("words") or []:
+        if not isinstance(word, dict) or not word.get("word"):
+            continue
+        write_json_file(word_detail_path(output, str(word["word"])), word)
+    for source in payload.get("sources") or []:
+        if not isinstance(source, dict):
+            continue
+        key = source.get("source_key") or source_document_key(source)
+        if not key:
+            continue
+        source = dict(source)
+        source["source_key"] = key
+        write_json_file(source_detail_path(output, str(key)), source)
+
+
+def refresh_detail_dir(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for path in directory.glob("*.json"):
+        path.unlink()
+
+
 def write_corpus_index_json(payload: dict[str, Any], output: Path) -> Path:
     ensure_parent(output)
     output.write_text(json.dumps(corpus_index_from_payload(payload), ensure_ascii=False) + "\n", encoding="utf-8")
     return output
+
+
+def write_json_file(path: Path, payload: dict[str, Any]) -> Path:
+    ensure_parent(path)
+    path.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 
 def corpus_index_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -190,7 +243,12 @@ def _word_index_entry(word: dict[str, Any]) -> dict[str, Any]:
     entry["example_count"] = len(word.get("examples") or [])
     entry["has_detail"] = any(key in word for key in DETAIL_WORD_KEYS)
     entry["search_terms"] = _word_search_terms(word)
+    entry["annotation_surfaces"] = corpus_word_surfaces(word)
     return entry
+
+
+def word_index_entry_from_detail(word: dict[str, Any]) -> dict[str, Any]:
+    return _word_index_entry(word)
 
 
 def _word_search_terms(word: dict[str, Any]) -> list[str]:
@@ -264,6 +322,21 @@ def _word_search_terms(word: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(terms))[:100]
 
 
+def corpus_word_surfaces(word: dict[str, Any]) -> list[str]:
+    surfaces: list[str] = []
+    primary = str(word.get("word") or "").strip()
+    if primary:
+        surfaces.append(primary)
+    notes = word.get("lexical_notes")
+    if isinstance(notes, dict):
+        for spelling in notes.get("spellings") or []:
+            if isinstance(spelling, dict):
+                text = str(spelling.get("text") or "").strip()
+                if text:
+                    surfaces.append(text)
+    return list(dict.fromkeys(surfaces))
+
+
 def _source_index_entry(source: dict[str, Any]) -> dict[str, Any]:
     lines = [line for line in source.get("lines") or [] if isinstance(line, dict)]
     words = sorted({
@@ -285,6 +358,10 @@ def _source_index_entry(source: dict[str, Any]) -> dict[str, Any]:
         "match_count": sum(len(line.get("matches") or []) for line in lines),
         "words": words,
     }
+
+
+def source_index_entry_from_detail(source: dict[str, Any]) -> dict[str, Any]:
+    return _source_index_entry(source)
 
 
 def source_document_key(source: dict[str, Any]) -> str:
