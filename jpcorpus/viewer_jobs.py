@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -423,7 +424,11 @@ def import_text_document(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_T
         raise ValueError(f"Imported text is too long. Limit: {MAX_IMPORTED_TEXT_CHARS} characters.")
     title = normalize_display_text(raw.get("title") or "") or "Imported web text"
     url = text_limit(raw.get("url"), 2000)
+    content_sha256 = imported_text_hash(text)
     directory.mkdir(parents=True, exist_ok=True)
+    duplicate = find_duplicate_import(content_sha256, directory=directory)
+    if duplicate:
+        return duplicate
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     path = unique_import_path(directory / f"{timestamp}-{slugify_import_title(title)}.txt")
     path.write_text(text.rstrip() + "\n", encoding="utf-8")
@@ -433,6 +438,7 @@ def import_text_document(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_T
         "url": url,
         "imported_at": _now_iso(),
         "characters": len(text),
+        "content_sha256": content_sha256,
     }
     metadata_path = path.with_name(f"{path.stem}.meta.json")
     metadata_path.write_text(
@@ -445,7 +451,42 @@ def import_text_document(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_T
         "metadata_path": str(metadata_path),
         "characters": len(text),
         "url": url,
+        "content_sha256": content_sha256,
+        "duplicate": False,
     }
+
+
+def imported_text_hash(text: str) -> str:
+    return hashlib.sha256(text.rstrip().encode("utf-8")).hexdigest()
+
+
+def find_duplicate_import(content_sha256: str, *, directory: Path = DEFAULT_WEB_TEXT_DIR) -> dict[str, Any] | None:
+    if not directory.exists():
+        return None
+    for path in sorted(directory.glob("*.txt")):
+        metadata_path = path.with_name(f"{path.stem}.meta.json")
+        metadata = read_import_metadata(metadata_path)
+        existing_hash = metadata.get("content_sha256") or imported_text_hash(clean_imported_text(path.read_text(encoding="utf-8", errors="replace")))
+        if existing_hash != content_sha256:
+            continue
+        return {
+            "title": normalize_display_text(metadata.get("title") or path.stem),
+            "path": str(path),
+            "metadata_path": str(metadata_path),
+            "characters": int(metadata.get("characters") or path.stat().st_size),
+            "url": text_limit(metadata.get("url"), 2000),
+            "content_sha256": content_sha256,
+            "duplicate": True,
+        }
+    return None
+
+
+def read_import_metadata(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def delete_imported_text_documents(raw: dict[str, Any], *, directory: Path = DEFAULT_WEB_TEXT_DIR) -> dict[str, Any]:

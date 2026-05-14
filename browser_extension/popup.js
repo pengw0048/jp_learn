@@ -52,12 +52,19 @@ async function importCurrentSelection() {
         title: tab.title || "",
         url: tab.url || "",
         text,
+        tabId: tab.id,
       },
     });
     if (!response?.ok) {
       throw new Error(response?.error || "Import failed.");
     }
-    refs.status.textContent = "Imported. Corpus refresh started.";
+    if (response.result?.duplicate) {
+      refs.status.textContent = "Already imported. No refresh needed.";
+    } else if (!response.result?.job) {
+      refs.status.textContent = "Imported. Corpus refresh is already running.";
+    } else {
+      refs.status.textContent = "Imported. Corpus refresh started.";
+    }
   } catch (error) {
     refs.status.textContent = error.message || String(error);
   } finally {

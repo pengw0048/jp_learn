@@ -24,22 +24,24 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       text: info.selectionText || "",
       title: tab?.title || "",
       url: info.pageUrl || tab?.url || "",
-    }).catch(reportImportError);
+      tabId: tab?.id,
+    }).catch((error) => reportImportError(error, tab?.id));
     return;
   }
   if (info.menuItemId === MENU_IMPORT_ARTICLE) {
-    importMainArticle(tab).catch(reportImportError);
+    importMainArticle(tab).catch((error) => reportImportError(error, tab?.id));
   }
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== "IMPORT_TEXT") {
     return false;
   }
-  importSelectedText(message.payload || {})
+  const tabId = sender.tab?.id || message.payload?.tabId;
+  importSelectedText({ ...(message.payload || {}), tabId })
     .then((result) => sendResponse({ ok: true, result }))
     .catch(async (error) => {
-      await reportImportError(error);
+      await reportImportError(error, tabId);
       sendResponse({ ok: false, error: error.message || String(error) });
     });
   return true;
@@ -51,6 +53,7 @@ async function importSelectedText(payload) {
     throw new Error("No selected text to import.");
   }
   await setStatus("Importing selected text...");
+  await showPageToast(payload.tabId, "Importing to jpcorpus...");
   const baseUrl = await localBaseUrl();
   const importPayload = await requestJson(`${baseUrl}/api/import-text`, {
     method: "POST",
@@ -61,18 +64,42 @@ async function importSelectedText(payload) {
       text,
     }),
   }, "Import");
-  const refreshPayload = await requestJson(`${baseUrl}/api/jobs/maintenance`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "export_corpus" }),
-  }, "Corpus refresh");
   const title = importPayload.imported?.title || "web text";
-  const message = `Imported ${title}. Corpus refresh started.`;
+  if (importPayload.imported?.duplicate) {
+    const message = `Already imported ${title}. No refresh needed.`;
+    await setStatus(message);
+    await chrome.action.setBadgeText({ text: "OK" });
+    await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
+    await showPageToast(payload.tabId, message);
+    await notify("jpcorpus already has this text", message);
+    return { imported: importPayload.imported, job: null, duplicate: true };
+  }
+  const refreshPayload = await startCorpusRefresh(baseUrl);
+  const refreshMessage = refreshPayload.alreadyRunning
+    ? "Corpus refresh is already running."
+    : "Corpus refresh started.";
+  const message = `Imported ${title}. ${refreshMessage}`;
   await setStatus(message);
   await chrome.action.setBadgeText({ text: "OK" });
   await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
+  await showPageToast(payload.tabId, message);
   await notify("jpcorpus import started", message);
-  return { imported: importPayload.imported, job: refreshPayload.job };
+  return { imported: importPayload.imported, job: refreshPayload.job || null };
+}
+
+async function startCorpusRefresh(baseUrl) {
+  try {
+    return await requestJson(`${baseUrl}/api/jobs/maintenance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "export_corpus" }),
+    }, "Corpus refresh");
+  } catch (error) {
+    if (String(error.message || error).includes("Another maintenance job is already running")) {
+      return { alreadyRunning: true };
+    }
+    throw error;
+  }
 }
 
 async function importMainArticle(tab) {
@@ -80,12 +107,13 @@ async function importMainArticle(tab) {
     throw new Error("No active tab to extract article text from.");
   }
   await setStatus("Extracting main article...");
+  await showPageToast(tab.id, "Extracting article text...");
   await ensureContentScript(tab.id);
   const response = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_MAIN_ARTICLE" });
   if (!response?.ok) {
     throw new Error(response?.error || "Could not extract main article.");
   }
-  return importSelectedText(response.payload || {});
+  return importSelectedText({ ...(response.payload || {}), tabId: tab.id });
 }
 
 async function ensureContentScript(tabId) {
@@ -93,6 +121,22 @@ async function ensureContentScript(tabId) {
     target: { tabId },
     files: ["content.js"],
   });
+}
+
+async function showPageToast(tabId, message, tone = "info") {
+  if (!tabId) {
+    return;
+  }
+  try {
+    await ensureContentScript(tabId);
+    await chrome.tabs.sendMessage(tabId, {
+      type: "SHOW_TOAST",
+      message,
+      tone,
+    });
+  } catch {
+    // Some pages cannot receive injected content scripts; the badge and notification still show status.
+  }
 }
 
 async function localBaseUrl() {
@@ -133,11 +177,12 @@ async function setStatus(message) {
   });
 }
 
-async function reportImportError(error) {
+async function reportImportError(error, tabId = null) {
   const message = error.message || String(error);
   await setStatus(message);
   await chrome.action.setBadgeText({ text: "ERR" });
   await chrome.action.setBadgeBackgroundColor({ color: "#b75a35" });
+  await showPageToast(tabId, message, "error");
   await notify("jpcorpus import failed", message);
 }
 

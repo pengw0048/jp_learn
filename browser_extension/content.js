@@ -20,6 +20,11 @@
       }
       return false;
     }
+    if (message?.type === "SHOW_TOAST") {
+      showToast(message.message || "", message.tone || "info");
+      sendResponse({ ok: true });
+      return false;
+    }
     return false;
   });
 
@@ -457,5 +462,34 @@
       .replace(/[ \t　]{2,}/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+  }
+
+  function showToast(message, tone = "info") {
+    const text = cleanText(message);
+    if (!text) {
+      return;
+    }
+    document.querySelectorAll(".jpcorpus-import-toast").forEach((node) => node.remove());
+    const toast = document.createElement("div");
+    toast.className = `jpcorpus-import-toast ${tone === "error" ? "error" : "info"}`;
+    toast.textContent = text;
+    Object.assign(toast.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      top: "18px",
+      right: "18px",
+      maxWidth: "360px",
+      padding: "10px 12px",
+      borderRadius: "8px",
+      boxShadow: "0 10px 30px rgba(31, 39, 42, 0.18)",
+      background: tone === "error" ? "#b75a35" : "#147d73",
+      color: "#ffffff",
+      font: "600 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      whiteSpace: "pre-wrap",
+    });
+    document.documentElement.append(toast);
+    window.setTimeout(() => {
+      toast.remove();
+    }, tone === "error" ? 8000 : 4200);
   }
 })();

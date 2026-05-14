@@ -16,9 +16,9 @@ This unpacked Chrome extension sends selected web text to the local jpcorpus vie
 
 For pages with many nested spans or ruby annotations, Add main article strips `rt`/`rp` ruby text before importing. Selecting the exact text first is still the most precise option for a small snippet.
 
-The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh.
+The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.
 
-Right-click imports show a desktop notification when the import starts or fails. If the local viewer is not running, the notification and extension badge will say that the viewer could not be reached.
+Right-click imports show an in-page toast and a desktop notification when the import starts, is skipped as a duplicate, or fails. If the local viewer is not running, the toast, notification, and extension badge will say that the viewer could not be reached.
 
 If the viewer is running on another local port, update the Local viewer URL in the extension popup.
 
