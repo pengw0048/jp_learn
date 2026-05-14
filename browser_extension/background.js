@@ -209,6 +209,7 @@ async function importSelectedText(payload) {
     throw new Error(t(lang, "noSelection"));
   }
   await setStatus(t(lang, "importingSelection"));
+  await clearActionBadge();
   await showPageToast(payload.tabId, t(lang, "importingToJpcorpus"));
   const baseUrl = await localBaseUrl();
   const importPayload = await requestJson(`${baseUrl}/api/import-text`, {
@@ -224,8 +225,7 @@ async function importSelectedText(payload) {
   if (importPayload.imported?.duplicate) {
     const message = t(lang, "alreadyImported", { title });
     await setStatus(message);
-    await chrome.action.setBadgeText({ text: "OK" });
-    await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
+    await clearActionBadge();
     await showPageToast(payload.tabId, message);
     await notify(t(lang, "alreadyImportedTitle"), message);
     return { imported: importPayload.imported, job: null, duplicate: true };
@@ -236,8 +236,7 @@ async function importSelectedText(payload) {
     : t(lang, "corpusRefreshStarted");
   const message = t(lang, "imported", { title, refresh: refreshMessage });
   await setStatus(message);
-  await chrome.action.setBadgeText({ text: "OK" });
-  await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
+  await clearActionBadge();
   await showPageToast(payload.tabId, message);
   await notify(t(lang, "importStartedTitle"), message);
   return { imported: importPayload.imported, job: refreshPayload.job || null };
@@ -293,7 +292,7 @@ async function showPageToast(tabId, message, tone = "info") {
       tone,
     });
   } catch {
-    // Some pages cannot receive injected content scripts; the badge and notification still show status.
+    // Some pages cannot receive injected content scripts; popup status and notifications still show status.
   }
 }
 
@@ -335,11 +334,15 @@ async function setStatus(message) {
   });
 }
 
+async function clearActionBadge() {
+  await chrome.action.setBadgeText({ text: "" });
+}
+
 async function reportImportError(error, tabId = null, title = null) {
   const lang = await currentLang();
   const message = error.message || String(error);
   await setStatus(message);
-  await chrome.action.setBadgeText({ text: "ERR" });
+  await chrome.action.setBadgeText({ text: "!" });
   await chrome.action.setBadgeBackgroundColor({ color: "#b75a35" });
   await showPageToast(tabId, message, "error");
   await notify(title || t(lang, "importFailedTitle"), message);
@@ -357,7 +360,7 @@ async function notify(title, message) {
       message: truncateMessage(message),
     });
   } catch {
-    // Notifications are only a convenience; the popup status and badge still show the result.
+    // Notifications are only a convenience; the popup status still shows the result.
   }
 }
 
