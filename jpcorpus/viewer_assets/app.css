@@ -658,13 +658,15 @@ select {
 
 .reader-study-actions .reader-study-primary {
   border-color: var(--accent);
-  background: var(--accent);
-  color: #ffffff;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .reader-study-actions .reader-study-primary.active {
-  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent), var(--line) 35%);
+  background: #fbfcfc;
   color: var(--accent);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent), transparent 65%);
 }
 
 .reader-context-card {

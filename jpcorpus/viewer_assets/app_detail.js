@@ -140,7 +140,7 @@ window.JPCORPUS_DETAIL = (() => {
       const status = statusFor(word);
       [
         {
-          label: t("readerAddStudy"),
+          label: readerStudyPrimaryLabel(status),
           active: status === "learning" || status === "uncertain",
           className: "reader-study-primary",
           action: () => addWordToStudyFromReader(word),
@@ -177,6 +177,13 @@ window.JPCORPUS_DETAIL = (() => {
         wrap.append(clear);
       }
       return wrap;
+    }
+
+    function readerStudyPrimaryLabel(status) {
+      if (status === "learning" || status === "uncertain") {
+        return stateLabels[status][app.lang];
+      }
+      return t("readerAddStudy");
     }
 
     function addWordToStudyFromReader(word) {

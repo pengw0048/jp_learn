@@ -56,7 +56,7 @@ window.JPCORPUS_EXAMPLES = (() => {
 
     function renderExampleCard(word, example, options = {}) {
       const revealAnnotations = options.revealAnnotations ?? true;
-      const allowAiExplain = app.mode !== "read" && (app.mode !== "study" || revealAnnotations);
+      const allowAiExplain = app.mode !== "study" || revealAnnotations;
       const sourceClass = exampleSourceClass(example);
       const item = el("div", `example example-${sourceClass}`);
       const lines = el("div", "example-lines");
