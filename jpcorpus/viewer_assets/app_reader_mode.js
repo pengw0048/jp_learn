@@ -21,7 +21,6 @@ window.JPCORPUS_READER_MODE = (() => {
     sourceLabel,
     statusFor,
     storage,
-    strong,
     studyQueue,
     t,
     todayKey,
@@ -410,24 +409,10 @@ window.JPCORPUS_READER_MODE = (() => {
       }
       const hint = !source.sourceDocuments?.length && source.exampleItems.length > 0
         ? t("sourceReaderFallback")
-        : t("readerCurrentHint");
-      if (unit) {
-        const metrics = el("div", "source-metrics reader-mode-metrics");
-        [
-          [t("sourceInventoryLines"), unit.lineCount],
-          [t("sourceInventoryWords"), unit.words.size],
-          [t("sourceInventoryFiles"), unit.documents.length],
-        ].forEach(([label, value], index) => {
-          if (index === 2 && value <= 1) {
-            return;
-          }
-          const metric = el("span", "source-metric");
-          metric.append(el("span", "", label), strong(value));
-          metrics.append(metric);
-        });
-        summary.append(title, metrics, el("p", "", hint));
-      } else {
-        summary.append(title, el("p", "", hint));
+        : "";
+      summary.append(title);
+      if (hint) {
+        summary.append(el("p", "", hint));
       }
       return summary;
     }

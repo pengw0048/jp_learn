@@ -327,7 +327,6 @@ const {
   sourceLabel,
   statusFor,
   storage: window.JPCORPUS_STORAGE,
-  strong,
   studyQueue,
   t,
   todayKey,
