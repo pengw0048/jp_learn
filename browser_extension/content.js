@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.6";
+  const SCRIPT_VERSION = "0.1.7";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -38,6 +38,10 @@
   });
 
   async function toggleReadingMode() {
+    if (reader?.loading) {
+      showToast("jpcorpus is still annotating this page...");
+      return { enabled: true, tokenCount: reader.tokenCount || 0, busy: true };
+    }
     if (reader?.active) {
       disableReadingMode();
       showToast("jpcorpus reading mode off.");
@@ -49,51 +53,64 @@
   async function enableReadingMode() {
     stopPicker();
     ensureReaderStyles();
-    showToast("Annotating this page with jpcorpus...");
-    const root = readerRoot();
-    const blocks = [];
-    const nodesById = new Map();
-    let totalChars = 0;
-    collectReaderTextNodes(root).forEach((node) => {
-      if (blocks.length >= 260 || totalChars >= 48000) {
-        return;
-      }
-      const text = node.nodeValue || "";
-      const remaining = 48000 - totalChars;
-      if (remaining <= 0 || !hasJapaneseText(text)) {
-        return;
-      }
-      const id = String(blocks.length);
-      const blockText = text.length > remaining ? text.slice(0, remaining) : text;
-      totalChars += blockText.length;
-      nodesById.set(id, node);
-      blocks.push({ id, text: blockText });
-    });
-    if (!blocks.length) {
-      throw new Error("No Japanese text found in the main page content.");
-    }
-    const response = await chrome.runtime.sendMessage({
-      type: "ANNOTATE_TEXT_BLOCKS",
-      payload: { blocks },
-    });
-    if (!response?.ok) {
-      throw new Error(response?.error || "Could not annotate this page.");
-    }
-
+    restoreOrphanedReaderAnnotations();
     reader = {
-      active: true,
+      active: false,
+      loading: true,
+      tokenCount: 0,
       replacements: [],
       selectedToken: null,
       panel: null,
     };
-    const tokenCount = applyReaderAnnotations(response.result?.blocks || [], nodesById);
-    document.addEventListener("click", onReaderDocumentClick, true);
-    showToast(tokenCount ? `jpcorpus annotated ${tokenCount} words.` : "No glossary matches found on this page.");
-    return { enabled: true, tokenCount };
+    showToast("Annotating this page with jpcorpus...");
+    try {
+      const root = readerRoot();
+      const blocks = [];
+      const nodesById = new Map();
+      let totalChars = 0;
+      collectReaderTextNodes(root).forEach((node) => {
+        if (blocks.length >= 260 || totalChars >= 48000) {
+          return;
+        }
+        const text = node.nodeValue || "";
+        const remaining = 48000 - totalChars;
+        if (remaining <= 0 || !hasJapaneseText(text)) {
+          return;
+        }
+        const id = String(blocks.length);
+        const blockText = text.length > remaining ? text.slice(0, remaining) : text;
+        totalChars += blockText.length;
+        nodesById.set(id, node);
+        blocks.push({ id, text: blockText });
+      });
+      if (!blocks.length) {
+        throw new Error("No Japanese text found in the main page content.");
+      }
+      const response = await chrome.runtime.sendMessage({
+        type: "ANNOTATE_TEXT_BLOCKS",
+        payload: { blocks },
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error || "Could not annotate this page.");
+      }
+
+      const tokenCount = applyReaderAnnotations(response.result?.blocks || [], nodesById);
+      reader.active = true;
+      reader.loading = false;
+      reader.tokenCount = tokenCount;
+      document.addEventListener("click", onReaderDocumentClick, true);
+      showToast(tokenCount ? `jpcorpus annotated ${tokenCount} words.` : "No annotations were applied. Try reloading the page if this looks wrong.");
+      return { enabled: true, tokenCount };
+    } catch (error) {
+      reader = null;
+      restoreOrphanedReaderAnnotations();
+      throw error;
+    }
   }
 
   function disableReadingMode() {
     if (!reader) {
+      restoreOrphanedReaderAnnotations();
       return;
     }
     document.removeEventListener("click", onReaderDocumentClick, true);
@@ -104,6 +121,21 @@
       }
     });
     reader = null;
+    restoreOrphanedReaderAnnotations();
+  }
+
+  function restoreOrphanedReaderAnnotations() {
+    document.querySelectorAll("#jpcorpus-reader-panel").forEach((panel) => panel.remove());
+    document.querySelectorAll(".jpcorpus-reader-wrapper").forEach((wrapper) => {
+      if (wrapper.parentNode) {
+        wrapper.replaceWith(document.createTextNode(wrapper.textContent || ""));
+      }
+    });
+    document.querySelectorAll(".jpcorpus-reader-token").forEach((token) => {
+      if (token.parentNode) {
+        token.replaceWith(document.createTextNode(token.textContent || ""));
+      }
+    });
   }
 
   function readerRoot() {

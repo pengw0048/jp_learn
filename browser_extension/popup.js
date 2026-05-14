@@ -45,8 +45,12 @@ async function toggleReadingMode() {
     if (!response?.ok) {
       throw new Error(response?.error || "Could not toggle reading mode.");
     }
-    refs.status.textContent = response.enabled
+    refs.status.textContent = response.busy
+      ? "Reading mode is still annotating."
+      : response.enabled && response.tokenCount > 0
       ? `Reading mode on. Annotated ${response.tokenCount || 0} words.`
+      : response.enabled
+      ? "Reading mode on, but no annotations were applied."
       : "Reading mode off.";
   } catch (error) {
     refs.status.textContent = error.message || String(error);

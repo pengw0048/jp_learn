@@ -96,8 +96,12 @@ async function toggleReadingMode(tab) {
   if (!response?.ok) {
     throw new Error(response?.error || "Could not toggle reading mode.");
   }
-  const message = response.enabled
+  const message = response.busy
+    ? "Reading mode is still annotating."
+    : response.enabled && response.tokenCount > 0
     ? `Reading mode on. Annotated ${response.tokenCount || 0} words.`
+    : response.enabled
+    ? "Reading mode on, but no annotations were applied."
     : "Reading mode off.";
   await setStatus(message);
   await showPageToast(tab.id, message);
