@@ -1,5 +1,62 @@
 const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
 
+const MESSAGES = {
+  zh: {
+    intro: "选择网页文字，或点选页面上的文本块，然后导入本地阅读器。",
+    baseUrl: "本地阅读器地址",
+    saveUrl: "保存地址",
+    toggleReader: "切换网页阅读模式",
+    importSelection: "导入当前选中内容",
+    pickArea: "点选页面文本块",
+    tip: "精确片段可以先选中文字；点选模式下，移动鼠标高亮文本块，点击导入，Esc 取消。",
+    savedUrl: "已保存本地阅读器地址。",
+    togglingReader: "正在切换网页阅读模式...",
+    readerBusy: "网页阅读模式仍在标注中。",
+    readerOn: "网页阅读模式已开启，标注了 {count} 个词。",
+    readerOnEmpty: "网页阅读模式已开启，但没有应用标注。",
+    readerOff: "网页阅读模式已关闭。",
+    noActiveTab: "没有可用的当前标签页。",
+    cannotToggleReader: "无法切换网页阅读模式。",
+    readingSelection: "正在读取当前选中内容...",
+    noSelection: "没有选中文字可导入。",
+    importFailed: "导入失败。",
+    alreadyImported: "已经导入过，无需刷新。",
+    importedAlreadyRefreshing: "已导入，语料刷新已经在运行。",
+    importedRefreshStarted: "已导入，语料刷新已开始。",
+    startingPicker: "正在启动点选模式...",
+    cannotStartPicker: "无法启动点选模式。",
+    pickerStarted: "移动鼠标高亮文本块，点击导入，或按 Esc 取消。",
+  },
+  en: {
+    intro: "Select text, or pick a visible page area, then import it into the local viewer.",
+    baseUrl: "Local viewer URL",
+    saveUrl: "Save URL",
+    toggleReader: "Toggle page reading mode",
+    importSelection: "Import current selection",
+    pickArea: "Pick page area",
+    tip: "For exact snippets, select text first. In area picker, hover a text block and click; Esc cancels.",
+    savedUrl: "Saved local viewer URL.",
+    togglingReader: "Toggling reading mode...",
+    readerBusy: "Reading mode is still annotating.",
+    readerOn: "Reading mode on. Annotated {count} words.",
+    readerOnEmpty: "Reading mode on, but no annotations were applied.",
+    readerOff: "Reading mode off.",
+    noActiveTab: "No active tab.",
+    cannotToggleReader: "Could not toggle reading mode.",
+    readingSelection: "Reading current selection...",
+    noSelection: "No selected text to import.",
+    importFailed: "Import failed.",
+    alreadyImported: "Already imported. No refresh needed.",
+    importedAlreadyRefreshing: "Imported. Corpus refresh is already running.",
+    importedRefreshStarted: "Imported. Corpus refresh started.",
+    startingPicker: "Starting area picker...",
+    cannotStartPicker: "Could not start area picker.",
+    pickerStarted: "Hover a text block, click to import, or press Esc.",
+  },
+};
+
+let lang = "zh";
+
 const refs = {
   baseUrl: document.querySelector("#base-url"),
   saveUrl: document.querySelector("#save-url"),
@@ -7,6 +64,8 @@ const refs = {
   importSelection: document.querySelector("#import-selection"),
   pickArea: document.querySelector("#pick-area"),
   status: document.querySelector("#status"),
+  langButtons: document.querySelectorAll("[data-lang]"),
+  i18nNodes: document.querySelectorAll("[data-i18n]"),
 };
 
 init();
@@ -16,25 +75,31 @@ async function init() {
     baseUrl: DEFAULT_BASE_URL,
     lastStatus: "",
     lastStatusAt: "",
+    lang: defaultLang(),
   });
+  lang = normalizeLang(settings.lang);
   refs.baseUrl.value = settings.baseUrl;
   refs.status.textContent = settings.lastStatus || "";
+  applyLanguage();
   refs.saveUrl.addEventListener("click", saveBaseUrl);
   refs.toggleReader.addEventListener("click", toggleReadingMode);
   refs.importSelection.addEventListener("click", importCurrentSelection);
   refs.pickArea.addEventListener("click", startAreaPicker);
+  refs.langButtons.forEach((button) => {
+    button.addEventListener("click", () => setLanguage(button.dataset.lang));
+  });
 }
 
 async function saveBaseUrl() {
   const baseUrl = refs.baseUrl.value.trim().replace(/\/+$/, "") || DEFAULT_BASE_URL;
   await chrome.storage.local.set({ baseUrl });
   refs.baseUrl.value = baseUrl;
-  refs.status.textContent = "Saved local viewer URL.";
+  refs.status.textContent = t("savedUrl");
 }
 
 async function toggleReadingMode() {
   refs.toggleReader.disabled = true;
-  refs.status.textContent = "Toggling reading mode...";
+  refs.status.textContent = t("togglingReader");
   try {
     const tab = await activeTab();
     await chrome.scripting.executeScript({
@@ -43,15 +108,15 @@ async function toggleReadingMode() {
     });
     const response = await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_READING_MODE" });
     if (!response?.ok) {
-      throw new Error(response?.error || "Could not toggle reading mode.");
+      throw new Error(response?.error || t("cannotToggleReader"));
     }
     refs.status.textContent = response.busy
-      ? "Reading mode is still annotating."
+      ? t("readerBusy")
       : response.enabled && response.tokenCount > 0
-      ? `Reading mode on. Annotated ${response.tokenCount || 0} words.`
+      ? t("readerOn", { count: response.tokenCount || 0 })
       : response.enabled
-      ? "Reading mode on, but no annotations were applied."
-      : "Reading mode off.";
+      ? t("readerOnEmpty")
+      : t("readerOff");
   } catch (error) {
     refs.status.textContent = error.message || String(error);
   } finally {
@@ -61,11 +126,11 @@ async function toggleReadingMode() {
 
 async function importCurrentSelection() {
   refs.importSelection.disabled = true;
-  refs.status.textContent = "Reading current selection...";
+  refs.status.textContent = t("readingSelection");
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) {
-      throw new Error("No active tab.");
+      throw new Error(t("noActiveTab"));
     }
     const [selection] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -73,7 +138,7 @@ async function importCurrentSelection() {
     });
     const text = String(selection?.result || "").trim();
     if (!text) {
-      throw new Error("No selected text to import.");
+      throw new Error(t("noSelection"));
     }
     const response = await chrome.runtime.sendMessage({
       type: "IMPORT_TEXT",
@@ -85,14 +150,14 @@ async function importCurrentSelection() {
       },
     });
     if (!response?.ok) {
-      throw new Error(response?.error || "Import failed.");
+      throw new Error(response?.error || t("importFailed"));
     }
     if (response.result?.duplicate) {
-      refs.status.textContent = "Already imported. No refresh needed.";
+      refs.status.textContent = t("alreadyImported");
     } else if (!response.result?.job) {
-      refs.status.textContent = "Imported. Corpus refresh is already running.";
+      refs.status.textContent = t("importedAlreadyRefreshing");
     } else {
-      refs.status.textContent = "Imported. Corpus refresh started.";
+      refs.status.textContent = t("importedRefreshStarted");
     }
   } catch (error) {
     refs.status.textContent = error.message || String(error);
@@ -103,7 +168,7 @@ async function importCurrentSelection() {
 
 async function startAreaPicker() {
   refs.pickArea.disabled = true;
-  refs.status.textContent = "Starting area picker...";
+  refs.status.textContent = t("startingPicker");
   try {
     const tab = await activeTab();
     await chrome.scripting.executeScript({
@@ -112,9 +177,9 @@ async function startAreaPicker() {
     });
     const response = await chrome.tabs.sendMessage(tab.id, { type: "START_AREA_PICKER" });
     if (!response?.ok) {
-      throw new Error("Could not start area picker.");
+      throw new Error(t("cannotStartPicker"));
     }
-    refs.status.textContent = "Hover a text block, click to import, or press Esc.";
+    refs.status.textContent = t("pickerStarted");
     window.close();
   } catch (error) {
     refs.status.textContent = error.message || String(error);
@@ -126,7 +191,36 @@ async function startAreaPicker() {
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
-    throw new Error("No active tab.");
+    throw new Error(t("noActiveTab"));
   }
   return tab;
+}
+
+async function setLanguage(nextLang) {
+  lang = normalizeLang(nextLang);
+  await chrome.storage.local.set({ lang });
+  applyLanguage();
+}
+
+function applyLanguage() {
+  document.documentElement.lang = lang === "zh" ? "zh-Hans" : "en";
+  refs.i18nNodes.forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  refs.langButtons.forEach((button) => {
+    button.classList.toggle("active", normalizeLang(button.dataset.lang) === lang);
+  });
+}
+
+function t(key, values = {}) {
+  const template = MESSAGES[lang]?.[key] || MESSAGES.en[key] || key;
+  return template.replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
+}
+
+function defaultLang() {
+  return "zh";
+}
+
+function normalizeLang(value) {
+  return value === "en" ? "en" : "zh";
 }

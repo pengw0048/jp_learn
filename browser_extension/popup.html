@@ -1,24 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hans">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>jpcorpus importer</title>
+    <title>jpcorpus</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <main>
-      <h1>jpcorpus importer</h1>
-      <p>Select text, or pick a visible page area, then import it into the local viewer.</p>
+      <header>
+        <h1>jpcorpus</h1>
+        <div class="lang-switch" aria-label="Language">
+          <button id="lang-zh" type="button" data-lang="zh">中</button>
+          <button id="lang-en" type="button" data-lang="en">EN</button>
+        </div>
+      </header>
+      <p data-i18n="intro">选择网页文字，或点选页面上的文本块，然后导入本地阅读器。</p>
       <label>
-        Local viewer URL
+        <span data-i18n="baseUrl">本地阅读器地址</span>
         <input id="base-url" type="url" />
       </label>
-      <button id="save-url" type="button">Save URL</button>
-      <button id="toggle-reader" type="button">Toggle page reading mode</button>
-      <button id="import-selection" type="button">Import current selection</button>
-      <button id="pick-area" class="secondary" type="button">Pick page area</button>
-      <p class="tip">For exact snippets, select text first. In area picker, hover a text block and click; Esc cancels.</p>
+      <button id="save-url" type="button" data-i18n="saveUrl">保存地址</button>
+      <button id="toggle-reader" type="button" data-i18n="toggleReader">切换网页阅读模式</button>
+      <button id="import-selection" type="button" data-i18n="importSelection">导入当前选中内容</button>
+      <button id="pick-area" class="secondary" type="button" data-i18n="pickArea">点选页面文本块</button>
+      <p class="tip" data-i18n="tip">精确片段可以先选中文字；点选模式下，移动鼠标高亮文本块，点击导入，Esc 取消。</p>
       <p id="status" class="status"></p>
     </main>
     <script src="popup.js"></script>

@@ -15,6 +15,8 @@ This unpacked Chrome extension sends selected web text to the local jpcorpus vie
    - click Pick page area, hover a visible text block, then click it. Press Esc to cancel.
 6. For temporary on-page lookup, open the popup and click Toggle page reading mode, or right-click the page and choose Toggle jpcorpus reading mode. This does not save the page; it annotates words that match the local glossary and shows a floating glossary panel when an annotated word is clicked. Click Add to study in that panel to add the word to the viewer's study list.
 
+The popup language switch controls popup labels, context menu labels, in-page toasts, and the floating glossary panel. The extension UI uses a Chinese CJK font stack first so Chinese glossary text is not accidentally rendered with Japanese glyph variants from the host page.
+
 For pages with many nested spans or ruby annotations, Add main article strips `rt`/`rp` ruby text before importing. Selecting the exact text first is still the most precise option for a small snippet.
 
 The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.

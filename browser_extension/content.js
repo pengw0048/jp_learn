@@ -1,19 +1,77 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.7";
+  const SCRIPT_VERSION = "0.1.8";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
   window.__jpcorpusContentVersion = SCRIPT_VERSION;
   window.__jpcorpusPickerLoaded = true;
+  const CJK_FONT_CSS = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  const MESSAGES = {
+    zh: {
+      stillAnnotating: "jpcorpus 仍在标注这个页面...",
+      readerOff: "jpcorpus 网页阅读模式已关闭。",
+      annotating: "正在用 jpcorpus 标注这个页面...",
+      noJapaneseText: "没有在正文里找到日语文本。",
+      cannotAnnotate: "无法标注这个页面。",
+      annotated: "jpcorpus 标注了 {count} 个词。",
+      noAnnotations: "没有应用标注。如果这里明显不对，可以刷新页面再试。",
+      close: "关闭",
+      noGlossary: "没有找到词典释义。",
+      matchedForm: "匹配词形：{surface}",
+      saving: "保存中...",
+      cannotUpdateStudy: "无法更新学习状态。",
+      addedStudy: "已加入学习：{word}",
+      addStudy: "加入学习",
+      known: "已认识",
+      studying: "复习中",
+      ignored: "已忽略",
+      pickerInitial: "点击导入高亮文本。Esc 取消。",
+      pickerLabel: "点击导入 {count} 字 · Esc 取消",
+      noReadableArticle: "没有在这个页面找到可读正文。",
+    },
+    en: {
+      stillAnnotating: "jpcorpus is still annotating this page...",
+      readerOff: "jpcorpus reading mode off.",
+      annotating: "Annotating this page with jpcorpus...",
+      noJapaneseText: "No Japanese text found in the main page content.",
+      cannotAnnotate: "Could not annotate this page.",
+      annotated: "jpcorpus annotated {count} words.",
+      noAnnotations: "No annotations were applied. Try reloading the page if this looks wrong.",
+      close: "Close",
+      noGlossary: "No glossary entry found.",
+      matchedForm: "Matched form: {surface}",
+      saving: "Saving...",
+      cannotUpdateStudy: "Could not update study status.",
+      addedStudy: "Added to study: {word}",
+      addStudy: "Add to study",
+      known: "Known",
+      studying: "Reviewing",
+      ignored: "Ignored",
+      pickerInitial: "Click to import highlighted text. Esc cancel.",
+      pickerLabel: "Click to import {count} chars. · Esc cancel",
+      noReadableArticle: "No readable article text found on this page.",
+    },
+  };
+  let extensionLang = "zh";
 
   let picker = null;
   let reader = null;
+  syncLanguage();
+  chrome.storage?.onChanged?.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.lang) {
+      extensionLang = normalizeLang(changes.lang.newValue);
+    }
+  });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "START_AREA_PICKER") {
-      startPicker();
-      sendResponse({ ok: true });
-      return false;
+      syncLanguage()
+        .then(() => {
+          startPicker();
+          sendResponse({ ok: true });
+        })
+        .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+      return true;
     }
     if (message?.type === "TOGGLE_READING_MODE") {
       toggleReadingMode()
@@ -22,12 +80,10 @@
       return true;
     }
     if (message?.type === "EXTRACT_MAIN_ARTICLE") {
-      try {
-        sendResponse({ ok: true, payload: extractMainArticle() });
-      } catch (error) {
-        sendResponse({ ok: false, error: error.message || String(error) });
-      }
-      return false;
+      syncLanguage()
+        .then(() => sendResponse({ ok: true, payload: extractMainArticle() }))
+        .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+      return true;
     }
     if (message?.type === "SHOW_TOAST") {
       showToast(message.message || "", message.tone || "info");
@@ -38,13 +94,14 @@
   });
 
   async function toggleReadingMode() {
+    await syncLanguage();
     if (reader?.loading) {
-      showToast("jpcorpus is still annotating this page...");
+      showToast(tr("stillAnnotating"));
       return { enabled: true, tokenCount: reader.tokenCount || 0, busy: true };
     }
     if (reader?.active) {
       disableReadingMode();
-      showToast("jpcorpus reading mode off.");
+      showToast(tr("readerOff"));
       return { enabled: false, tokenCount: 0 };
     }
     return enableReadingMode();
@@ -62,7 +119,7 @@
       selectedToken: null,
       panel: null,
     };
-    showToast("Annotating this page with jpcorpus...");
+    showToast(tr("annotating"));
     try {
       const root = readerRoot();
       const blocks = [];
@@ -84,14 +141,14 @@
         blocks.push({ id, text: blockText });
       });
       if (!blocks.length) {
-        throw new Error("No Japanese text found in the main page content.");
+        throw new Error(tr("noJapaneseText"));
       }
       const response = await chrome.runtime.sendMessage({
         type: "ANNOTATE_TEXT_BLOCKS",
         payload: { blocks },
       });
       if (!response?.ok) {
-        throw new Error(response?.error || "Could not annotate this page.");
+        throw new Error(response?.error || tr("cannotAnnotate"));
       }
 
       const tokenCount = applyReaderAnnotations(response.result?.blocks || [], nodesById);
@@ -99,7 +156,7 @@
       reader.loading = false;
       reader.tokenCount = tokenCount;
       document.addEventListener("click", onReaderDocumentClick, true);
-      showToast(tokenCount ? `jpcorpus annotated ${tokenCount} words.` : "No annotations were applied. Try reloading the page if this looks wrong.");
+      showToast(tokenCount ? tr("annotated", { count: tokenCount }) : tr("noAnnotations"));
       return { enabled: true, tokenCount };
     } catch (error) {
       reader = null;
@@ -278,13 +335,14 @@
     removeReaderPanel();
     const panel = document.createElement("aside");
     panel.id = "jpcorpus-reader-panel";
+    panel.lang = extensionLang === "zh" ? "zh-Hans" : "en";
     const title = document.createElement("div");
     title.className = "jpcorpus-reader-panel-title";
     const word = document.createElement("strong");
     word.textContent = annotation.word || annotation.surface || "";
     const close = document.createElement("button");
     close.type = "button";
-    close.textContent = "关闭";
+    close.textContent = tr("close");
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -302,12 +360,12 @@
 
     const meaning = document.createElement("p");
     meaning.className = "jpcorpus-reader-panel-meaning";
-    meaning.textContent = annotation.meaning_zh || annotation.meaning || "No glossary entry found.";
+    meaning.textContent = annotation.meaning_zh || annotation.meaning || tr("noGlossary");
 
     const detail = document.createElement("p");
     detail.className = "jpcorpus-reader-panel-detail";
     detail.textContent = annotation.surface && annotation.surface !== annotation.word
-      ? `Matched form: ${annotation.surface}`
+      ? tr("matchedForm", { surface: annotation.surface })
       : "";
 
     panel.append(title, meta, meaning);
@@ -330,7 +388,7 @@
       event.preventDefault();
       event.stopPropagation();
       button.disabled = true;
-      button.textContent = "保存中...";
+      button.textContent = tr("saving");
       try {
         const response = await chrome.runtime.sendMessage({
           type: "SET_WORD_STATUS",
@@ -340,16 +398,16 @@
           },
         });
         if (!response?.ok) {
-          throw new Error(response?.error || "Could not update study status.");
+          throw new Error(response?.error || tr("cannotUpdateStudy"));
         }
         annotation.status = response.result?.status || "learning";
         annotation.study_count = response.result?.study_count || annotation.study_count || 0;
         updateReaderAnnotationsForWord(annotation.word, annotation.status, annotation.study_count);
         updateReaderStudyButton(button, annotation.status);
-        showToast(`已加入学习：${annotation.word}`);
+        showToast(tr("addedStudy", { word: annotation.word }));
       } catch (error) {
         button.disabled = false;
-        button.textContent = "加入学习";
+        button.textContent = tr("addStudy");
         showToast(error.message || String(error), "error");
       }
     });
@@ -371,16 +429,16 @@
     button.className = "jpcorpus-reader-study-button";
     button.disabled = status === "known" || status === "ignored" || status === "learning" || status === "uncertain";
     if (status === "known") {
-      button.textContent = "已认识";
+      button.textContent = tr("known");
       button.classList.add("saved");
     } else if (status === "learning" || status === "uncertain") {
-      button.textContent = "复习中";
+      button.textContent = tr("studying");
       button.classList.add("saved");
     } else if (status === "ignored") {
-      button.textContent = "已忽略";
+      button.textContent = tr("ignored");
       button.classList.add("saved");
     } else {
-      button.textContent = "加入学习";
+      button.textContent = tr("addStudy");
     }
   }
 
@@ -435,7 +493,7 @@
         background: #ffffff !important;
         box-shadow: 0 18px 45px rgba(31, 39, 42, 0.20) !important;
         color: #1f272a !important;
-        font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        font: 14px/1.45 ${CJK_FONT_CSS} !important;
       }
       .jpcorpus-reader-panel-title {
         display: flex !important;
@@ -455,7 +513,7 @@
         border-radius: 7px !important;
         background: #ffffff !important;
         color: #657178 !important;
-        font: 700 12px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        font: 700 12px/1 ${CJK_FONT_CSS} !important;
         cursor: pointer !important;
       }
       .jpcorpus-reader-panel-meta {
@@ -492,7 +550,7 @@
         border-radius: 8px !important;
         background: #147d73 !important;
         color: #ffffff !important;
-        font: 760 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        font: 760 13px/1 ${CJK_FONT_CSS} !important;
         cursor: pointer !important;
       }
       .jpcorpus-reader-study-button.saved,
@@ -516,6 +574,7 @@
     };
     picker.overlay.id = "jpcorpus-picker-overlay";
     picker.label.id = "jpcorpus-picker-label";
+    picker.label.lang = extensionLang === "zh" ? "zh-Hans" : "en";
     Object.assign(picker.overlay.style, {
       position: "fixed",
       zIndex: "2147483647",
@@ -535,10 +594,10 @@
       borderRadius: "6px",
       background: "#147d73",
       color: "#ffffff",
-      font: "12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      font: `12px/1.35 ${CJK_FONT_CSS}`,
       display: "none",
     });
-    picker.label.textContent = "Click to import highlighted text. Esc cancel.";
+    picker.label.textContent = tr("pickerInitial");
     document.documentElement.append(picker.overlay, picker.label);
     document.documentElement.style.cursor = "crosshair";
     window.addEventListener("mousemove", onMouseMove, true);
@@ -592,10 +651,7 @@
       left: `${Math.max(8, Math.min(window.innerWidth - 370, rect.left))}px`,
       top: `${Math.max(8, rect.top - 34)}px`,
     });
-    picker.label.textContent = [
-      `Click to import ${textLength} chars.`,
-      "Esc cancel",
-    ].filter(Boolean).join(" · ");
+    picker.label.textContent = tr("pickerLabel", { count: textLength });
   }
 
   function onClick(event) {
@@ -668,7 +724,7 @@
       .filter((candidate) => candidate.text.length >= 80)
       .sort((left, right) => right.score - left.score)[0];
     if (!best) {
-      throw new Error("No readable article text found on this page.");
+      throw new Error(tr("noReadableArticle"));
     }
     return {
       title: articleTitle(best.element) || document.title || "",
@@ -923,12 +979,31 @@
       boxShadow: "0 10px 30px rgba(31, 39, 42, 0.18)",
       background: tone === "error" ? "#b75a35" : "#147d73",
       color: "#ffffff",
-      font: "600 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      font: `600 13px/1.45 ${CJK_FONT_CSS}`,
       whiteSpace: "pre-wrap",
     });
+    toast.lang = extensionLang === "zh" ? "zh-Hans" : "en";
     document.documentElement.append(toast);
     window.setTimeout(() => {
       toast.remove();
     }, tone === "error" ? 8000 : 4200);
+  }
+
+  async function syncLanguage() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "GET_EXTENSION_LANG" });
+      extensionLang = normalizeLang(response?.lang);
+    } catch {
+      extensionLang = "zh";
+    }
+  }
+
+  function tr(key, values = {}) {
+    const template = MESSAGES[extensionLang]?.[key] || MESSAGES.en[key] || key;
+    return template.replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
+  }
+
+  function normalizeLang(value) {
+    return value === "en" ? "en" : "zh";
   }
 })();

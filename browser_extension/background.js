@@ -3,26 +3,111 @@ const MENU_IMPORT_SELECTION = "jpcorpus-import-selection";
 const MENU_IMPORT_ARTICLE = "jpcorpus-import-article";
 const MENU_TOGGLE_READER = "jpcorpus-toggle-reader";
 const NOTIFICATION_ICON = "icon.svg";
+const MESSAGES = {
+  zh: {
+    menuImportSelection: "导入选中文字到 jpcorpus",
+    menuImportArticle: "导入正文到 jpcorpus",
+    menuToggleReader: "切换 jpcorpus 网页阅读模式",
+    noSelection: "没有选中文字可导入。",
+    importingSelection: "正在导入选中文字...",
+    importingToJpcorpus: "正在导入 jpcorpus...",
+    alreadyImported: "已经导入过 {title}，无需刷新。",
+    corpusRefreshRunning: "语料刷新已经在运行。",
+    corpusRefreshStarted: "语料刷新已开始。",
+    imported: "已导入 {title}。{refresh}",
+    importStartedTitle: "jpcorpus 导入已开始",
+    alreadyImportedTitle: "jpcorpus 已有这段文本",
+    importFailedTitle: "jpcorpus 导入失败",
+    readerFailedTitle: "jpcorpus 网页阅读模式失败",
+    readingMode: "网页阅读模式",
+    studyUpdate: "学习状态更新",
+    importAction: "导入",
+    corpusRefreshAction: "语料刷新",
+    noActiveAnnotateTab: "没有可标注的当前标签页。",
+    cannotToggleReader: "无法切换网页阅读模式。",
+    readerBusy: "网页阅读模式仍在标注中。",
+    readerOn: "网页阅读模式已开启，标注了 {count} 个词。",
+    readerOnEmpty: "网页阅读模式已开启，但没有应用标注。",
+    readerOff: "网页阅读模式已关闭。",
+    importingArticle: "正在提取正文...",
+    extractingArticle: "正在提取正文...",
+    noActiveExtractTab: "没有可提取正文的当前标签页。",
+    cannotExtractArticle: "无法提取正文。",
+    requestNoReach: "{action} 无法连接本地阅读器。请启动或重启 uv run jpcorpus，然后 reload 扩展。",
+    oldViewerHint: "本地阅读器可能还是旧进程，没有网页导入 API。",
+    nonJsonHint: "本地阅读器返回了 HTML 或其他非 JSON 内容。",
+    requestFailed: "{action} 失败：{hint} 请重启 uv run jpcorpus，并 reload 扩展。",
+    httpFailed: "{action} 失败：HTTP {status}",
+    webTextTitle: "网页文本",
+  },
+  en: {
+    menuImportSelection: "Add selection to jpcorpus",
+    menuImportArticle: "Add main article to jpcorpus",
+    menuToggleReader: "Toggle jpcorpus reading mode",
+    noSelection: "No selected text to import.",
+    importingSelection: "Importing selected text...",
+    importingToJpcorpus: "Importing to jpcorpus...",
+    alreadyImported: "Already imported {title}. No refresh needed.",
+    corpusRefreshRunning: "Corpus refresh is already running.",
+    corpusRefreshStarted: "Corpus refresh started.",
+    imported: "Imported {title}. {refresh}",
+    importStartedTitle: "jpcorpus import started",
+    alreadyImportedTitle: "jpcorpus already has this text",
+    importFailedTitle: "jpcorpus import failed",
+    readerFailedTitle: "jpcorpus reading mode failed",
+    readingMode: "Reading mode",
+    studyUpdate: "Study update",
+    importAction: "Import",
+    corpusRefreshAction: "Corpus refresh",
+    noActiveAnnotateTab: "No active tab to annotate.",
+    cannotToggleReader: "Could not toggle reading mode.",
+    readerBusy: "Reading mode is still annotating.",
+    readerOn: "Reading mode on. Annotated {count} words.",
+    readerOnEmpty: "Reading mode on, but no annotations were applied.",
+    readerOff: "Reading mode off.",
+    importingArticle: "Extracting main article...",
+    extractingArticle: "Extracting article text...",
+    noActiveExtractTab: "No active tab to extract article text from.",
+    cannotExtractArticle: "Could not extract main article.",
+    requestNoReach: "{action} could not reach the local viewer. Start or restart uv run jpcorpus, then reload this extension.",
+    oldViewerHint: "The local viewer is probably an old running process without the web import API.",
+    nonJsonHint: "The local viewer returned HTML or another non-JSON response.",
+    requestFailed: "{action} failed: {hint} Restart uv run jpcorpus and reload the extension.",
+    httpFailed: "{action} failed with HTTP {status}",
+    webTextTitle: "web text",
+  },
+};
 
 chrome.runtime.onInstalled.addListener(() => {
+  refreshContextMenus();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.lang) {
+    refreshContextMenus();
+  }
+});
+
+async function refreshContextMenus() {
+  const lang = await currentLang();
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_IMPORT_SELECTION,
-      title: "Add selection to jpcorpus",
+      title: t(lang, "menuImportSelection"),
       contexts: ["selection"],
     });
     chrome.contextMenus.create({
       id: MENU_IMPORT_ARTICLE,
-      title: "Add main article to jpcorpus",
+      title: t(lang, "menuImportArticle"),
       contexts: ["page"],
     });
     chrome.contextMenus.create({
       id: MENU_TOGGLE_READER,
-      title: "Toggle jpcorpus reading mode",
+      title: t(lang, "menuToggleReader"),
       contexts: ["page"],
     });
   });
-});
+}
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_IMPORT_SELECTION) {
@@ -39,11 +124,17 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     return;
   }
   if (info.menuItemId === MENU_TOGGLE_READER) {
-    toggleReadingMode(tab).catch((error) => reportImportError(error, tab?.id, "jpcorpus reading mode failed"));
+    toggleReadingMode(tab).catch(async (error) => reportImportError(error, tab?.id, t(await currentLang(), "readerFailedTitle")));
   }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "GET_EXTENSION_LANG") {
+    currentLang()
+      .then((lang) => sendResponse({ ok: true, lang }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
+  }
   if (message?.type === "IMPORT_TEXT") {
     const tabId = sender.tab?.id || message.payload?.tabId;
     importSelectedText({ ...(message.payload || {}), tabId })
@@ -71,50 +162,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function annotateTextBlocks(payload) {
   const baseUrl = await localBaseUrl();
+  const lang = await currentLang();
   return requestJson(`${baseUrl}/api/annotate-text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
-  }, "Reading mode");
+  }, t(lang, "readingMode"), lang);
 }
 
 async function setWordStatus(payload) {
   const baseUrl = await localBaseUrl();
+  const lang = await currentLang();
   return requestJson(`${baseUrl}/api/word-status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
-  }, "Study update");
+  }, t(lang, "studyUpdate"), lang);
 }
 
 async function toggleReadingMode(tab) {
+  const lang = await currentLang();
   if (!tab?.id) {
-    throw new Error("No active tab to annotate.");
+    throw new Error(t(lang, "noActiveAnnotateTab"));
   }
   await ensureContentScript(tab.id);
   const response = await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_READING_MODE" });
   if (!response?.ok) {
-    throw new Error(response?.error || "Could not toggle reading mode.");
+    throw new Error(response?.error || t(lang, "cannotToggleReader"));
   }
   const message = response.busy
-    ? "Reading mode is still annotating."
+    ? t(lang, "readerBusy")
     : response.enabled && response.tokenCount > 0
-    ? `Reading mode on. Annotated ${response.tokenCount || 0} words.`
+    ? t(lang, "readerOn", { count: response.tokenCount || 0 })
     : response.enabled
-    ? "Reading mode on, but no annotations were applied."
-    : "Reading mode off.";
+    ? t(lang, "readerOnEmpty")
+    : t(lang, "readerOff");
   await setStatus(message);
   await showPageToast(tab.id, message);
   return response;
 }
 
 async function importSelectedText(payload) {
+  const lang = await currentLang();
   const text = String(payload.text || "").trim();
   if (!text) {
-    throw new Error("No selected text to import.");
+    throw new Error(t(lang, "noSelection"));
   }
-  await setStatus("Importing selected text...");
-  await showPageToast(payload.tabId, "Importing to jpcorpus...");
+  await setStatus(t(lang, "importingSelection"));
+  await showPageToast(payload.tabId, t(lang, "importingToJpcorpus"));
   const baseUrl = await localBaseUrl();
   const importPayload = await requestJson(`${baseUrl}/api/import-text`, {
     method: "POST",
@@ -124,37 +219,38 @@ async function importSelectedText(payload) {
       url: payload.url || "",
       text,
     }),
-  }, "Import");
-  const title = importPayload.imported?.title || "web text";
+  }, t(lang, "importAction"), lang);
+  const title = importPayload.imported?.title || t(lang, "webTextTitle");
   if (importPayload.imported?.duplicate) {
-    const message = `Already imported ${title}. No refresh needed.`;
+    const message = t(lang, "alreadyImported", { title });
     await setStatus(message);
     await chrome.action.setBadgeText({ text: "OK" });
     await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
     await showPageToast(payload.tabId, message);
-    await notify("jpcorpus already has this text", message);
+    await notify(t(lang, "alreadyImportedTitle"), message);
     return { imported: importPayload.imported, job: null, duplicate: true };
   }
   const refreshPayload = await startCorpusRefresh(baseUrl);
   const refreshMessage = refreshPayload.alreadyRunning
-    ? "Corpus refresh is already running."
-    : "Corpus refresh started.";
-  const message = `Imported ${title}. ${refreshMessage}`;
+    ? t(lang, "corpusRefreshRunning")
+    : t(lang, "corpusRefreshStarted");
+  const message = t(lang, "imported", { title, refresh: refreshMessage });
   await setStatus(message);
   await chrome.action.setBadgeText({ text: "OK" });
   await chrome.action.setBadgeBackgroundColor({ color: "#147d73" });
   await showPageToast(payload.tabId, message);
-  await notify("jpcorpus import started", message);
+  await notify(t(lang, "importStartedTitle"), message);
   return { imported: importPayload.imported, job: refreshPayload.job || null };
 }
 
 async function startCorpusRefresh(baseUrl) {
+  const lang = await currentLang();
   try {
     return await requestJson(`${baseUrl}/api/jobs/maintenance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "export_corpus" }),
-    }, "Corpus refresh");
+    }, t(lang, "corpusRefreshAction"), lang);
   } catch (error) {
     if (String(error.message || error).includes("Another maintenance job is already running")) {
       return { alreadyRunning: true };
@@ -164,15 +260,16 @@ async function startCorpusRefresh(baseUrl) {
 }
 
 async function importMainArticle(tab) {
+  const lang = await currentLang();
   if (!tab?.id) {
-    throw new Error("No active tab to extract article text from.");
+    throw new Error(t(lang, "noActiveExtractTab"));
   }
-  await setStatus("Extracting main article...");
-  await showPageToast(tab.id, "Extracting article text...");
+  await setStatus(t(lang, "importingArticle"));
+  await showPageToast(tab.id, t(lang, "extractingArticle"));
   await ensureContentScript(tab.id);
   const response = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_MAIN_ARTICLE" });
   if (!response?.ok) {
-    throw new Error(response?.error || "Could not extract main article.");
+    throw new Error(response?.error || t(lang, "cannotExtractArticle"));
   }
   return importSelectedText({ ...(response.payload || {}), tabId: tab.id });
 }
@@ -205,12 +302,12 @@ async function localBaseUrl() {
   return String(settings.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
-async function requestJson(url, options, action) {
+async function requestJson(url, options, action, lang = "en") {
   let response;
   try {
     response = await fetch(url, options);
   } catch (error) {
-    throw new Error(`${action} could not reach the local viewer. Start or restart uv run jpcorpus, then reload this extension.`);
+    throw new Error(t(lang, "requestNoReach", { action }));
   }
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
@@ -220,13 +317,13 @@ async function requestJson(url, options, action) {
       payload = JSON.parse(text);
     } catch {
       const hint = response.status === 404
-        ? "The local viewer is probably an old running process without the web import API."
-        : "The local viewer returned HTML or another non-JSON response.";
-      throw new Error(`${action} failed: ${hint} Restart uv run jpcorpus and reload the extension.`);
+        ? t(lang, "oldViewerHint")
+        : t(lang, "nonJsonHint");
+      throw new Error(t(lang, "requestFailed", { action, hint }));
     }
   }
   if (!response.ok) {
-    throw new Error(payload?.error || `${action} failed with HTTP ${response.status}`);
+    throw new Error(payload?.error || t(lang, "httpFailed", { action, status: response.status }));
   }
   return payload || {};
 }
@@ -238,13 +335,14 @@ async function setStatus(message) {
   });
 }
 
-async function reportImportError(error, tabId = null, title = "jpcorpus import failed") {
+async function reportImportError(error, tabId = null, title = null) {
+  const lang = await currentLang();
   const message = error.message || String(error);
   await setStatus(message);
   await chrome.action.setBadgeText({ text: "ERR" });
   await chrome.action.setBadgeBackgroundColor({ color: "#b75a35" });
   await showPageToast(tabId, message, "error");
-  await notify(title, message);
+  await notify(title || t(lang, "importFailedTitle"), message);
 }
 
 async function notify(title, message) {
@@ -266,4 +364,18 @@ async function notify(title, message) {
 function truncateMessage(message) {
   const text = String(message || "");
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
+}
+
+async function currentLang() {
+  const settings = await chrome.storage.local.get({ lang: "zh" });
+  return normalizeLang(settings.lang);
+}
+
+function normalizeLang(value) {
+  return value === "en" ? "en" : "zh";
+}
+
+function t(lang, key, values = {}) {
+  const template = MESSAGES[normalizeLang(lang)]?.[key] || MESSAGES.en[key] || key;
+  return template.replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
 }

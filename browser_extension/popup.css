@@ -1,9 +1,13 @@
+html {
+  --jpcorpus-cjk-font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 body {
   width: 300px;
   margin: 0;
   color: #1f272a;
   background: #fbfcfc;
-  font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 14px/1.45 var(--jpcorpus-cjk-font);
 }
 
 main {
@@ -12,9 +16,37 @@ main {
   padding: 14px;
 }
 
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 h1 {
   margin: 0;
   font-size: 16px;
+}
+
+.lang-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(34px, 1fr));
+  overflow: hidden;
+  border: 1px solid #d6e0e3;
+  border-radius: 8px;
+}
+
+.lang-switch button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  color: #657178;
+}
+
+.lang-switch button.active {
+  background: #147d73;
+  color: #ffffff;
 }
 
 p {
