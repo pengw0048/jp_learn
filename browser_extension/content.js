@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.5";
+  const SCRIPT_VERSION = "0.1.6";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -88,7 +88,7 @@
     };
     const tokenCount = applyReaderAnnotations(response.result?.blocks || [], nodesById);
     document.addEventListener("click", onReaderDocumentClick, true);
-    showToast(tokenCount ? `jpcorpus highlighted ${tokenCount} words.` : "No known words found on this page.");
+    showToast(tokenCount ? `jpcorpus annotated ${tokenCount} words.` : "No glossary matches found on this page.");
     return { enabled: true, tokenCount };
   }
 
