@@ -2,7 +2,6 @@ const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
 
 const MESSAGES = {
   zh: {
-    intro: "选择网页文字，或点选页面上的文本块，然后导入本地阅读器。",
     baseUrl: "本地阅读器地址",
     saveUrl: "保存地址",
     settings: "设置",
@@ -11,7 +10,6 @@ const MESSAGES = {
     toggleReader: "切换网页阅读模式",
     importSelection: "导入当前选中内容",
     pickArea: "点选页面文本块",
-    tip: "精确片段可以先选中文字；点选模式下，移动鼠标高亮文本块，点击导入，Esc 取消。",
     savedUrl: "已保存本地阅读器地址。",
     togglingReader: "正在切换网页阅读模式...",
     readerBusy: "网页阅读模式仍在标注中。",
@@ -29,7 +27,6 @@ const MESSAGES = {
     importSelectionUnavailable: "请先在网页上选中文字。",
   },
   en: {
-    intro: "Select text, or pick a visible page area, then import it into the local viewer.",
     baseUrl: "Local viewer URL",
     saveUrl: "Save URL",
     settings: "Settings",
@@ -38,7 +35,6 @@ const MESSAGES = {
     toggleReader: "Toggle page reading mode",
     importSelection: "Import current selection",
     pickArea: "Pick page area",
-    tip: "For exact snippets, select text first. In area picker, hover a text block and click; Esc cancels.",
     savedUrl: "Saved local viewer URL.",
     togglingReader: "Toggling reading mode...",
     readerBusy: "Reading mode is still annotating.",
@@ -86,7 +82,11 @@ async function init() {
   });
   lang = normalizeLang(settings.lang);
   refs.baseUrl.value = settings.baseUrl;
-  refs.status.textContent = settings.lastStatus || "";
+  const visibleStatus = visibleStoredStatus(settings.lastStatus);
+  refs.status.textContent = visibleStatus;
+  if (!visibleStatus && settings.lastStatus) {
+    await chrome.storage.local.remove(["lastStatus", "lastStatusAt"]);
+  }
   applyLanguage();
   refs.importSelection.disabled = true;
   refs.openSettings.addEventListener("click", () => showSettings(true));
@@ -253,4 +253,31 @@ function defaultLang() {
 
 function normalizeLang(value) {
   return value === "en" ? "en" : "zh";
+}
+
+function visibleStoredStatus(status) {
+  const text = String(status || "");
+  if (!text || isStaleTransientStatus(text)) {
+    return "";
+  }
+  return text;
+}
+
+function isStaleTransientStatus(text) {
+  return [
+    "Imported ",
+    "Already imported",
+    "Importing ",
+    "Corpus refresh",
+    "Reading mode ",
+    "Toggling reading mode",
+    "Extracting ",
+    "已导入",
+    "已经导入",
+    "正在导入",
+    "语料刷新",
+    "网页阅读模式",
+    "正在切换网页阅读模式",
+    "正在提取",
+  ].some((prefix) => text.startsWith(prefix));
 }

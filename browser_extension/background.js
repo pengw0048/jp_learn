@@ -9,7 +9,6 @@ const MESSAGES = {
     menuImportArticle: "导入正文到 jpcorpus",
     menuToggleReader: "切换 jpcorpus 网页阅读模式",
     noSelection: "没有选中文字可导入。",
-    importingSelection: "正在导入选中文字...",
     importingToJpcorpus: "正在导入 jpcorpus...",
     alreadyImported: "已经导入过 {title}，无需刷新。",
     corpusRefreshRunning: "语料刷新已经在运行。",
@@ -27,7 +26,6 @@ const MESSAGES = {
     readerOn: "网页阅读模式已开启，标注了 {count} 个词。",
     readerOnEmpty: "网页阅读模式已开启，但没有应用标注。",
     readerOff: "网页阅读模式已关闭。",
-    importingArticle: "正在提取正文...",
     extractingArticle: "正在提取正文...",
     noActiveExtractTab: "没有可提取正文的当前标签页。",
     cannotExtractArticle: "无法提取正文。",
@@ -43,7 +41,6 @@ const MESSAGES = {
     menuImportArticle: "Add main article to jpcorpus",
     menuToggleReader: "Toggle jpcorpus reading mode",
     noSelection: "No selected text to import.",
-    importingSelection: "Importing selected text...",
     importingToJpcorpus: "Importing to jpcorpus...",
     alreadyImported: "Already imported {title}. No refresh needed.",
     corpusRefreshRunning: "Corpus refresh is already running.",
@@ -61,7 +58,6 @@ const MESSAGES = {
     readerOn: "Reading mode on. Annotated {count} words.",
     readerOnEmpty: "Reading mode on, but no annotations were applied.",
     readerOff: "Reading mode off.",
-    importingArticle: "Extracting main article...",
     extractingArticle: "Extracting article text...",
     noActiveExtractTab: "No active tab to extract article text from.",
     cannotExtractArticle: "Could not extract main article.",
@@ -193,7 +189,7 @@ async function toggleReadingMode(tab) {
     : response.enabled
     ? t(lang, "readerOnEmpty")
     : t(lang, "readerOff");
-  await setStatus(message);
+  await clearStoredStatus();
   await showPageToast(tab.id, message);
   return response;
 }
@@ -204,7 +200,7 @@ async function importSelectedText(payload) {
   if (!text) {
     throw new Error(t(lang, "noSelection"));
   }
-  await setStatus(t(lang, "importingSelection"));
+  await clearStoredStatus();
   await clearActionBadge();
   await showPageToast(payload.tabId, t(lang, "importingToJpcorpus"));
   const baseUrl = await localBaseUrl();
@@ -257,7 +253,7 @@ async function importMainArticle(tab) {
   if (!tab?.id) {
     throw new Error(t(lang, "noActiveExtractTab"));
   }
-  await setStatus(t(lang, "importingArticle"));
+  await clearStoredStatus();
   await showPageToast(tab.id, t(lang, "extractingArticle"));
   await ensureContentScript(tab.id);
   const response = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_MAIN_ARTICLE" });
