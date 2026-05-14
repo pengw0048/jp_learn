@@ -71,10 +71,7 @@ window.JPCORPUS_LEXICAL = (() => {
       const readingNodes = lexicalFormNodes(lexicalUsefulForms(notes.readings, [word.reading, word.word]));
       const posLabels = lexicalVisiblePosLabels(notes.parts_of_speech);
       const posNodes = lexicalTextNodes(posLabels);
-      const showSenseGlosses = language() !== "zh" || !String(word.meaning_zh || "").trim();
-      const senseNodes = showSenseGlosses
-        ? lexicalSenseNodes(notes.senses, new Set(posLabels), { showGlosses: true })
-        : [];
+      const senseNodes = language() === "zh" ? [] : lexicalSenseNodes(notes.senses, new Set(posLabels));
       const dictionaryExampleNodes = lexicalDictionaryExampleNodes(notes.dictionary_examples);
       const hasUsefulNotes =
         spellingNodes.length > 0
@@ -90,7 +87,7 @@ window.JPCORPUS_LEXICAL = (() => {
       appendLexicalRow(body, t("lexicalPos"), posNodes);
       appendLexicalRow(
         body,
-        showSenseGlosses && language() === "zh" ? t("lexicalEnglishSenses") : t("lexicalSenses"),
+        t("lexicalSenses"),
         senseNodes,
         "lexical-note-values lexical-sense-values",
       );
@@ -151,14 +148,12 @@ window.JPCORPUS_LEXICAL = (() => {
         : labels;
     }
 
-    function lexicalSenseNodes(values, repeatedLabels = new Set(), options = {}) {
-      const showGlosses = options.showGlosses !== false;
+    function lexicalSenseNodes(values, repeatedLabels = new Set()) {
       return asArray(values).map((sense, index) => {
         if (!sense || typeof sense !== "object") {
           return null;
         }
-        const glosses = showGlosses ? uniqueStrings(asArray(sense.glosses))
-          .slice(0, 3) : [];
+        const glosses = uniqueStrings(asArray(sense.glosses)).slice(0, 3);
         const metaLabels = lexicalSenseMetaLabels(sense, repeatedLabels);
         if (!glosses.length && !metaLabels.length) {
           return null;

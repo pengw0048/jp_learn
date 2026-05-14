@@ -203,7 +203,7 @@ def test_maintenance_status_hides_successful_imported_text_refresh():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
-def test_lexical_notes_hide_sense_pos_repeated_by_global_pos():
+def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
@@ -255,7 +255,6 @@ def test_lexical_notes_hide_sense_pos_repeated_by_global_pos():
             lexicalNotes: "词语知识",
             lexicalPos: "语法",
             lexicalSenses: "词典义项",
-            lexicalEnglishSenses: "英文义项",
           }}[key] || key),
           getLanguage: () => "zh",
         }});
@@ -269,6 +268,7 @@ def test_lexical_notes_hide_sense_pos_repeated_by_global_pos():
               {{
                 glosses: ["to do", "to undertake"],
                 parts_of_speech: ["五段・る", "他动"],
+                tags: ["旧语"],
               }},
             ],
           }},
@@ -279,8 +279,40 @@ def test_lexical_notes_hide_sense_pos_repeated_by_global_pos():
         assert.equal((text.match(/他动/g) || []).length, 1);
         assert.equal(text.includes("to do"), false);
         assert.equal(text.includes("词典义项"), false);
+        assert.equal(text.includes("旧语"), false);
 
         const fallbackSection = helpers.renderLexicalNotes({{
+          word: "やる",
+          reading: "やる",
+          lexical_notes: {{
+            parts_of_speech: ["五段・る", "他动"],
+            senses: [
+              {{
+                glosses: ["to do", "to undertake"],
+                parts_of_speech: ["五段・る", "他动"],
+                tags: ["旧语"],
+              }},
+            ],
+          }},
+        }});
+        const fallbackText = fallbackSection.textContent;
+
+        assert.equal((fallbackText.match(/五段・る/g) || []).length, 1);
+        assert.equal((fallbackText.match(/他动/g) || []).length, 1);
+        assert.equal(fallbackText.includes("to do"), false);
+        assert.equal(fallbackText.includes("词典义项"), false);
+        assert.equal(fallbackText.includes("旧语"), false);
+
+        const enHelpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
+          el: makeNode,
+          t: (key) => ({{
+            lexicalNotes: "Word knowledge",
+            lexicalPos: "Grammar",
+            lexicalSenses: "Senses",
+          }}[key] || key),
+          getLanguage: () => "en",
+        }});
+        const enSection = enHelpers.renderLexicalNotes({{
           word: "やる",
           reading: "やる",
           lexical_notes: {{
@@ -293,11 +325,8 @@ def test_lexical_notes_hide_sense_pos_repeated_by_global_pos():
             ],
           }},
         }});
-        const fallbackText = fallbackSection.textContent;
-
-        assert.equal((fallbackText.match(/五段・る/g) || []).length, 1);
-        assert.equal((fallbackText.match(/他动/g) || []).length, 1);
-        assert.match(fallbackText, /英文义项1to do/);
+        const enText = enSection.textContent;
+        assert.match(enText, /Senses1to do/);
         """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
