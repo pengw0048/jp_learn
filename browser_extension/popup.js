@@ -26,6 +26,7 @@ const MESSAGES = {
     startingPicker: "正在启动点选模式...",
     cannotStartPicker: "无法启动点选模式。",
     pickerStarted: "移动鼠标高亮文本块，点击导入，或按 Esc 取消。",
+    importSelectionUnavailable: "请先在网页上选中文字。",
   },
   en: {
     intro: "Select text, or pick a visible page area, then import it into the local viewer.",
@@ -52,10 +53,12 @@ const MESSAGES = {
     startingPicker: "Starting area picker...",
     cannotStartPicker: "Could not start area picker.",
     pickerStarted: "Hover a text block, click to import, or press Esc.",
+    importSelectionUnavailable: "Select text on the page first.",
   },
 };
 
 let lang = "zh";
+let hasImportableSelection = false;
 
 const refs = {
   baseUrl: document.querySelector("#base-url"),
@@ -81,6 +84,7 @@ async function init() {
   refs.baseUrl.value = settings.baseUrl;
   refs.status.textContent = settings.lastStatus || "";
   applyLanguage();
+  refs.importSelection.disabled = true;
   refs.saveUrl.addEventListener("click", saveBaseUrl);
   refs.toggleReader.addEventListener("click", toggleReadingMode);
   refs.importSelection.addEventListener("click", importCurrentSelection);
@@ -88,6 +92,7 @@ async function init() {
   refs.langButtons.forEach((button) => {
     button.addEventListener("click", () => setLanguage(button.dataset.lang));
   });
+  refreshSelectionButton();
 }
 
 async function saveBaseUrl() {
@@ -125,19 +130,17 @@ async function toggleReadingMode() {
 }
 
 async function importCurrentSelection() {
+  if (!hasImportableSelection) {
+    refs.status.textContent = t("noSelection");
+    return;
+  }
   refs.importSelection.disabled = true;
   refs.status.textContent = t("readingSelection");
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) {
-      throw new Error(t("noActiveTab"));
-    }
-    const [selection] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.getSelection()?.toString() || "",
-    });
-    const text = String(selection?.result || "").trim();
+    const tab = await activeTab();
+    const text = await readPageSelection(tab);
     if (!text) {
+      hasImportableSelection = false;
       throw new Error(t("noSelection"));
     }
     const response = await chrome.runtime.sendMessage({
@@ -162,7 +165,7 @@ async function importCurrentSelection() {
   } catch (error) {
     refs.status.textContent = error.message || String(error);
   } finally {
-    refs.importSelection.disabled = false;
+    refreshSelectionButton();
   }
 }
 
@@ -196,6 +199,26 @@ async function activeTab() {
   return tab;
 }
 
+async function refreshSelectionButton() {
+  refs.importSelection.disabled = true;
+  try {
+    const tab = await activeTab();
+    hasImportableSelection = Boolean(await readPageSelection(tab));
+  } catch {
+    hasImportableSelection = false;
+  }
+  refs.importSelection.disabled = !hasImportableSelection;
+  refs.importSelection.title = hasImportableSelection ? "" : t("importSelectionUnavailable");
+}
+
+async function readPageSelection(tab) {
+  const [selection] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => window.getSelection()?.toString() || "",
+  });
+  return String(selection?.result || "").trim();
+}
+
 async function setLanguage(nextLang) {
   lang = normalizeLang(nextLang);
   await chrome.storage.local.set({ lang });
@@ -210,6 +233,7 @@ function applyLanguage() {
   refs.langButtons.forEach((button) => {
     button.classList.toggle("active", normalizeLang(button.dataset.lang) === lang);
   });
+  refs.importSelection.title = hasImportableSelection ? "" : t("importSelectionUnavailable");
 }
 
 function t(key, values = {}) {
