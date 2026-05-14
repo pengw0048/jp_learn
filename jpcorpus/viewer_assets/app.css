@@ -1556,6 +1556,102 @@ mark {
   line-height: 1.35;
 }
 
+.dictionary-audit {
+  display: grid;
+  gap: 12px;
+}
+
+.dictionary-audit-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dictionary-audit-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.dictionary-audit-group {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel), white 42%);
+}
+
+.dictionary-audit-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dictionary-audit-group-heading strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.dictionary-audit-group-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.dictionary-audit-ok {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dictionary-audit-list {
+  display: grid;
+  gap: 6px;
+}
+
+.dictionary-audit-item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.dictionary-audit-item:hover {
+  border-color: var(--accent);
+  background: var(--selected);
+}
+
+.dictionary-audit-item strong,
+.dictionary-audit-item span,
+.dictionary-audit-item small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dictionary-audit-item strong {
+  font-family: var(--font-ja);
+  font-size: 16px;
+}
+
+.dictionary-audit-item span,
+.dictionary-audit-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .reader-mode-pane {
   height: 100%;
   min-height: 0;

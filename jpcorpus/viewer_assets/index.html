@@ -172,6 +172,16 @@
         <section class="maintenance-card">
           <div class="maintenance-section-header">
             <div>
+              <h3 data-i18n="dictionaryAuditTitle">词典质量</h3>
+              <p class="maintenance-help" data-i18n="dictionaryAuditHelp">临时检查词典覆盖和高频可疑词，方便我们继续修数据。</p>
+            </div>
+            <button id="dictionary-audit-refresh" class="secondary-button" type="button" data-i18n="dictionaryAuditRefresh">重新扫描</button>
+          </div>
+          <div id="dictionary-audit" class="dictionary-audit"></div>
+        </section>
+        <section class="maintenance-card">
+          <div class="maintenance-section-header">
+            <div>
               <h3 data-i18n="importTextTitle">导入网页文本</h3>
               <p class="maintenance-help" data-i18n="importTextHelp">只有文本必填；标题和 URL 只是用来之后识别来源。</p>
             </div>

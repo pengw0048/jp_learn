@@ -36,6 +36,10 @@ window.JPCORPUS_API = (() => {
     return fetchJson("/api/maintenance", { cache: "no-store" });
   }
 
+  function loadDictionaryAudit() {
+    return fetchJson("/api/dictionary-audit", { cache: "no-store" });
+  }
+
   function deleteImportedText(sourceFiles) {
     return postJson("/api/delete-imported-text", { source_files: sourceFiles });
   }
@@ -82,6 +86,7 @@ window.JPCORPUS_API = (() => {
   return {
     loadCorpusIndex,
     loadMaintenanceStatus,
+    loadDictionaryAudit,
     deleteImportedText,
     loadWordDetail,
     loadSourceDetails,

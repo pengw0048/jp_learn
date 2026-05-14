@@ -15,6 +15,7 @@ from .viewer_jobs import (
     ViewerJobRunner,
     annotate_text_blocks,
     explain_reader_usage,
+    load_viewer_dictionary_audit,
     load_viewer_corpus_index,
     load_viewer_source_details,
     load_viewer_word_detail,
@@ -77,6 +78,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             return
         if request_path == "/api/maintenance":
             self._send_json(maintenance_status(self.job_runner))
+            return
+        if request_path == "/api/dictionary-audit":
+            self._send_json(load_viewer_dictionary_audit(self.corpus_path))
             return
         if request_path == "/api/study-state":
             self._send_json(viewer_study_state())

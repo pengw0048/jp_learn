@@ -64,6 +64,7 @@ CORPUS_RELOAD_TASKS = {"export_corpus", "refresh_imported_texts"}
 MAX_ANNOTATION_BLOCKS = 260
 MAX_ANNOTATION_TEXT_CHARS = 48_000
 MAX_ANNOTATIONS = 1_400
+MAX_DICTIONARY_AUDIT_ITEMS = 30
 ANNOTATION_EXCLUDED_POS = {"助詞", "助動詞", "補助記号", "記号", "空白"}
 NAME_TITLE_SURFACES = {
     "大統領",
@@ -600,6 +601,102 @@ def load_viewer_source_details(corpus_path: Path, source_keys: list[str]) -> dic
     found = {source_document_key(source) for source in sources}
     missing = sorted(targets - found)
     return {"sources": sources, "missing": missing}
+
+
+def load_viewer_dictionary_audit(corpus_path: Path) -> dict[str, Any]:
+    index_payload = load_viewer_corpus_index(corpus_path)
+    words = [
+        word
+        for word in index_payload.get("words") or []
+        if isinstance(word, dict) and word.get("word")
+    ]
+    categories: dict[str, list[dict[str, Any]]] = {
+        "missing_zh": [],
+        "english_only": [],
+        "no_jmdict": [],
+        "no_dictionary_examples": [],
+        "raw_pos": [],
+    }
+    counts = {key: 0 for key in categories}
+    dictionary_example_word_count = 0
+    for word in sorted(words, key=audit_word_sort_key):
+        detail = load_split_word_detail(corpus_path, str(word.get("word") or "")) or word
+        notes = detail.get("lexical_notes") if isinstance(detail.get("lexical_notes"), dict) else {}
+        has_senses = bool(notes.get("senses"))
+        has_dictionary_examples = bool(notes.get("dictionary_examples"))
+        if has_dictionary_examples:
+            dictionary_example_word_count += 1
+        item = dictionary_audit_item(word, detail, notes)
+        if not detail.get("meaning_zh"):
+            counts["missing_zh"] += 1
+            append_audit_item(categories["missing_zh"], item)
+        if detail.get("meaning") and not detail.get("meaning_zh"):
+            counts["english_only"] += 1
+            append_audit_item(categories["english_only"], item)
+        if not has_senses:
+            counts["no_jmdict"] += 1
+            append_audit_item(categories["no_jmdict"], item)
+        if has_senses and not has_dictionary_examples:
+            counts["no_dictionary_examples"] += 1
+            append_audit_item(categories["no_dictionary_examples"], item)
+        if has_raw_pos_label(notes):
+            counts["raw_pos"] += 1
+            append_audit_item(categories["raw_pos"], item)
+
+    coverage = dict((index_payload.get("summary") or {}).get("word_source_coverage") or {})
+    coverage.setdefault("exported_word_count", len(words))
+    coverage.setdefault("exported_zh_meaning_word_count", max(len(words) - counts["missing_zh"], 0))
+    coverage.setdefault("exported_missing_zh_meaning_word_count", counts["missing_zh"])
+    coverage.setdefault("exported_jmdict_word_count", max(len(words) - counts["no_jmdict"], 0))
+    coverage.setdefault("exported_no_jmdict_word_count", counts["no_jmdict"])
+    coverage.setdefault("exported_dictionary_example_word_count", dictionary_example_word_count)
+    return {
+        "generated_at": index_payload.get("generated_at"),
+        "summary": coverage,
+        "counts": counts,
+        "categories": categories,
+        "limit": MAX_DICTIONARY_AUDIT_ITEMS,
+    }
+
+
+def audit_word_sort_key(word: dict[str, Any]) -> tuple[int, int, str]:
+    return (-int(word.get("count") or 0), int(word.get("level_number") or 9), str(word.get("word") or ""))
+
+
+def append_audit_item(items: list[dict[str, Any]], item: dict[str, Any]) -> None:
+    if len(items) < MAX_DICTIONARY_AUDIT_ITEMS:
+        items.append(item)
+
+
+def dictionary_audit_item(
+    index_word: dict[str, Any],
+    detail: dict[str, Any],
+    notes: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "word": detail.get("word") or index_word.get("word"),
+        "reading": detail.get("reading") or index_word.get("reading"),
+        "level": detail.get("level") or index_word.get("level"),
+        "count": detail.get("count") or index_word.get("count") or 0,
+        "meaning": detail.get("meaning") or index_word.get("meaning"),
+        "meaning_zh": detail.get("meaning_zh") or index_word.get("meaning_zh"),
+        "has_jmdict": bool(notes.get("senses")),
+        "has_dictionary_examples": bool(notes.get("dictionary_examples")),
+    }
+
+
+def has_raw_pos_label(notes: dict[str, Any]) -> bool:
+    values: list[str] = []
+    for value in notes.get("parts_of_speech") or []:
+        if isinstance(value, str):
+            values.append(value)
+    for sense in notes.get("senses") or []:
+        if not isinstance(sense, dict):
+            continue
+        for value in sense.get("parts_of_speech") or []:
+            if isinstance(value, str):
+                values.append(value)
+    return any(re.search(r"[A-Za-z]{3,} [A-Za-z]{3,}", value) for value in values)
 
 
 def load_split_word_detail(corpus_path: Path, word_text: str) -> dict[str, Any] | None:
