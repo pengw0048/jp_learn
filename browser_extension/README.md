@@ -21,7 +21,7 @@ For pages with many nested spans or ruby annotations, Add main article strips `r
 
 The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.
 
-Right-click imports show an in-page toast and a desktop notification when the import starts, is skipped as a duplicate, or fails. Successful imports leave the extension badge clear; failures show a small badge marker so the error is easier to notice.
+Right-click imports show transient in-page toasts when importing, imported, or skipped as a duplicate. Successful imports leave the extension popup status and badge clear; failures persist the popup status, show a desktop notification, and show a small badge marker so the error is easier to notice.
 
 If the viewer is running on another local port, update the Local viewer URL in the extension popup.
 

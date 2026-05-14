@@ -23,9 +23,6 @@ const MESSAGES = {
     readingSelection: "正在读取当前选中内容...",
     noSelection: "没有选中文字可导入。",
     importFailed: "导入失败。",
-    alreadyImported: "已经导入过，无需刷新。",
-    importedAlreadyRefreshing: "已导入，语料刷新已经在运行。",
-    importedRefreshStarted: "已导入，语料刷新已开始。",
     startingPicker: "正在启动点选模式...",
     cannotStartPicker: "无法启动点选模式。",
     pickerStarted: "移动鼠标高亮文本块，点击导入，或按 Esc 取消。",
@@ -53,9 +50,6 @@ const MESSAGES = {
     readingSelection: "Reading current selection...",
     noSelection: "No selected text to import.",
     importFailed: "Import failed.",
-    alreadyImported: "Already imported. No refresh needed.",
-    importedAlreadyRefreshing: "Imported. Corpus refresh is already running.",
-    importedRefreshStarted: "Imported. Corpus refresh started.",
     startingPicker: "Starting area picker...",
     cannotStartPicker: "Could not start area picker.",
     pickerStarted: "Hover a text block, click to import, or press Esc.",
@@ -167,13 +161,7 @@ async function importCurrentSelection() {
     if (!response?.ok) {
       throw new Error(response?.error || t("importFailed"));
     }
-    if (response.result?.duplicate) {
-      refs.status.textContent = t("alreadyImported");
-    } else if (!response.result?.job) {
-      refs.status.textContent = t("importedAlreadyRefreshing");
-    } else {
-      refs.status.textContent = t("importedRefreshStarted");
-    }
+    refs.status.textContent = "";
   } catch (error) {
     refs.status.textContent = error.message || String(error);
   } finally {

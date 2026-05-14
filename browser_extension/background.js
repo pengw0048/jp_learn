@@ -15,8 +15,6 @@ const MESSAGES = {
     corpusRefreshRunning: "语料刷新已经在运行。",
     corpusRefreshStarted: "语料刷新已开始。",
     imported: "已导入 {title}。{refresh}",
-    importStartedTitle: "jpcorpus 导入已开始",
-    alreadyImportedTitle: "jpcorpus 已有这段文本",
     importFailedTitle: "jpcorpus 导入失败",
     readerFailedTitle: "jpcorpus 网页阅读模式失败",
     readingMode: "网页阅读模式",
@@ -51,8 +49,6 @@ const MESSAGES = {
     corpusRefreshRunning: "Corpus refresh is already running.",
     corpusRefreshStarted: "Corpus refresh started.",
     imported: "Imported {title}. {refresh}",
-    importStartedTitle: "jpcorpus import started",
-    alreadyImportedTitle: "jpcorpus already has this text",
     importFailedTitle: "jpcorpus import failed",
     readerFailedTitle: "jpcorpus reading mode failed",
     readingMode: "Reading mode",
@@ -224,10 +220,9 @@ async function importSelectedText(payload) {
   const title = importPayload.imported?.title || t(lang, "webTextTitle");
   if (importPayload.imported?.duplicate) {
     const message = t(lang, "alreadyImported", { title });
-    await setStatus(message);
+    await clearStoredStatus();
     await clearActionBadge();
     await showPageToast(payload.tabId, message);
-    await notify(t(lang, "alreadyImportedTitle"), message);
     return { imported: importPayload.imported, job: null, duplicate: true };
   }
   const refreshPayload = await startCorpusRefresh(baseUrl);
@@ -235,10 +230,9 @@ async function importSelectedText(payload) {
     ? t(lang, "corpusRefreshRunning")
     : t(lang, "corpusRefreshStarted");
   const message = t(lang, "imported", { title, refresh: refreshMessage });
-  await setStatus(message);
+  await clearStoredStatus();
   await clearActionBadge();
   await showPageToast(payload.tabId, message);
-  await notify(t(lang, "importStartedTitle"), message);
   return { imported: importPayload.imported, job: refreshPayload.job || null };
 }
 
@@ -332,6 +326,10 @@ async function setStatus(message) {
     lastStatus: message,
     lastStatusAt: new Date().toISOString(),
   });
+}
+
+async function clearStoredStatus() {
+  await chrome.storage.local.remove(["lastStatus", "lastStatusAt"]);
 }
 
 async function clearActionBadge() {
