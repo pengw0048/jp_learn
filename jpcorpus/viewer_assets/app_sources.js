@@ -525,7 +525,7 @@ window.JPCORPUS_SOURCES = (() => {
       try {
         await api.deleteImportedText(sourceFiles);
         app.sourcePanelGroupKey = null;
-        app.sourceInventoryNotice = t("sourceInventoryDeleted", { title });
+        app.sourceInventoryNotice = "";
         renderSourceInventory();
         const job = await startMaintenanceJob("refresh_imported_texts");
         if (job?.id) {

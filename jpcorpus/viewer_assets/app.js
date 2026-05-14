@@ -401,12 +401,13 @@ const {
 });
 
 let remoteStudyRefreshInFlight = false;
+let importTextStatusTimer = null;
 
 init();
 
 async function init() {
   bindControls();
-  bindRemoteStudyStateRefresh();
+  bindExternalStateRefresh();
   applyLanguage();
   await loadMaintenanceStatus();
   try {
@@ -423,13 +424,18 @@ async function init() {
   }
 }
 
-function bindRemoteStudyStateRefresh() {
-  window.addEventListener("focus", refreshRemoteStudyState);
+function bindExternalStateRefresh() {
+  window.addEventListener("focus", refreshExternalState);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
-      refreshRemoteStudyState();
+      refreshExternalState();
     }
   });
+}
+
+function refreshExternalState() {
+  refreshRemoteStudyState();
+  refreshMaintenanceJob({ quiet: true });
 }
 
 async function refreshRemoteStudyState() {
@@ -888,7 +894,7 @@ async function saveConfig() {
 
 async function importTextFromMaintenance() {
   refs.importTextSave.disabled = true;
-  refs.importTextStatus.textContent = t("importTextSaving");
+  setImportTextStatus(t("importTextSaving"));
   try {
     const result = await api.importText({
       title: refs.importTextTitle.value.trim(),
@@ -900,15 +906,30 @@ async function importTextFromMaintenance() {
     refs.importTextUrl.value = "";
     refs.importTextContent.value = "";
     if (result.imported?.duplicate) {
-      refs.importTextStatus.textContent = t("importTextDuplicate", { title });
+      setImportTextStatus(t("importTextDuplicate", { title }), { transient: true });
     } else {
-      refs.importTextStatus.textContent = t("importTextSaved", { title });
-      await startMaintenanceJob("refresh_imported_texts");
+      const job = await startMaintenanceJob("refresh_imported_texts");
+      if (job) {
+        setImportTextStatus("");
+      } else {
+        const error = app.maintenance.job?.log?.[0] || "could not start refresh";
+        setImportTextStatus(t("importTextRefreshFailed", { error }));
+      }
     }
   } catch (error) {
-    refs.importTextStatus.textContent = t("importTextFailed", { error: error.message || String(error) });
+    setImportTextStatus(t("importTextFailed", { error: error.message || String(error) }));
   } finally {
     renderMaintenance();
+  }
+}
+
+function setImportTextStatus(message, options = {}) {
+  window.clearTimeout(importTextStatusTimer);
+  refs.importTextStatus.textContent = message;
+  if (message && options.transient) {
+    importTextStatusTimer = window.setTimeout(() => {
+      refs.importTextStatus.textContent = "";
+    }, 3500);
   }
 }
 
