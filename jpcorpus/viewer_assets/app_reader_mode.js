@@ -10,6 +10,7 @@ window.JPCORPUS_READER_MODE = (() => {
     findWord,
     formatEpisodeLabel,
     formatNumber,
+    isActiveStudyStatus,
     readerDocumentKey,
     readerDocumentLabel,
     readerDocumentsForSource,
@@ -18,6 +19,7 @@ window.JPCORPUS_READER_MODE = (() => {
     render,
     sourceDocumentLineCount,
     sourceLabel,
+    statusFor,
     storage,
     strong,
     studyQueue,
@@ -164,6 +166,7 @@ window.JPCORPUS_READER_MODE = (() => {
       picker.append(el("span", "reader-source-picker-label", t("readerWordListChoice")));
       const options = el("div", "reader-word-list-tabs");
       [
+        ["focus", t("readerWordListFocus")],
         ["all", t("readerWordListAll")],
         ["study", t("readerWordListStudy")],
         ["piece", t("readerWordListPiece")],
@@ -196,6 +199,13 @@ window.JPCORPUS_READER_MODE = (() => {
       if (app.reader.wordList === "study") {
         return new Set(readerStudyWords().map((word) => word.word));
       }
+      if (app.reader.wordList === "focus") {
+        return new Set(
+          app.words
+            .filter((word) => isFocusReaderWord(word))
+            .map((word) => word.word),
+        );
+      }
       if (app.reader.wordList === "piece") {
         return new Set(readerMarkedWordsForCurrentUnit().map((entry) => entry.word.word));
       }
@@ -211,6 +221,13 @@ window.JPCORPUS_READER_MODE = (() => {
         ? asArray(app.study.session.words).map(findWord).filter(Boolean)
         : [];
       return sessionWords.length ? sessionWords : studyQueue();
+    }
+
+    function isFocusReaderWord(word) {
+      if (isActiveStudyStatus(statusFor(word))) {
+        return true;
+      }
+      return ["N1", "N2", "N3"].includes(word.level);
     }
 
     function readerUnitsForSource(source) {

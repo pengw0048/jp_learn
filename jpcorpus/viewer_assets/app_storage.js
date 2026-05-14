@@ -15,7 +15,7 @@ window.JPCORPUS_STORAGE = (() => {
   const STUDY_TARGET_COUNT = 7;
   const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
   const MODE_VALUES = new Set(["browse", "study", "read"]);
-  const READER_WORD_LIST_VALUES = new Set(["all", "study", "piece", "N5", "N4", "N3", "N2", "N1"]);
+  const READER_WORD_LIST_VALUES = new Set(["focus", "all", "study", "piece", "N5", "N4", "N3", "N2", "N1"]);
   const SPLIT_DEFAULT_RATIOS = {
     browse: 0.28,
     study: 0.28,
@@ -121,8 +121,8 @@ window.JPCORPUS_STORAGE = (() => {
   }
 
   function readReaderWordList() {
-    const value = localStorage.getItem(STORAGE_READER_WORD_LIST) || "all";
-    return READER_WORD_LIST_VALUES.has(value) ? value : "all";
+    const value = localStorage.getItem(STORAGE_READER_WORD_LIST) || "focus";
+    return READER_WORD_LIST_VALUES.has(value) ? value : "focus";
   }
 
   function readReaderPositions() {
