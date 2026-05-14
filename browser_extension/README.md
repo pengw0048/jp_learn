@@ -17,12 +17,12 @@ This unpacked Chrome extension sends selected web text to the local jpcorpus vie
 
 The popup language switch controls popup labels, context menu labels, in-page toasts, and the floating glossary panel. The extension UI uses a Chinese CJK font stack first so Chinese glossary text is not accidentally rendered with Japanese glyph variants from the host page.
 
+The popup keeps the local viewer URL in Settings. Most users can leave it at `http://127.0.0.1:8767`; change it only if the viewer is running on another local port.
+
 Add main article uses Mozilla Readability first, then falls back to the extension's generic visible-text picker logic. For pages with many nested spans or ruby annotations, imported article text strips `rt`/`rp` ruby text before saving. Selecting the exact text first is still the most precise option for a small snippet.
 
 The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local imported-text refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.
 
 Right-click imports show transient in-page toasts when importing, imported, or skipped as a duplicate. Successful imports leave the extension popup status and badge clear; failures persist the popup status, show a desktop notification, and show a small badge marker so the error is easier to notice.
-
-If the viewer is running on another local port, update the Local viewer URL in the extension popup.
 
 If the popup says the local viewer returned HTML or an old API, stop the running viewer and start `uv run jpcorpus` again, then reload this extension in `chrome://extensions`.

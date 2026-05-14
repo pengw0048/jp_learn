@@ -15,7 +15,7 @@ After installing, launch the app with `uv run jpcorpus`. The viewer opens at <ht
 From the viewer, open Maintenance:
 
 1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
-2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
+2. Click Full refresh for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates the viewer corpus.
 3. Later, run `uv run jpcorpus` again and use Refresh for new media/local text changes. LLM settings are only needed for on-demand AI explanations in the reader.
 
 The normal working corpus is `corpus.json` plus its generated `corpus.index.json` sidecar. Extra input/output paths are for debugging or experiments.
@@ -49,9 +49,11 @@ Then use the Maintenance panel. Day to day, this is still the only command you n
 
 The app intentionally does not expose a command tree. Data sync, dictionary refresh, and corpus rebuild are launched from the viewer so a normal user does not need to learn separate commands or path flags.
 
+The Maintenance panel has two normal buttons: Refresh and Full refresh. Refresh is the day-to-day action for new media, local text, web imports, subtitles, lyrics, and rebuilding the viewer data. Full refresh also refetches dictionaries, word lists, and the anime database, so it is only needed occasionally.
+
 The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary, and offline JMdict/KANJIDIC2 lexical resources. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
 
-The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/viewer_assets/app.js` so future UI work can add more languages without chasing hard-coded labels.
+The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/viewer_assets/app_i18n.js` so future UI work can add more languages without chasing hard-coded labels.
 
 The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. It also writes a compact `corpus.index.json` sidecar plus `corpus.words/` and `corpus.sources/` detail shards, so the viewer can start from the index and load full word examples, lexical notes, and source lines on demand. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency view. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
 
@@ -59,7 +61,9 @@ Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi musi
 
 Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh. The corpus importer will add them as `source_type: text`, using EPUB metadata when available and the file name as a fallback title.
 
-Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then refreshes only the imported web-text slice of the corpus. Exact duplicate web text is detected by content hash, so importing the same page or selection again reuses the existing file and skips the refresh. Imported web texts can be deleted from the Sources panel; the viewer removes the saved `.txt` and `.meta.json` files and refreshes that same web-text slice instead of reprocessing subtitles, lyrics, and books. The optional unpacked Chrome extension in `browser_extension/` adds right-click selection import, right-click main-article import using Mozilla Readability with a generic fallback, a small page-area picker, and an in-page reading mode that asks the local viewer to annotate visible Japanese text with subtle highlights and a floating glossary panel. Words can be marked for review, marked known, ignored, or cleared from that floating panel. Extension imports show an in-page toast and a notification for both success and failure, so a stopped or stale local viewer is visible without opening the popup.
+Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then refreshes only the imported web-text slice of the corpus. Exact duplicate web text is detected by content hash, so importing the same page or selection again reuses the existing file and skips the refresh. Imported web texts can be deleted from the Sources panel; the viewer removes the saved `.txt` and `.meta.json` files and refreshes that same web-text slice instead of reprocessing subtitles, lyrics, and books.
+
+The optional unpacked Chrome extension in `browser_extension/` adds right-click selection import, right-click main-article import using Mozilla Readability with a generic fallback, a small page-area picker, and an in-page reading mode that asks the local viewer to annotate visible Japanese text with subtle highlights and a floating glossary panel. Words can be marked for review, marked known, ignored, or cleared from that floating panel. Extension imports show an in-page toast and a notification for both success and failure, so a stopped or stale local viewer is visible without opening the popup.
 
 Optional reader AI explanation uses Anthropic, OpenAI-compatible endpoints, or Apple Foundation Models configured through `.env` or the viewer Configuration form. The Apple provider compiles `jpcorpus/apple_fm_explain.swift` into `~/.jpcorpus/apple_fm_explain` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout for reader explanation requests.
 
