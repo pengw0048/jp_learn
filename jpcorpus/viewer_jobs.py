@@ -14,7 +14,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from .corpus_export import corpus_index_from_payload, corpus_index_path
+from .corpus_export import INDEX_SCHEMA_VERSION, corpus_index_from_payload, corpus_index_path, source_document_key
 from .jlpt import JLPTWords, load_jlpt_words
 from .llm import (
     DEFAULT_ANTHROPIC_BASE_URL,
@@ -243,42 +243,42 @@ class ViewerJobRunner:
         }
 
     def _run_export_corpus_file(self, job: ViewerJob, output: Path) -> dict[str, Any]:
-        from . import cli as cli_tasks
+        from . import tasks
 
         return self._run_callable(
             job,
             "Export corpus",
-            cli_tasks.export_corpus_json,
+            tasks.export_corpus_json,
             output=output,
             state_db=self.state_db,
-            jlpt_words=cli_tasks.DEFAULT_JLPT_WORDS,
+            jlpt_words=tasks.DEFAULT_JLPT_WORDS,
             level=None,
             limit=None,
             examples_per_word=5,
             context_lines=2,
             context_min_chars=40,
             context_max_lines=4,
-            zh_dict=cli_tasks.DEFAULT_ZH_DICT,
-            jmdict=cli_tasks.DEFAULT_JMDICT,
-            kanjidic2=cli_tasks.DEFAULT_KANJIDIC2,
+            zh_dict=tasks.DEFAULT_ZH_DICT,
+            jmdict=tasks.DEFAULT_JMDICT,
+            kanjidic2=tasks.DEFAULT_KANJIDIC2,
             lexical_notes=True,
             subtitles=None,
             texts=None,
-            text_dir=cli_tasks.DEFAULT_TEXTS_DIR,
+            text_dir=tasks.DEFAULT_TEXTS_DIR,
         )
 
     def _run_maintenance_task(self, job: ViewerJob, spec: dict[str, Any]) -> dict[str, Any]:
-        from . import cli as cli_tasks
+        from . import tasks
 
         task_type = spec["type"]
         if task_type == "sync_anime":
             return self._run_callable(
                 job,
                 "Sync Bangumi anime and subtitles",
-                cli_tasks.sync,
+                tasks.sync,
                 state_db=self.state_db,
-                anime_db=cli_tasks.DEFAULT_ANIME_DB,
-                cache_dir=cli_tasks.DEFAULT_JIMAKU_CACHE,
+                anime_db=tasks.DEFAULT_ANIME_DB,
+                cache_dir=tasks.DEFAULT_JIMAKU_CACHE,
                 max_shows=None,
                 max_files_per_show=24,
                 download_subtitles=True,
@@ -287,7 +287,7 @@ class ViewerJobRunner:
             return self._run_callable(
                 job,
                 "Sync Bangumi music tracks",
-                cli_tasks.sync_lyrics,
+                tasks.sync_lyrics,
                 state_db=self.state_db,
                 max_albums=None,
                 max_tracks=None,
@@ -296,9 +296,9 @@ class ViewerJobRunner:
             return self._run_callable(
                 job,
                 "Fetch missing LRCLIB lyrics",
-                cli_tasks.fetch_lyrics,
+                tasks.fetch_lyrics,
                 state_db=self.state_db,
-                cache_dir=cli_tasks.DEFAULT_LYRICS_CACHE,
+                cache_dir=tasks.DEFAULT_LYRICS_CACHE,
                 limit=spec["limit"],
                 overwrite=spec["overwrite"],
                 force=False,
@@ -308,48 +308,48 @@ class ViewerJobRunner:
             return self._run_callable(
                 job,
                 "Update Anime Offline Database",
-                cli_tasks.fetch_anime_db,
-                output=cli_tasks.DEFAULT_ANIME_DB,
+                tasks.fetch_anime_db,
+                output=tasks.DEFAULT_ANIME_DB,
             )
         if task_type == "fetch_zh_dict":
             return self._run_callable(
                 job,
                 "Update Japanese-Chinese dictionary",
-                cli_tasks.fetch_zh_dict,
-                output=cli_tasks.DEFAULT_ZH_DICT,
+                tasks.fetch_zh_dict,
+                output=tasks.DEFAULT_ZH_DICT,
                 source_url="https://raw.githubusercontent.com/lxl66566/Japanese-Chinese-thesaurus/main/final.json",
             )
         if task_type == "fetch_jlpt_words":
             return self._run_callable(
                 job,
                 "Update JLPT word list",
-                cli_tasks.fetch_jlpt_words,
-                output=cli_tasks.DEFAULT_JLPT_WORDS,
+                tasks.fetch_jlpt_words,
+                output=tasks.DEFAULT_JLPT_WORDS,
                 source_url="https://raw.githubusercontent.com/elzup/jlpt-word-list/master/out/all.csv",
             )
         if task_type == "fetch_jmdict":
             return self._run_callable(
                 job,
                 "Update JMdict",
-                cli_tasks.fetch_jmdict,
-                output=cli_tasks.DEFAULT_JMDICT,
+                tasks.fetch_jmdict,
+                output=tasks.DEFAULT_JMDICT,
                 source_url="http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz",
             )
         if task_type == "fetch_kanjidic2":
             return self._run_callable(
                 job,
                 "Update KANJIDIC2",
-                cli_tasks.fetch_kanjidic2,
-                output=cli_tasks.DEFAULT_KANJIDIC2,
+                tasks.fetch_kanjidic2,
+                output=tasks.DEFAULT_KANJIDIC2,
                 source_url="http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz",
             )
         if task_type == "fetch_lexical_resources":
             return self._run_callable(
                 job,
                 "Update lexical resources",
-                cli_tasks.fetch_lexical_resources,
-                jmdict_output=cli_tasks.DEFAULT_JMDICT,
-                kanjidic2_output=cli_tasks.DEFAULT_KANJIDIC2,
+                tasks.fetch_lexical_resources,
+                jmdict_output=tasks.DEFAULT_JMDICT,
+                kanjidic2_output=tasks.DEFAULT_KANJIDIC2,
             )
         raise ValueError(f"Unsupported maintenance task: {task_type}")
 
@@ -663,6 +663,8 @@ def load_viewer_corpus_index(corpus_path: Path) -> dict[str, Any]:
     if index_mtime >= corpus_mtime and index_mtime > 0:
         try:
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            if payload.get("index_schema_version") != INDEX_SCHEMA_VERSION:
+                payload = corpus_index_from_payload(load_corpus_payload(resolved))
         except (OSError, json.JSONDecodeError):
             payload = corpus_index_from_payload(load_corpus_payload(resolved))
     else:
@@ -681,6 +683,23 @@ def load_viewer_word_detail(corpus_path: Path, word_text: str) -> dict[str, Any]
         if isinstance(word, dict) and word.get("word") == target:
             return {"word": word}
     raise ValueError(f"Word not found: {target}")
+
+
+def load_viewer_source_details(corpus_path: Path, source_keys: list[str]) -> dict[str, Any]:
+    targets = {str(key or "").strip() for key in source_keys if str(key or "").strip()}
+    if not targets:
+        raise ValueError("Missing source key.")
+    payload = load_corpus_payload(corpus_path)
+    sources = [
+        source
+        for source in payload.get("sources") or []
+        if isinstance(source, dict) and source_document_key(source) in targets
+    ]
+    for source in sources:
+        source.setdefault("source_key", source_document_key(source))
+    found = {source_document_key(source) for source in sources}
+    missing = sorted(targets - found)
+    return {"sources": sources, "missing": missing}
 
 
 def load_corpus_payload(corpus_path: Path) -> dict[str, Any]:

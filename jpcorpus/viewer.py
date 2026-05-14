@@ -17,6 +17,7 @@ from .viewer_jobs import (
     explain_reader_usage,
     import_text_document,
     load_viewer_corpus_index,
+    load_viewer_source_details,
     load_viewer_word_detail,
     maintenance_status,
     save_viewer_study_state,
@@ -67,6 +68,13 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             word = parse_qs(parsed.query).get("word", [""])[0]
             try:
                 self._send_json(load_viewer_word_detail(self.corpus_path, word))
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
+            return
+        if request_path == "/api/source-detail":
+            keys = parse_qs(parsed.query).get("key", [])
+            try:
+                self._send_json(load_viewer_source_details(self.corpus_path, keys))
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
             return

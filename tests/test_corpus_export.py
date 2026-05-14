@@ -86,6 +86,10 @@ def test_export_corpus_json(tmp_path: Path):
     assert "lexical_notes" not in index_payload["words"][0]
     assert index_payload["words"][0]["example_count"] == 1
     assert "約束" in index_payload["words"][0]["search_terms"]
+    assert index_payload["sources"][0]["source_key"]
+    assert index_payload["sources"][0]["line_count"] == 1
+    assert index_payload["sources"][0]["words"] == ["約束"]
+    assert "lines" not in index_payload["sources"][0]
 
 
 def test_kanji_tokens_do_not_fall_back_to_homophone_jlpt_entry(tmp_path: Path):

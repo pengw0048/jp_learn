@@ -187,6 +187,7 @@ const text = {
     sourceInventoryTitle: "来源概览",
     sourceInventoryHelp: "按当前页面语料统计，用来确认字幕、歌词、小说是否已经进库。",
     sourceInventoryEmpty: "还没有来源数据",
+    sourceDetailLoading: "正在读取来源内容...",
     sourceInventoryWords: "词",
     sourceInventoryExamples: "例句",
     sourceInventoryFiles: "文件",
@@ -356,6 +357,7 @@ const text = {
     sourceInventoryTitle: "Sources",
     sourceInventoryHelp: "Built from the current viewer corpus so you can confirm subtitles, lyrics, and texts were imported.",
     sourceInventoryEmpty: "No source data yet",
+    sourceDetailLoading: "Loading source content...",
     sourceInventoryWords: "Words",
     sourceInventoryExamples: "Examples",
     sourceInventoryFiles: "Files",
@@ -455,6 +457,9 @@ const app = {
   words: [],
   selectedWord: null,
   wordDetailRequests: new Map(),
+  sourceDetails: new Map(),
+  sourceDetailRequests: new Map(),
+  sourceDetailFailures: new Set(),
   query: "",
   level: "all",
   sort: "count",
@@ -1023,13 +1028,14 @@ function buildSourceItems() {
   }
 
   asArray(app.corpus?.sources).forEach((document) => {
+    document = sourceDocumentWithDetail(document);
     const type = document.source_type || "subtitle";
     const title = String(document.source_title || document.source_file || t("sourceInventoryUnknown")).trim();
     const artist = String(document.source_artist || "").trim();
     const album = String(document.source_album || "").trim();
     const entry = ensureSource(type, title, artist, album);
     entry.sourceDocuments.push(document);
-    entry.readerLineCount += asArray(document.lines).length;
+    entry.readerLineCount += sourceDocumentLineCount(document);
     if (!entry.hasStats) {
       entry.tokens += Number(document.token_count) || 0;
     }
@@ -1037,13 +1043,7 @@ function buildSourceItems() {
     if (file) {
       entry.files.add(file);
     }
-    asArray(document.lines).forEach((line) => {
-      asArray(line.matches).forEach((match) => {
-        if (match.word) {
-          entry.words.add(match.word);
-        }
-      });
-    });
+    sourceDocumentWords(document).forEach((word) => entry.words.add(word));
   });
 
   app.words.forEach((word) => {
@@ -1071,6 +1071,43 @@ function buildSourceItems() {
     entry.fileCount = Math.max(entry.fileCount, entry.files.size);
   });
   return [...sources.values()].sort(compareSourceInventoryItems);
+}
+
+function sourceDocumentWithDetail(document) {
+  const key = sourceDocumentKey(document);
+  return key && app.sourceDetails.has(key) ? app.sourceDetails.get(key) : document;
+}
+
+function sourceDocumentKey(document) {
+  return document?.source_key || [
+    document?.source_type || "subtitle",
+    document?.source_title || "",
+    document?.source_artist || "",
+    document?.source_album || "",
+    document?.source_file || "",
+    Number.isInteger(document?.episode) ? document.episode : "",
+  ].join("\u0000");
+}
+
+function sourceDocumentLineCount(document) {
+  const lines = asArray(document?.lines);
+  return lines.length || Number(document?.line_count || 0);
+}
+
+function sourceDocumentWords(document) {
+  const indexedWords = asArray(document?.words).filter(Boolean);
+  if (indexedWords.length) {
+    return indexedWords;
+  }
+  const words = new Set();
+  asArray(document?.lines).forEach((line) => {
+    asArray(line.matches).forEach((match) => {
+      if (match.word) {
+        words.add(match.word);
+      }
+    });
+  });
+  return [...words];
 }
 
 function buildSourceGroups(sourceType) {
@@ -1169,7 +1206,7 @@ function sourceDocumentChildren(source) {
           .filter(Boolean)
           .join(" · ")
         : "",
-      lines: asArray(document.lines).length,
+      lines: sourceDocumentLineCount(document),
       files: [document.source_file].filter(Boolean),
     }))
     .sort((left, right) => left.label.localeCompare(right.label, app.lang === "zh" ? "zh-CN" : "ja-JP"));
@@ -1193,7 +1230,7 @@ function subtitleDocumentChildren(source) {
     if (file) {
       entry.files.add(file);
     }
-    entry.lines += asArray(document.lines).length;
+    entry.lines += sourceDocumentLineCount(document);
   });
   return [...episodes.values()]
     .sort(compareSubtitleChildren)
@@ -1540,12 +1577,15 @@ function readerDocumentsForSource(source) {
 
 function normalizeReaderDocument(document) {
   return {
+    source_key: sourceDocumentKey(document),
     source_type: document.source_type || "subtitle",
     source_title: document.source_title || document.source_file || "",
     source_artist: document.source_artist || "",
     source_album: document.source_album || "",
     source_file: document.source_file || "",
     episode: Number.isInteger(document.episode) ? document.episode : null,
+    line_count: Number(document.line_count) || 0,
+    words: sourceDocumentWords(document),
     lines: asArray(document.lines).map((line) => ({
       text: line.text || "",
       start_ms: Number.isInteger(line.start_ms) ? line.start_ms : null,
@@ -1645,7 +1685,7 @@ function renderReaderDocument(document, open, options = {}) {
   const summary = el("summary", "");
   summary.append(
     strong(readerDocumentLabel(document)),
-    el("span", "", `${formatNumber(document.lines.length)} ${t("sourceInventoryLines")}`),
+    el("span", "", `${formatNumber(sourceDocumentLineCount(document))} ${t("sourceInventoryLines")}`),
   );
   details.append(summary);
   const lines = el("div", "reader-lines");
@@ -1924,6 +1964,49 @@ function needsWordDetail(word) {
     && !Array.isArray(word.examples);
 }
 
+function ensureSourceDetails(documents) {
+  const keys = asArray(documents)
+    .map(sourceDocumentKey)
+    .filter((key) => key && !app.sourceDetails.has(key) && !app.sourceDetailRequests.has(key) && !app.sourceDetailFailures.has(key));
+  if (!keys.length) {
+    return;
+  }
+  keys.forEach((key) => app.sourceDetailRequests.set(key, true));
+  const params = new URLSearchParams();
+  keys.forEach((key) => params.append("key", key));
+  fetch(`/api/source-detail?${params.toString()}`, { cache: "no-store" })
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      asArray(payload.sources).forEach((source) => {
+        app.sourceDetails.set(sourceDocumentKey(source), source);
+      });
+      asArray(payload.missing).forEach((key) => app.sourceDetailFailures.add(key));
+    })
+    .catch(() => {
+      keys.forEach((key) => app.sourceDetailFailures.add(key));
+    })
+    .finally(() => {
+      keys.forEach((key) => app.sourceDetailRequests.delete(key));
+      if (app.mode === "read") {
+        app.reader.preserveScrollOnRender = true;
+        render();
+      }
+    });
+}
+
+function sourceDetailsReady(documents) {
+  return asArray(documents).every((document) => {
+    if (asArray(document.lines).length > 0) {
+      return true;
+    }
+    const key = sourceDocumentKey(document);
+    return Boolean(key && (app.sourceDetails.has(key) || app.sourceDetailFailures.has(key)));
+  });
+}
+
 function hasExampleAnnotations(example) {
   return Boolean(example.translation_zh && example.usage_note_zh);
 }
@@ -2079,6 +2162,11 @@ function renderReadingPane() {
   const selectedUnit = units.find((unit) => unit.key === app.reader.documentKey) || units[0] || null;
   syncSelectedWordToReaderSource(selectedUnit || selected, readerWords);
   refs.resultCount.replaceChildren(renderReaderModeControls(groups, selected, units, selectedUnit));
+  const detailDocuments = selectedUnit?.documents || selected.sourceDocuments || [];
+  const detailsReady = sourceDetailsReady(detailDocuments);
+  if (!detailsReady) {
+    ensureSourceDetails(detailDocuments);
+  }
 
   const pane = el("div", "reader-mode-pane");
   const scroller = el("div", "reader-mode-scroll");
@@ -2089,11 +2177,13 @@ function renderReadingPane() {
   scroller.append(
     renderReaderModeSummary(selected, selectedUnit),
     renderReaderMarkedWordsPanel(),
-    renderSourceReader(selected, {
-      full: true,
-      wordSet: readerWords,
-      documents: selectedUnit?.documents || [],
-    }),
+    detailsReady
+      ? renderSourceReader(selected, {
+        full: true,
+        wordSet: readerWords,
+        documents: selectedUnit?.documents || [],
+      })
+      : emptyMessage(t("sourceDetailLoading")),
   );
   pane.append(scroller);
   refs.wordList.replaceChildren(pane);
@@ -2401,7 +2491,7 @@ function comparePreferredSubtitleDocuments(left, right) {
 
 function subtitleDocumentPreferenceScore(document) {
   const file = String(document.source_file || document.source_title || "").toLowerCase();
-  let score = asArray(document.lines).length;
+  let score = sourceDocumentLineCount(document);
   if (/(^|[._\s-])ja($|[._\s-]|\[)/u.test(file) || /jpn|japanese/u.test(file)) {
     score += 80;
   }
@@ -2417,6 +2507,11 @@ function subtitleDocumentPreferenceScore(document) {
 function createReaderUnit({ key, episode = null, label, meta = "", documents }) {
   const words = new Set();
   const lineCount = documents.reduce((total, document) => {
+    asArray(document.words).forEach((word) => {
+      if (word) {
+        words.add(word);
+      }
+    });
     asArray(document.lines).forEach((line) => {
       asArray(line.matches).forEach((match) => {
         if (match.word) {
@@ -2424,7 +2519,7 @@ function createReaderUnit({ key, episode = null, label, meta = "", documents }) 
         }
       });
     });
-    return total + asArray(document.lines).length;
+    return total + sourceDocumentLineCount(document);
   }, 0);
   return {
     key,
@@ -3319,6 +3414,9 @@ async function refreshMaintenanceJob() {
 async function reloadCorpus() {
   const selectedWord = app.selectedWord?.word || "";
   app.wordDetailRequests.clear();
+  app.sourceDetails.clear();
+  app.sourceDetailRequests.clear();
+  app.sourceDetailFailures.clear();
   app.corpus = await loadCorpusIndex();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
   await mergeRemoteStudyState();

@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.8";
+  const SCRIPT_VERSION = "0.1.9";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -714,9 +714,9 @@
   }
 
   function extractMainArticle() {
-    const siteSpecificArticle = siteSpecificMainArticle();
-    if (siteSpecificArticle) {
-      return siteSpecificArticle;
+    const readabilityArticle = extractReadabilityArticle();
+    if (readabilityArticle) {
+      return readabilityArticle;
     }
     const candidates = articleCandidates();
     const best = candidates
@@ -731,6 +731,49 @@
       url: location.href,
       text: best.text,
     };
+  }
+
+  function extractReadabilityArticle() {
+    const ReadabilityCtor = globalThis.Readability || (typeof Readability === "function" ? Readability : null);
+    if (typeof ReadabilityCtor !== "function") {
+      return null;
+    }
+    try {
+      const article = new ReadabilityCtor(document.cloneNode(true), {
+        charThreshold: 80,
+        classesToPreserve: [],
+      }).parse();
+      if (!article) {
+        return null;
+      }
+      const contentText = readableHtmlText(article.content || "") || cleanText(article.textContent || "");
+      const title = cleanText(article.title || document.title || "");
+      if (!isReadableArticleText(contentText)) {
+        return null;
+      }
+      return {
+        title,
+        url: location.href,
+        text: cleanText([title, contentText].filter(Boolean).join("\n\n")),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function readableHtmlText(html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    return readableText(template.content);
+  }
+
+  function isReadableArticleText(text) {
+    const clean = cleanText(text);
+    if (clean.length < 80 || !hasJapaneseText(clean)) {
+      return false;
+    }
+    const japaneseCount = (clean.match(/[\u3040-\u30ff\u3400-\u9fff々〆ヵヶー]/g) || []).length;
+    return japaneseCount / clean.length >= 0.2;
   }
 
   function articleCandidates() {
@@ -819,57 +862,6 @@
     );
   }
 
-  function siteSpecificMainArticle() {
-    return nhkEasyArticle();
-  }
-
-  function nhkEasyArticle() {
-    if (!location.hostname.includes("nhk") || !location.pathname.includes("/news/easy/")) {
-      return null;
-    }
-    const title = articleTitle(document.body) || document.title || "";
-    const roots = Array.from(document.querySelectorAll("article, main, [role='main'], #main, #content, #contents"));
-    if (!roots.length) {
-      roots.push(document.body);
-    }
-    const seen = new Set();
-    const paragraphs = [];
-    roots.forEach((root) => {
-      root.querySelectorAll("p").forEach((paragraph) => {
-        const text = readableText(paragraph);
-        if (!isArticleParagraph(text) || seen.has(text)) {
-          return;
-        }
-        seen.add(text);
-        paragraphs.push(text);
-      });
-    });
-    const bodyText = paragraphs.join("\n\n");
-    if (bodyText.length < 160) {
-      return null;
-    }
-    return {
-      title,
-      url: location.href,
-      text: cleanText([title, bodyText].filter(Boolean).join("\n\n")),
-    };
-  }
-
-  function isArticleParagraph(text) {
-    const clean = cleanText(text);
-    if (clean.length < 24 || clean.length > 800) {
-      return false;
-    }
-    if (/^(NHK|ニュースを聞く|漢字の読み方|シェア|関連ニュース|もっと見る|戻る|閉じる)/.test(clean)) {
-      return false;
-    }
-    const japaneseCount = (clean.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
-    if (japaneseCount / clean.length < 0.35) {
-      return false;
-    }
-    return /[。、！？!?]|です|ます|ました|ません|います|予定|話/.test(clean);
-  }
-
   function articleTitle(element) {
     const heading = element.querySelector("h1, h2") || document.querySelector("h1");
     return cleanText(heading ? readableText(heading) : "");
@@ -887,6 +879,10 @@
     }
     if (node.nodeType === Node.TEXT_NODE) {
       chunks.push(node.nodeValue || "");
+      return;
+    }
+    if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+      node.childNodes.forEach((child) => collectReadableText(child, chunks));
       return;
     }
     if (!(node instanceof Element)) {

@@ -17,7 +17,7 @@ This unpacked Chrome extension sends selected web text to the local jpcorpus vie
 
 The popup language switch controls popup labels, context menu labels, in-page toasts, and the floating glossary panel. The extension UI uses a Chinese CJK font stack first so Chinese glossary text is not accidentally rendered with Japanese glyph variants from the host page.
 
-For pages with many nested spans or ruby annotations, Add main article strips `rt`/`rp` ruby text before importing. Selecting the exact text first is still the most precise option for a small snippet.
+Add main article uses Mozilla Readability first, then falls back to the extension's generic visible-text picker logic. For pages with many nested spans or ruby annotations, imported article text strips `rt`/`rp` ruby text before saving. Selecting the exact text first is still the most precise option for a small snippet.
 
 The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.
 

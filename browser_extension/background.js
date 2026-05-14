@@ -266,7 +266,7 @@ async function importMainArticle(tab) {
 async function ensureContentScript(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["content.js"],
+    files: ["vendor/Readability.js", "content.js"],
   });
 }
 

@@ -19,6 +19,7 @@ from .zh_dict import ChineseGlossary
 
 
 SCHEMA_VERSION = 13
+INDEX_SCHEMA_VERSION = 2
 DETAIL_WORD_KEYS = {"examples", "lexical_notes", "sources"}
 INDEX_WORD_KEYS = {
     "word",
@@ -152,11 +153,16 @@ def write_corpus_index_json(payload: dict[str, Any], output: Path) -> Path:
 
 def corpus_index_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
+        "index_schema_version": INDEX_SCHEMA_VERSION,
         "schema_version": payload.get("schema_version"),
         "generated_at": payload.get("generated_at"),
         "summary": payload.get("summary") or {},
         "shows": payload.get("shows") or [],
-        "sources": payload.get("sources") or [],
+        "sources": [
+            _source_index_entry(source)
+            for source in payload.get("sources") or []
+            if isinstance(source, dict)
+        ],
         "words": [
             _word_index_entry(word)
             for word in payload.get("words") or []
@@ -246,6 +252,44 @@ def _word_search_terms(word: dict[str, Any]) -> list[str]:
         add(example.get("usage_note_zh"))
 
     return list(dict.fromkeys(terms))[:100]
+
+
+def _source_index_entry(source: dict[str, Any]) -> dict[str, Any]:
+    lines = [line for line in source.get("lines") or [] if isinstance(line, dict)]
+    words = sorted({
+        match.get("word")
+        for line in lines
+        for match in line.get("matches") or []
+        if isinstance(match, dict) and match.get("word")
+    })
+    return {
+        "source_key": source_document_key(source),
+        "source_type": source.get("source_type"),
+        "source_title": source.get("source_title"),
+        "source_artist": source.get("source_artist"),
+        "source_album": source.get("source_album"),
+        "source_file": source.get("source_file"),
+        "episode": source.get("episode"),
+        "token_count": source.get("token_count"),
+        "line_count": len(lines),
+        "match_count": sum(len(line.get("matches") or []) for line in lines),
+        "words": words,
+    }
+
+
+def source_document_key(source: dict[str, Any]) -> str:
+    payload = {
+        "source_type": source.get("source_type"),
+        "source_title": source.get("source_title"),
+        "source_artist": source.get("source_artist"),
+        "source_album": source.get("source_album"),
+        "source_file": source.get("source_file"),
+        "episode": source.get("episode"),
+    }
+    return hashlib.blake2s(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"),
+        digest_size=10,
+    ).hexdigest()
 
 
 def _export_words(
@@ -545,7 +589,7 @@ def _source_document_to_dict(
     *,
     exported_words: set[str],
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "source_type": document.source_type,
         "source_title": document.source_title,
         "source_artist": document.source_artist,
@@ -558,6 +602,8 @@ def _source_document_to_dict(
             for line in document.lines
         ],
     }
+    payload["source_key"] = source_document_key(payload)
+    return payload
 
 
 def _source_line_to_dict(line: SourceLine, *, exported_words: set[str]) -> dict[str, Any]:

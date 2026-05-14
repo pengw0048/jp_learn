@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from jpcorpus.viewer_jobs import (
@@ -6,11 +8,13 @@ from jpcorpus.viewer_jobs import (
     composite_maintenance_steps,
     explain_reader_usage,
     import_text_document,
+    load_viewer_source_details,
     llm_config_status,
     normalize_maintenance_spec,
     save_viewer_config,
     viewer_config_status,
 )
+from jpcorpus.corpus_export import source_document_key
 
 
 def test_normalize_maintenance_spec_accepts_fetch_lyrics_options():
@@ -51,7 +55,7 @@ def test_maintenance_task_fetch_lyrics_calls_internal_function(monkeypatch, tmp_
         calls.update(kwargs)
         print("Fetched lyrics")
 
-    monkeypatch.setattr("jpcorpus.cli.fetch_lyrics", fake_fetch_lyrics)
+    monkeypatch.setattr("jpcorpus.tasks.fetch_lyrics", fake_fetch_lyrics)
     runner = ViewerJobRunner(corpus_path=tmp_path / "corpus.json", state_db=tmp_path / "state.db")
     job = ViewerJob(id="job", kind="fetch_lyrics")
     spec = normalize_maintenance_spec(
@@ -78,7 +82,7 @@ def test_maintenance_task_sync_anime_does_not_apply_limit(monkeypatch, tmp_path)
     def fake_sync(**kwargs):
         calls.update(kwargs)
 
-    monkeypatch.setattr("jpcorpus.cli.sync", fake_sync)
+    monkeypatch.setattr("jpcorpus.tasks.sync", fake_sync)
     runner = ViewerJobRunner(corpus_path=tmp_path / "corpus.json", state_db=tmp_path / "state.db")
     job = ViewerJob(id="job", kind="sync_anime")
     spec = normalize_maintenance_spec({"type": "sync_anime", "limit": 3})
@@ -94,7 +98,7 @@ def test_maintenance_task_can_fetch_lexical_resources(monkeypatch, tmp_path):
     def fake_fetch_lexical_resources(**kwargs):
         calls.update(kwargs)
 
-    monkeypatch.setattr("jpcorpus.cli.fetch_lexical_resources", fake_fetch_lexical_resources)
+    monkeypatch.setattr("jpcorpus.tasks.fetch_lexical_resources", fake_fetch_lexical_resources)
     runner = ViewerJobRunner(corpus_path=tmp_path / "corpus.json", state_db=tmp_path / "state.db")
     job = ViewerJob(id="job", kind="fetch_lexical_resources")
     spec = normalize_maintenance_spec({"type": "fetch_lexical_resources"})
@@ -130,6 +134,34 @@ def test_composite_refresh_all_updates_indexes_before_syncing():
         "fetch_lexical_resources",
     ]
     assert steps[-1][1]["type"] == "export_corpus"
+
+
+def test_load_viewer_source_details_returns_full_lines(tmp_path):
+    source = {
+        "source_type": "subtitle",
+        "source_title": "Local subtitles",
+        "source_artist": "",
+        "source_album": "",
+        "source_file": "sample.srt",
+        "episode": 1,
+        "token_count": 3,
+        "lines": [
+            {
+                "text": "私は約束を見る。",
+                "start_ms": 1000,
+                "end_ms": 3000,
+                "matches": [{"word": "約束", "matched_text": "約束"}],
+            }
+        ],
+    }
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(json.dumps({"sources": [source]}, ensure_ascii=False), encoding="utf-8")
+
+    payload = load_viewer_source_details(corpus, [source_document_key(source)])
+
+    assert payload["missing"] == []
+    assert payload["sources"][0]["source_key"] == source_document_key(source)
+    assert payload["sources"][0]["lines"][0]["text"] == "私は約束を見る。"
 
 
 def test_explain_reader_usage_calls_llm_directly(monkeypatch):
