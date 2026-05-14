@@ -37,11 +37,13 @@ from .paths import (
     DEFAULT_STATE_DB,
     DEFAULT_TEXTS_DIR,
     DEFAULT_ZH_DICT,
+    DEFAULT_ZHWIKTIONARY_JA_DICT,
+    DEFAULT_ZHWIKTIONARY_RAW,
     ensure_dir,
 )
 from .state import State
 from .texts import discover_text_files, text_file_from_path
-from .zh_dict import ChineseGlossary, download_zh_dict
+from .zh_dict import ChineseGlossary, download_zh_dict, download_zhwiktionary_ja_dict
 
 
 load_dotenv()
@@ -658,5 +660,9 @@ def fetch_zh_dict(
 ) -> None:
     """Download a lightweight Japanese-Chinese glossary for the viewer."""
     path = download_zh_dict(output, source_url=source_url)
+    wiktionary_path = download_zhwiktionary_ja_dict(DEFAULT_ZHWIKTIONARY_JA_DICT, raw_path=DEFAULT_ZHWIKTIONARY_RAW)
     glossary = ChineseGlossary.load(path)
-    print(f"Wrote Japanese-Chinese glossary: {path} ({len(glossary.entries)} entries)")
+    print(
+        f"Wrote Japanese-Chinese glossary: {path}, {wiktionary_path} "
+        f"({len(glossary.entries)} entries)"
+    )

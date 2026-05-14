@@ -1,3 +1,4 @@
+import gzip
 import json
 import zipfile
 from pathlib import Path
@@ -28,7 +29,13 @@ from jpcorpus.lexical_notes import LexicalResourceIndex, label_pos
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
 from jpcorpus.subtitle import clean_subtitle_text
 from jpcorpus.texts import discover_text_files, parse_text, text_file_from_path
-from jpcorpus.zh_dict import ChineseGlossary, clean_gloss, extract_gloss_readings
+
+from jpcorpus.zh_dict import (
+    ChineseGlossary,
+    build_zhwiktionary_ja_dict,
+    clean_gloss,
+    extract_gloss_readings,
+)
 
 
 def test_export_corpus_json(tmp_path: Path):
@@ -162,6 +169,41 @@ def test_chinese_glossary_skips_surface_entry_with_mismatched_reading(tmp_path: 
     word = next(word for word in payload["words"] if word["word"] == "音")
 
     assert word["meaning_zh"] is None
+
+
+def test_chinese_glossary_uses_lexical_base_reading_for_inflected_words(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    jlpt_path.write_text(
+        '[{"word":"付き合う","reading":"つきあう","level":"N3","meaning":"to associate"}]',
+        encoding="utf-8",
+    )
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n付き合っている。\n",
+        encoding="utf-8",
+    )
+    jmdict = tmp_path / "JMdict.xml"
+    jmdict.write_text(
+        "<JMdict>"
+        "<entry>"
+        "<ent_seq>1</ent_seq>"
+        "<k_ele><keb>付き合う</keb><ke_pri>news1</ke_pri></k_ele>"
+        "<r_ele><reb>つきあう</reb><re_pri>news1</re_pri></r_ele>"
+        "<sense><pos>Godan verb with 'u' ending</pos><gloss>to associate with</gloss></sense>"
+        "</entry>"
+        "</JMdict>",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(
+        analysis,
+        jmdict_path=jmdict,
+        zh_glossary=ChineseGlossary({"付き合う": "交往"}, {"付き合う": ("つきあう",)}),
+    )
+    word = next(word for word in payload["words"] if word["word"] == "付き合う")
+
+    assert word["meaning_zh"] == "交往"
 
 
 def test_export_corpus_json_can_include_jmdict_matched_corpus_words(tmp_path: Path):
@@ -739,13 +781,13 @@ def test_clean_chinese_gloss_removes_leading_reading():
 
 def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):
     path = tmp_path / "dict.json"
-    path.write_text('{"音": "（おん）名词 发音，读音，字音"}', encoding="utf-8")
+    path.write_text('{"雨": "（あめ）名词 雨"}', encoding="utf-8")
 
     glossary = ChineseGlossary.load(path)
 
     assert extract_gloss_readings("（いい/よい）①【イ形】好的") == ("いい", "よい")
-    assert glossary.lookup("音", reading="おん") == "名词 发音，读音，字音"
-    assert glossary.lookup("音", reading="おと") is None
+    assert glossary.lookup("雨", reading="あめ") == "名词 雨"
+    assert glossary.lookup("雨", reading="あま") is None
 
 
 def test_chinese_glossary_matches_multi_reading_words(tmp_path: Path):
@@ -757,6 +799,49 @@ def test_chinese_glossary_matches_multi_reading_words(tmp_path: Path):
     assert glossary.lookup("良い", reading="よい; いい") == "①【イ形】好的"
 
 
+def test_zhwiktionary_japanese_glossary_is_loaded_as_primary_source(tmp_path: Path):
+    raw_path = tmp_path / "zhwiktionary.jsonl.gz"
+    output = tmp_path / "zhwiktionary-ja.json"
+    fallback = tmp_path / "fallback.json"
+    rows = [
+        {
+            "word": "アイス",
+            "lang_code": "ja",
+            "pos": "noun",
+            "pos_title": "名詞",
+            "forms": [{"form": "aisu", "tags": ["romanization"]}],
+            "senses": [{"glosses": ["冰"]}, {"glosses": ["冰棒", "冰淇淋"]}],
+        },
+        {
+            "word": "字",
+            "lang_code": "ja",
+            "pos": "character",
+            "pos_title": "漢字",
+            "senses": [{"glosses": ["character entry should not become a word gloss"]}],
+        },
+        {
+            "word": "鳴き声",
+            "lang_code": "ja",
+            "pos": "noun",
+            "pos_title": "名詞",
+            "senses": [{"glosses": ["動物的叫聲"]}],
+        },
+    ]
+    with gzip.open(raw_path, "wt", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    fallback.write_text('{"アイス": "fallback"}', encoding="utf-8")
+
+    build_zhwiktionary_ja_dict(raw_path, output)
+    fallback_entries, fallback_readings = ChineseGlossary.load(fallback).entries, ChineseGlossary.load(fallback).readings
+    wiktionary_entries, wiktionary_readings = ChineseGlossary.load(output).entries, ChineseGlossary.load(output).readings
+    glossary = ChineseGlossary({**fallback_entries, **wiktionary_entries}, {**fallback_readings, **wiktionary_readings})
+
+    assert glossary.lookup("アイス") == "冰；冰棒，冰淇淋"
+    assert glossary.lookup("鳴き声") == "动物的叫声"
+    assert glossary.lookup("字") is None
+
+
 def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):
     path = tmp_path / "dict.json"
     path.write_text("{}", encoding="utf-8")
@@ -765,6 +850,7 @@ def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):
 
     assert glossary.lookup("おはよう") == "早上好"
     assert glossary.lookup("ありがとう") == "谢谢"
+    assert glossary.lookup("音", reading="おと") == "声音；声响；音色"
 
 
 def test_select_examples_prefers_quality_and_source_diversity():

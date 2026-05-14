@@ -659,7 +659,10 @@ def _meaning_zh(
     notes: dict[str, object] | None = None,
 ) -> str | None:
     if zh_glossary:
-        meaning = zh_glossary.lookup(*_zh_lookup_keys(word, notes=notes), reading=word.display_reading)
+        meaning = zh_glossary.lookup(
+            *_zh_lookup_keys(word, notes=notes),
+            reading=_zh_lookup_reading(word, notes=notes),
+        )
         if meaning:
             return meaning
     return word.entry.meaning_zh
@@ -688,6 +691,20 @@ def _lexical_spelling_texts(notes: dict[str, object] | None) -> list[str]:
         if isinstance(text, str) and text:
             values.append(text)
     return values
+
+
+def _zh_lookup_reading(word: WordStats, *, notes: dict[str, object] | None) -> str:
+    readings = [word.display_reading]
+    if notes:
+        raw_readings = notes.get("readings")
+        if isinstance(raw_readings, list):
+            for reading in raw_readings:
+                if not isinstance(reading, dict):
+                    continue
+                text = reading.get("text")
+                if isinstance(text, str) and text:
+                    readings.append(text)
+    return "; ".join(dict.fromkeys(reading for reading in readings if reading))
 
 
 def _example_to_dict(example: WordExample) -> dict[str, Any]:

@@ -9,6 +9,8 @@ __pycache__/
 data/anime-offline-database.json
 data/jlpt-words.json
 data/jp-zh-dict.json
+data/zhwiktionary-ja-dict.json
+data/zhwiktionary-raw.jsonl.gz
 data/JMdict_e.gz
 data/kanjidic2.xml.gz
 data/jimaku-cache/
