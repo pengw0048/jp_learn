@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.10";
+  const SCRIPT_VERSION = "0.1.11";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -62,6 +62,12 @@
 
   let picker = null;
   let reader = null;
+  const READER_TOKEN_STATUS_CLASSES = [
+    "jpcorpus-reader-token-learning",
+    "jpcorpus-reader-token-uncertain",
+    "jpcorpus-reader-token-known",
+    "jpcorpus-reader-token-ignored",
+  ];
   syncLanguage();
   chrome.storage?.onChanged?.addListener((changes, areaName) => {
     if (areaName === "local" && changes.lang) {
@@ -272,6 +278,7 @@
         token.className = "jpcorpus-reader-token";
         token.textContent = text.slice(range.start, range.end);
         token.__jpcorpusAnnotation = range;
+        applyReaderTokenStatusClass(token, range.status);
         token.addEventListener("click", onReaderTokenClick, true);
         wrapper.append(token);
         cursor = range.end;
@@ -441,6 +448,7 @@
       }
       token.__jpcorpusAnnotation.status = status;
       token.__jpcorpusAnnotation.study_count = studyCount;
+      applyReaderTokenStatusClass(token, status);
     });
   }
 
@@ -478,6 +486,14 @@
     return ["learning", "uncertain", "known", "ignored", "none"].includes(status) ? status : "none";
   }
 
+  function applyReaderTokenStatusClass(token, status) {
+    token.classList.remove(...READER_TOKEN_STATUS_CLASSES);
+    const normalized = normalizeReaderStatus(status);
+    if (normalized !== "none") {
+      token.classList.add(`jpcorpus-reader-token-${normalized}`);
+    }
+  }
+
   function positionReaderPanel(panel, anchor) {
     const rect = anchor.getBoundingClientRect();
     const panelWidth = Math.min(340, window.innerWidth - 24);
@@ -509,6 +525,17 @@
         box-shadow: inset 0 -0.28em rgba(20, 125, 115, 0.18) !important;
         cursor: pointer !important;
         transition: background 120ms ease, box-shadow 120ms ease, outline-color 120ms ease !important;
+      }
+      .jpcorpus-reader-token-learning,
+      .jpcorpus-reader-token-uncertain {
+        box-shadow: inset 0 -0.30em rgba(183, 90, 53, 0.26) !important;
+      }
+      .jpcorpus-reader-token-known {
+        box-shadow: inset 0 -0.22em rgba(101, 113, 120, 0.16) !important;
+      }
+      .jpcorpus-reader-token-ignored {
+        box-shadow: inset 0 -0.16em rgba(101, 113, 120, 0.10) !important;
+        opacity: 0.78 !important;
       }
       .jpcorpus-reader-token:hover,
       .jpcorpus-reader-token.jpcorpus-reader-selected {
