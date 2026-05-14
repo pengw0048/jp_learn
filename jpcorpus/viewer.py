@@ -10,12 +10,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 import webbrowser
 
 from .env import load_dotenv
+from .imported_texts import delete_imported_text_documents, import_text_document
 from .viewer_jobs import (
     ViewerJobRunner,
     annotate_text_blocks,
-    delete_imported_text_documents,
     explain_reader_usage,
-    import_text_document,
     load_viewer_corpus_index,
     load_viewer_source_details,
     load_viewer_word_detail,

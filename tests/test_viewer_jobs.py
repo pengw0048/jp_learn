@@ -7,11 +7,13 @@ from jpcorpus.viewer_jobs import (
     ViewerJobRunner,
     composite_maintenance_steps,
     explain_reader_usage,
-    import_text_document,
     load_viewer_source_details,
     load_viewer_word_detail,
-    merge_imported_text_payload,
     normalize_maintenance_spec,
+)
+from jpcorpus.imported_texts import (
+    import_text_document,
+    merge_imported_text_payload,
     refresh_imported_texts_corpus,
 )
 from jpcorpus.corpus_export import (
