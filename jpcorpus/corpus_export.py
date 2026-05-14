@@ -19,6 +19,23 @@ from .zh_dict import ChineseGlossary
 
 
 SCHEMA_VERSION = 13
+DETAIL_WORD_KEYS = {"examples", "lexical_notes", "sources"}
+INDEX_WORD_KEYS = {
+    "word",
+    "reading",
+    "level",
+    "level_number",
+    "meaning",
+    "meaning_zh",
+    "count",
+    "subtitle_count",
+    "lyrics_count",
+    "text_count",
+    "source_count",
+    "source_type_counts",
+    "status",
+    "study_count",
+}
 
 
 def analysis_to_dict(
@@ -119,7 +136,116 @@ def write_corpus_json(
         kanjidic2_path=kanjidic2_path,
     )
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_corpus_index_json(payload, corpus_index_path(output))
     return output
+
+
+def corpus_index_path(output: Path) -> Path:
+    return output.with_name(f"{output.stem}.index.json")
+
+
+def write_corpus_index_json(payload: dict[str, Any], output: Path) -> Path:
+    ensure_parent(output)
+    output.write_text(json.dumps(corpus_index_from_payload(payload), ensure_ascii=False) + "\n", encoding="utf-8")
+    return output
+
+
+def corpus_index_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": payload.get("schema_version"),
+        "generated_at": payload.get("generated_at"),
+        "summary": payload.get("summary") or {},
+        "shows": payload.get("shows") or [],
+        "sources": payload.get("sources") or [],
+        "words": [
+            _word_index_entry(word)
+            for word in payload.get("words") or []
+            if isinstance(word, dict)
+        ],
+    }
+
+
+def _word_index_entry(word: dict[str, Any]) -> dict[str, Any]:
+    entry = {
+        key: word[key]
+        for key in INDEX_WORD_KEYS
+        if key in word
+    }
+    entry["example_count"] = len(word.get("examples") or [])
+    entry["has_detail"] = any(key in word for key in DETAIL_WORD_KEYS)
+    entry["search_terms"] = _word_search_terms(word)
+    return entry
+
+
+def _word_search_terms(word: dict[str, Any]) -> list[str]:
+    terms: list[str] = []
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if text and len(text) <= 300:
+            terms.append(text)
+
+    add(word.get("word"))
+    add(word.get("reading"))
+    add(word.get("meaning_zh"))
+    add(word.get("meaning"))
+    add(word.get("level"))
+
+    notes = word.get("lexical_notes")
+    if isinstance(notes, dict):
+        for value in notes.get("parts_of_speech") or []:
+            add(value)
+        for form in notes.get("spellings") or []:
+            if isinstance(form, dict):
+                add(form.get("text"))
+        for form in notes.get("readings") or []:
+            if isinstance(form, dict):
+                add(form.get("text"))
+        for sense in notes.get("senses") or []:
+            if not isinstance(sense, dict):
+                continue
+            for value in sense.get("glosses") or []:
+                add(value)
+            for value in sense.get("parts_of_speech") or []:
+                add(value)
+            for value in sense.get("tags") or []:
+                add(value)
+        for kanji in notes.get("kanji") or []:
+            if not isinstance(kanji, dict):
+                continue
+            add(kanji.get("literal"))
+            for value in kanji.get("meanings") or []:
+                add(value)
+            for value in kanji.get("on_readings") or []:
+                add(value)
+            for value in kanji.get("kun_readings") or []:
+                add(value)
+        for example in notes.get("dictionary_examples") or []:
+            if not isinstance(example, dict):
+                continue
+            add(example.get("japanese"))
+            translations = example.get("translations")
+            if isinstance(translations, dict):
+                for value in translations.values():
+                    add(value)
+
+    for source in word.get("sources") or []:
+        if not isinstance(source, dict):
+            continue
+        add(source.get("title"))
+        add(source.get("artist"))
+        add(source.get("album"))
+    for example in word.get("examples") or []:
+        if not isinstance(example, dict):
+            continue
+        add(example.get("source_title"))
+        add(example.get("source_artist"))
+        add(example.get("source_album"))
+        add(example.get("matched_text"))
+        add(example.get("translation_zh"))
+        add(example.get("usage_note_zh"))
+
+    return list(dict.fromkeys(terms))[:100]
 
 
 def _export_words(

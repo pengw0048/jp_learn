@@ -18,7 +18,7 @@ From the viewer, open Maintenance:
 2. Click Refresh all for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates `corpus.json`.
 3. Later, run `uv run jpcorpus` again and use Refresh for new media/local text changes. LLM settings are only needed for on-demand AI explanations in the reader.
 
-The only normal working corpus file is `corpus.json`. Extra input/output paths are for debugging or experiments.
+The normal working corpus is `corpus.json` plus its generated `corpus.index.json` sidecar. Extra input/output paths are for debugging or experiments.
 
 External service setup:
 
@@ -51,9 +51,9 @@ The app intentionally does not expose a command tree. Data sync, dictionary refr
 
 The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary, and offline JMdict/KANJIDIC2 lexical resources. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
 
-The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/i18n.py` so future UI work can add more languages without chasing hard-coded labels.
+The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/viewer_assets/app.js` so future UI work can add more languages without chasing hard-coded labels.
 
-The Markdown report is a POC/debug view. The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency report. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
+The app writes word/example/context data as structured JSON in `corpus.json`, including a `meaning_zh` field when `data/jp-zh-dict.json` is available. It also writes a compact `corpus.index.json` sidecar for faster viewer startup; full word examples and lexical notes are loaded on demand. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency view. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
 
 Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi music collections, splits album subjects into track rows through Bangumi episodes, searches LRCLIB, and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated refreshes skip BGM/OST misses by default. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
 

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "jpcorpus"
 version = "0.1.0"
-description = "Turn watched Japanese media into a personal JLPT corpus report and Anki deck."
+description = "Turn watched Japanese media and texts into a personal Japanese study corpus."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

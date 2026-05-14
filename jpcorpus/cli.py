@@ -18,7 +18,6 @@ from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
 from .lexical_notes import download_jmdict, download_kanjidic2
-from .i18n import SUPPORTED_LANGUAGES
 from .models import SubtitleFile
 from .lyrics import (
     LRCLIB_ALBUM_CACHE_PURPOSE,
@@ -46,7 +45,6 @@ from .paths import (
     ensure_dir,
     ensure_parent,
 )
-from .report import build_markdown_report
 from .state import State
 from .texts import discover_text_files, text_file_from_path
 from .viewer import serve_viewer
@@ -87,14 +85,6 @@ def main(argv: list[str] | None = None) -> None:
 
 def user_agent() -> str:
     return os.environ.get("JPCORPUS_USER_AGENT", "peng/jpcorpus-v0.1")
-
-
-def validate_language(language: str) -> str:
-    if language not in SUPPORTED_LANGUAGES:
-        raise typer.BadParameter(
-            f"Unsupported language '{language}'. Choose one of: {', '.join(SUPPORTED_LANGUAGES)}."
-        )
-    return language
 
 
 def load_analysis(
@@ -608,62 +598,6 @@ def remove_cached_lyric(state: State, cached_paths: dict[str, Path], track_key: 
         path.unlink(missing_ok=True)
 
 
-def report(
-    output: Path = typer.Option(Path("report.md"), help="Markdown report output path."),
-    state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
-    jlpt_words: Path = typer.Option(DEFAULT_JLPT_WORDS, help="JLPT word list JSON/CSV path."),
-    level: int = typer.Option(3, min=1, max=5, help="Primary JLPT level to rank."),
-    language: str = typer.Option(
-        "zh",
-        "--language",
-        "-l",
-        help=f"Report language: {', '.join(SUPPORTED_LANGUAGES)}.",
-    ),
-    top: int = typer.Option(50, help="Words to include in the target-level table."),
-    examples_per_word: int = typer.Option(2, min=1, help="Examples to show per target word."),
-    context_lines: int = typer.Option(2, min=0, help="Source blocks to keep before and after each example."),
-    subtitles: list[Path] | None = typer.Option(
-        None,
-        help="Analyze local subtitle files instead of the synced state database.",
-    ),
-    texts: list[Path] | None = typer.Option(
-        None,
-        "--text",
-        "--texts",
-        help="Import local Japanese .txt or .epub files as text/book sources.",
-    ),
-    text_dir: Path = typer.Option(
-        DEFAULT_TEXTS_DIR,
-        help="Directory of .txt and .epub files to import when --text is omitted.",
-    ),
-    zh_dict: Path = typer.Option(DEFAULT_ZH_DICT, help="Japanese-Chinese glossary JSON path."),
-) -> None:
-    """Generate a Markdown personal frequency report."""
-    language = validate_language(language)
-    analysis = load_analysis(
-        state_db=state_db,
-        jlpt_words=jlpt_words,
-        subtitles=subtitles,
-        texts=texts,
-        text_dir=text_dir,
-        max_examples_per_word=examples_per_word,
-        context_lines=context_lines,
-    )
-    ensure_parent(output)
-    output.write_text(
-        build_markdown_report(
-            analysis,
-            target_level=level,
-            top=top,
-            language=language,
-            examples_per_word=examples_per_word,
-            zh_glossary=ChineseGlossary.load(zh_dict) if language == "zh" else None,
-        ),
-        encoding="utf-8",
-    )
-    typer.echo(f"Wrote report: {output}")
-
-
 def export_anki(
     output: Path = typer.Option(Path("personal-jlpt.apkg"), help="Anki .apkg output path."),
     state_db: Path = typer.Option(DEFAULT_STATE_DB, help="SQLite state database."),
@@ -885,7 +819,7 @@ def fetch_zh_dict(
         help="Japanese-Chinese glossary source URL.",
     ),
 ) -> None:
-    """Download a lightweight Japanese-Chinese glossary for Chinese reports."""
+    """Download a lightweight Japanese-Chinese glossary for the viewer."""
     path = download_zh_dict(output, source_url=source_url)
     glossary = ChineseGlossary.load(path)
     typer.echo(f"Wrote Japanese-Chinese glossary: {path} ({len(glossary.entries)} entries)")

@@ -466,14 +466,14 @@ CREATE TABLE user_uploaded_episodes (
 
 ### v0.1（2-3 周，CLI，验证想法）
 
-**目标**：作者自己跑通，生成自己的"个人词频报告"，看数据质量是否有用。
+**目标**：作者自己跑通，生成自己的本地语料库和学习视图，看数据质量是否有用。
 
 **功能**：
 
 ```
 $ jpcorpus link bangumi      # OAuth
 $ jpcorpus sync              # 拉看过列表 + 字幕
-$ jpcorpus report            # Markdown 词频报告
+$ jpcorpus                  # 打开本地 viewer
 $ jpcorpus export anki       # 导出 .apkg
 ```
 
@@ -565,7 +565,7 @@ $ jpcorpus export anki       # 导出 .apkg
 │   ├── anime_db.py     # ID 映射
 │   ├── tokenize.py     # fugashi wrapping
 │   ├── jlpt.py         # JLPT 词表加载
-│   ├── report.py       # Markdown 报告生成
+│   ├── corpus_export.py # 结构化语料导出
 │   └── anki_export.py  # genanki 导出
 ├── data/
 │   ├── anime-offline-database.json  # 缓存

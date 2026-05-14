@@ -14,6 +14,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+from .corpus_export import corpus_index_from_payload, corpus_index_path
 from .jlpt import JLPTWords, load_jlpt_words
 from .llm import (
     DEFAULT_ANTHROPIC_BASE_URL,
@@ -76,6 +77,8 @@ KATAKANA_RE = re.compile(r"[\u30a1-\u30f6]")
 STUDY_STATUS_VALUES = {"none", "learning", "uncertain", "known", "ignored"}
 STUDY_TARGET_COUNT = 7
 _ANNOTATION_INDEX_CACHE: dict[tuple[str, float], "AnnotationIndex"] = {}
+_CORPUS_PAYLOAD_CACHE: dict[tuple[str, float], dict[str, Any]] = {}
+_CORPUS_INDEX_CACHE: dict[tuple[str, float, float], dict[str, Any]] = {}
 
 
 def _now_iso() -> str:
@@ -645,6 +648,64 @@ def annotate_text_blocks(raw: dict[str, Any], *, corpus_path: Path) -> dict[str,
             "truncated": len(raw_blocks) > len(blocks) or total_chars >= MAX_ANNOTATION_TEXT_CHARS,
         },
     }
+
+
+def load_viewer_corpus_index(corpus_path: Path) -> dict[str, Any]:
+    resolved = corpus_path.resolve()
+    sidecar = corpus_index_path(resolved)
+    corpus_mtime = file_mtime(resolved)
+    index_mtime = file_mtime(sidecar)
+    key = (str(resolved), corpus_mtime, index_mtime)
+    cached = _CORPUS_INDEX_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    if index_mtime >= corpus_mtime and index_mtime > 0:
+        try:
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = corpus_index_from_payload(load_corpus_payload(resolved))
+    else:
+        payload = corpus_index_from_payload(load_corpus_payload(resolved))
+    _CORPUS_INDEX_CACHE.clear()
+    _CORPUS_INDEX_CACHE[key] = payload
+    return payload
+
+
+def load_viewer_word_detail(corpus_path: Path, word_text: str) -> dict[str, Any]:
+    target = str(word_text or "").strip()
+    if not target:
+        raise ValueError("Missing word.")
+    payload = load_corpus_payload(corpus_path)
+    for word in payload.get("words") or []:
+        if isinstance(word, dict) and word.get("word") == target:
+            return {"word": word}
+    raise ValueError(f"Word not found: {target}")
+
+
+def load_corpus_payload(corpus_path: Path) -> dict[str, Any]:
+    resolved = corpus_path.resolve()
+    mtime = file_mtime(resolved)
+    key = (str(resolved), mtime)
+    cached = _CORPUS_PAYLOAD_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    _CORPUS_PAYLOAD_CACHE.clear()
+    _CORPUS_PAYLOAD_CACHE[key] = payload
+    return payload
+
+
+def file_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
 
 
 def load_annotation_index(corpus_path: Path) -> AnnotationIndex:

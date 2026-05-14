@@ -122,9 +122,10 @@ const text = {
     sourceSubtitles: "字幕",
     sourceLyrics: "歌词",
     sourceTexts: "文本",
-    loadingTitle: "正在读取 corpus.json",
-    loadingBody: "如果这里停住了，请确认本地服务能访问 corpus.json。",
-    loadErrorTitle: "没有读到 corpus.json",
+    loadingTitle: "正在读取语料",
+    loadingBody: "如果这里停住了，请确认本地服务能访问语料文件。",
+    loadErrorTitle: "没有读到语料文件",
+    wordDetailLoading: "正在读取词条详情...",
     loadErrorBody: "先运行导出命令，再重新打开 viewer。",
     allLevels: "全部",
     wordsFound: "{count} 个词",
@@ -290,9 +291,10 @@ const text = {
     sourceSubtitles: "Subtitles",
     sourceLyrics: "Lyrics",
     sourceTexts: "Texts",
-    loadingTitle: "Loading corpus.json",
-    loadingBody: "If this does not change, make sure the local server can read corpus.json.",
-    loadErrorTitle: "Could not read corpus.json",
+    loadingTitle: "Loading corpus",
+    loadingBody: "If this does not change, make sure the local server can read the corpus files.",
+    loadErrorTitle: "Could not read corpus files",
+    wordDetailLoading: "Loading word details...",
     loadErrorBody: "Export the corpus first, then reload the viewer.",
     allLevels: "All",
     wordsFound: "{count} words",
@@ -452,6 +454,7 @@ const app = {
   corpus: null,
   words: [],
   selectedWord: null,
+  wordDetailRequests: new Map(),
   query: "",
   level: "all",
   sort: "count",
@@ -562,11 +565,7 @@ async function init() {
   applyLanguage();
   loadMaintenanceStatus();
   try {
-    const response = await fetch("/corpus.json", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    app.corpus = await response.json();
+    app.corpus = await loadCorpusIndex();
     app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
     await mergeRemoteStudyState();
     app.selectedWord = chooseInitialWord(currentWordSet());
@@ -574,6 +573,18 @@ async function init() {
   } catch (error) {
     renderLoadError(error);
   }
+}
+
+async function loadCorpusIndex() {
+  const indexResponse = await fetch("/corpus.index.json", { cache: "no-store" });
+  if (indexResponse.ok) {
+    return indexResponse.json();
+  }
+  const response = await fetch("/corpus.json", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
 }
 
 function bindControls() {
@@ -1870,6 +1881,49 @@ function findWord(wordText) {
   return app.words.find((item) => item.word === wordText);
 }
 
+function ensureWordDetail(word) {
+  if (!needsWordDetail(word)) {
+    return;
+  }
+  const key = word.word || "";
+  if (!key || app.wordDetailRequests.has(key)) {
+    return;
+  }
+  word._detailLoading = true;
+  const request = fetch(`/api/word-detail?word=${encodeURIComponent(key)}`, { cache: "no-store" })
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      if (payload.word && typeof payload.word === "object") {
+        Object.assign(word, payload.word, {
+          _detailLoaded: true,
+          _detailLoading: false,
+        });
+        searchIndexCache.delete(word);
+      }
+    })
+    .catch(() => {
+      word._detailLoading = false;
+      word._detailLoaded = true;
+    })
+    .finally(() => {
+      app.wordDetailRequests.delete(key);
+      if (app.selectedWord?.word === key) {
+        render();
+      }
+    });
+  app.wordDetailRequests.set(key, request);
+}
+
+function needsWordDetail(word) {
+  return Boolean(word)
+    && word.has_detail !== false
+    && !word._detailLoaded
+    && !Array.isArray(word.examples);
+}
+
 function hasExampleAnnotations(example) {
   return Boolean(example.translation_zh && example.usage_note_zh);
 }
@@ -2552,6 +2606,7 @@ function renderDetail() {
   }
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
+  ensureWordDetail(word);
   const nodes = [renderDetailHeader(word), renderLexicalNotes(word)];
   const readerContext = renderReaderContextPanel(word);
   if (readerContext) {
@@ -2579,6 +2634,7 @@ function renderStudyDetail() {
   const selectedIndex = Math.max(0, words.findIndex((word) => word.word === app.selectedWord?.word));
   const word = words[selectedIndex] || words[0];
   app.selectedWord = word;
+  ensureWordDetail(word);
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
   refs.wordDetail.replaceChildren(renderStudyCard(word, selectedIndex, words.length));
@@ -2591,10 +2647,11 @@ function renderDetailHeader(word) {
   title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
   const stats = el("div", "detail-stats");
   const examples = examplesForWord(word);
+  const exampleCount = examples.length || Number(word.example_count || 0);
   stats.append(
     ...(word.level ? [statChip(word.level)] : []),
     statChip(`${t("count")} ${formatNumber(displayCount(word))}`),
-    statChip(`${t("examples")} ${formatNumber(examples.length)}`),
+    statChip(`${t("examples")} ${formatNumber(exampleCount)}`),
     statChip(studyCheckLabel(word)),
   );
   titleRow.append(title, stats);
@@ -3261,11 +3318,8 @@ async function refreshMaintenanceJob() {
 
 async function reloadCorpus() {
   const selectedWord = app.selectedWord?.word || "";
-  const response = await fetch("/corpus.json", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  app.corpus = await response.json();
+  app.wordDetailRequests.clear();
+  app.corpus = await loadCorpusIndex();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
   await mergeRemoteStudyState();
   app.selectedWord = app.words.find((word) => word.word === selectedWord) || chooseInitialWord();
@@ -3283,7 +3337,10 @@ function renderExamples(word, options = {}) {
   section.append(header);
   const examples = examplesForWord(word);
   if (examples.length === 0) {
-    section.append(emptyMessage(t("noExamples")));
+    const message = word._detailLoading && !word._detailLoaded
+      ? t("wordDetailLoading")
+      : t("noExamples");
+    section.append(emptyMessage(message));
     return section;
   }
   const columnCount = app.mode === "read" ? 1 : resolvedExampleColumnCount(app.exampleColumns);
@@ -3629,6 +3686,7 @@ function searchIndexForWord(word) {
   add(word.meaning_zh, 18);
   add(word.meaning, 12);
   add(word.level, 8);
+  asArray(word.search_terms).forEach((value) => add(value, 6));
   searchRootForms(word.word, posText).forEach((value) => add(value, 42));
   searchRootForms(word.reading, posText).forEach((value) => add(value, 38));
 
@@ -3897,7 +3955,7 @@ function isStudyEligibleWord(word) {
   const status = statusFor(word);
   return status !== "ignored"
     && status !== "known"
-    && examplesForWord(word).length > 0;
+    && (examplesForWord(word).length > 0 || Number(word.example_count || 0) > 0);
 }
 
 function isStudyReviewWord(word) {

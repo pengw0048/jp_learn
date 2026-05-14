@@ -1,3 +1,4 @@
+import json
 import zipfile
 from pathlib import Path
 
@@ -12,53 +13,13 @@ from jpcorpus.analysis import (
     to_hiragana,
 )
 from jpcorpus.anki_export import export_anki_deck
-from jpcorpus.corpus_export import _select_examples, analysis_to_dict, write_corpus_json
+from jpcorpus.corpus_export import _select_examples, analysis_to_dict, corpus_index_path, write_corpus_json
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
 from jpcorpus.lexical_notes import LexicalResourceIndex, label_pos
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
-from jpcorpus.report import build_markdown_report
-from jpcorpus.report import format_reference, format_timestamp
 from jpcorpus.subtitle import clean_subtitle_text
 from jpcorpus.texts import discover_text_files, parse_text, text_file_from_path
 from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
-
-
-def test_report_from_local_srt(tmp_path: Path):
-    jlpt_path = tmp_path / "jlpt.json"
-    write_sample_jlpt(jlpt_path)
-    subtitle = tmp_path / "sample.srt"
-    subtitle.write_text(
-        "1\n00:00:01,000 --> 00:00:03,000\n今日は学校へ行く。\n\n"
-        "2\n00:00:04,000 --> 00:00:06,000\n私は約束を見る。\n\n"
-        "3\n00:00:07,000 --> 00:00:09,000\n微妙な気持ちだ。\n\n"
-        "4\n00:00:10,000 --> 00:00:12,000\n明日も行く。\n",
-        encoding="utf-8",
-    )
-
-    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path), context_lines=1)
-    report = build_markdown_report(
-        analysis,
-        target_level=3,
-        top=10,
-        zh_glossary=ChineseGlossary({"微妙": "微妙，细微；难以形容"}),
-    )
-    english_report = build_markdown_report(analysis, target_level=3, top=10, language="en")
-
-    assert "个人日语语料单词表" in report
-    assert "N3 单词表" in report
-    assert "N3 单词例句" in report
-    assert "私は約束を見る。" in report
-    assert "明日も行く。" in report
-    assert "微妙，细微" in report
-    assert "<br>" not in report
-    assert (
-        "…私は約束を見る。 **微妙**な気持ちだ。 "
-        "…明日も行く。 （Local subtitles sample.srt 00:07）"
-    ) in report
-    assert "1. …私は約束を見る。" not in report
-    assert "Personal Japanese Corpus Word List" in english_report
-    assert "微妙" in report
-    assert analysis.total_tokens > 0
 
 
 def test_export_anki_deck(tmp_path: Path):
@@ -117,6 +78,14 @@ def test_export_corpus_json(tmp_path: Path):
     assert payload["words"][1]["count"] == 0
     assert payload["words"][1]["examples"] == []
     assert output.exists()
+    index_path = corpus_index_path(output)
+    assert index_path.exists()
+    index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+    assert index_payload["words"][0]["word"] == "約束"
+    assert "examples" not in index_payload["words"][0]
+    assert "lexical_notes" not in index_payload["words"][0]
+    assert index_payload["words"][0]["example_count"] == 1
+    assert "約束" in index_payload["words"][0]["search_terms"]
 
 
 def test_kanji_tokens_do_not_fall_back_to_homophone_jlpt_entry(tmp_path: Path):
@@ -314,7 +283,7 @@ def test_jmdict_pos_labels_cover_verbose_english_tags():
     assert label_pos("suru verb - special class") == "サ变"
 
 
-def test_example_context_and_reference_format(tmp_path: Path):
+def test_example_context_from_neighboring_subtitles(tmp_path: Path):
     jlpt_path = tmp_path / "jlpt.json"
     write_sample_jlpt(jlpt_path)
     subtitle = tmp_path / "sample.srt"
@@ -334,9 +303,6 @@ def test_example_context_and_reference_format(tmp_path: Path):
 
     assert example.context_before == ["今日は学校へ行く。"]
     assert example.context_after == ["微妙な気持ちだ。"]
-    assert format_reference(example) == "《Local subtitles》 sample.srt 00:04"
-    assert format_reference(example, brackets=False) == "Local subtitles sample.srt 00:04"
-    assert format_timestamp(3_661_000) == "01:01:01"
 
 
 def test_context_collects_past_short_subtitle_fragments():

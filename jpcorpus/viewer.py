@@ -6,7 +6,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 import webbrowser
 
 from .env import load_dotenv
@@ -16,6 +16,8 @@ from .viewer_jobs import (
     delete_imported_text_documents,
     explain_reader_usage,
     import_text_document,
+    load_viewer_corpus_index,
+    load_viewer_word_detail,
     maintenance_status,
     save_viewer_study_state,
     save_viewer_config,
@@ -50,12 +52,23 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
         return
 
     def do_GET(self) -> None:
-        request_path = unquote(urlparse(self.path).path)
+        parsed = urlparse(self.path)
+        request_path = unquote(parsed.path)
         if request_path == "/corpus.json":
             self._send_file(self.corpus_path, "application/json; charset=utf-8")
             return
+        if request_path == "/corpus.index.json":
+            self._send_json(load_viewer_corpus_index(self.corpus_path))
+            return
         if request_path == "/healthz":
             self._send_bytes(b"ok\n", "text/plain; charset=utf-8")
+            return
+        if request_path == "/api/word-detail":
+            word = parse_qs(parsed.query).get("word", [""])[0]
+            try:
+                self._send_json(load_viewer_word_detail(self.corpus_path, word))
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
             return
         if request_path == "/api/maintenance":
             self._send_json(maintenance_status(self.job_runner))
