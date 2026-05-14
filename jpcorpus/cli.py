@@ -4,8 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-import typer
-
 from .env import load_dotenv
 from .paths import ensure_parent
 from .viewer import serve_viewer
@@ -29,11 +27,11 @@ def main(argv: list[str] | None = None) -> None:
     """Open the local viewer."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] in {"-h", "--help"}:
-        typer.echo(HELP_TEXT.rstrip())
+        echo(HELP_TEXT.rstrip())
         return
     if args:
-        typer.echo(f"Unknown argument: {args[0]}", err=True)
-        typer.echo("Usage: jpcorpus [OPTIONS]", err=True)
+        echo(f"Unknown argument: {args[0]}", err=True)
+        echo("Usage: jpcorpus [OPTIONS]", err=True)
         raise SystemExit(2)
     launch_viewer(
         DEFAULT_VIEWER_CORPUS,
@@ -65,9 +63,13 @@ def ensure_viewer_corpus(corpus: Path) -> None:
     }
     ensure_parent(corpus)
     corpus.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    typer.echo(f"Created starter corpus: {corpus}")
+    echo(f"Created starter corpus: {corpus}")
 
 
 def launch_viewer(corpus: Path, *, host: str, port: int, open_browser: bool) -> None:
     ensure_viewer_corpus(corpus)
-    serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=typer.echo)
+    serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=echo)
+
+
+def echo(message: str = "", *, err: bool = False) -> None:
+    print(message, file=sys.stderr if err else sys.stdout)

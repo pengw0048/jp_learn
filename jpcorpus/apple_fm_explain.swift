@@ -1,7 +1,7 @@
 import Foundation
 import FoundationModels
 
-struct AnnotationRequest: Decodable {
+struct ExplanationRequest: Decodable {
     let task: String?
     let word: String
     let reading: String
@@ -48,8 +48,8 @@ if CommandLine.arguments.contains("--jsonl-server") {
     try await runJsonlServer()
 } else {
     let data = FileHandle.standardInput.readDataToEndOfFile()
-    let request = try JSONDecoder().decode(AnnotationRequest.self, from: data)
-    let content = try await annotate(request)
+    let request = try JSONDecoder().decode(ExplanationRequest.self, from: data)
+    let content = try await explain(request)
     print(content)
 }
 
@@ -60,8 +60,8 @@ func runJsonlServer() async throws {
         }
         do {
             let data = Data(line.utf8)
-            let request = try JSONDecoder().decode(AnnotationRequest.self, from: data)
-            let content = try await annotate(request)
+            let request = try JSONDecoder().decode(ExplanationRequest.self, from: data)
+            let content = try await explain(request)
             emit(WorkerResponse(ok: true, content: content, error: nil))
         } catch {
             emit(WorkerResponse(ok: false, content: nil, error: String(describing: error)))
@@ -69,14 +69,14 @@ func runJsonlServer() async throws {
     }
 }
 
-func annotate(_ request: AnnotationRequest) async throws -> String {
+func explain(_ request: ExplanationRequest) async throws -> String {
     let prompt = request.task == "question" ? buildQuestionPrompt(request) : buildPrompt(request)
     let session = LanguageModelSession(instructions: instructions)
     let response = try await session.respond(to: prompt)
     return response.content
 }
 
-func buildPrompt(_ request: AnnotationRequest) -> String {
+func buildPrompt(_ request: ExplanationRequest) -> String {
     let showSummary = truncated(request.show_context?.summary ?? "", limit: 280)
     let showCharacters = Array((request.show_context?.characters ?? []).prefix(12))
     let showContextBlock = (request.use_show_context == true && (!showSummary.isEmpty || !showCharacters.isEmpty))
@@ -88,7 +88,7 @@ Characters: \(showCharacters.isEmpty ? "(none)" : showCharacters.joined(separato
 """
         : ""
     return """
-Annotate this Japanese media example.
+Explain this Japanese media example.
 
 Word: \(request.word)
 Reading: \(request.reading)
@@ -116,7 +116,7 @@ Return JSON:
 """
 }
 
-func buildQuestionPrompt(_ request: AnnotationRequest) -> String {
+func buildQuestionPrompt(_ request: ExplanationRequest) -> String {
     return """
 Answer a Chinese-speaking Japanese learner's question about this exact Japanese text.
 

@@ -218,7 +218,7 @@ def test_explain_reader_usage_calls_llm_directly(monkeypatch):
     calls = {}
 
     class FakeClient:
-        def annotate_example(self, word, example):
+        def explain_example(self, word, example):
             calls["word"] = word
             calls["example"] = example
             return {

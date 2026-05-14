@@ -12,7 +12,6 @@ from jpcorpus.analysis import (
     is_study_candidate,
     to_hiragana,
 )
-from jpcorpus.anki_export import export_anki_deck
 from jpcorpus.corpus_export import (
     _select_examples,
     analysis_to_dict,
@@ -30,23 +29,6 @@ from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, Wor
 from jpcorpus.subtitle import clean_subtitle_text
 from jpcorpus.texts import discover_text_files, parse_text, text_file_from_path
 from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
-
-
-def test_export_anki_deck(tmp_path: Path):
-    jlpt_path = tmp_path / "jlpt.json"
-    write_sample_jlpt(jlpt_path)
-    subtitle = tmp_path / "sample.srt"
-    subtitle.write_text(
-        "1\n00:00:01,000 --> 00:00:03,000\n私は約束を見る。\n",
-        encoding="utf-8",
-    )
-    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
-    output = tmp_path / "deck.apkg"
-
-    export_anki_deck(analysis, output=output, level=4, limit=10)
-
-    assert output.exists()
-    assert output.stat().st_size > 0
 
 
 def test_export_corpus_json(tmp_path: Path):

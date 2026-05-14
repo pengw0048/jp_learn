@@ -12,7 +12,7 @@
 
 **核心 framing**：「这个产品不要求你回看 — 它假设你已经看过，要做的是把记忆固化下来。」
 
-**MVP（v0.1）**：CLI 工具，绑定 Bangumi → 拉看过列表 → 抓对应字幕 → 分词 → 生成"个人词频报告" + Anki deck 导出。2-3 周可发帖测水温。
+**MVP（v0.1）**：本地 viewer，配置 Bangumi / Jimaku → 同步字幕、歌词、本地文本 → 分词 → 生成结构化语料和可浏览词表。命令行只负责启动本地应用。
 
 ---
 
@@ -464,27 +464,22 @@ CREATE TABLE user_uploaded_episodes (
 
 ## 11. 阶段路线图
 
-### v0.1（2-3 周，CLI，验证想法）
+### v0.1（2-3 周，本地 viewer，验证想法）
 
 **目标**：作者自己跑通，生成自己的本地语料库和学习视图，看数据质量是否有用。
 
 **功能**：
 
 ```
-$ jpcorpus link bangumi      # OAuth
-$ jpcorpus sync              # 拉看过列表 + 字幕
 $ jpcorpus                  # 打开本地 viewer
-$ jpcorpus export anki       # 导出 .apkg
 ```
 
-**不做**：web、SRS、LLM 标注、向量检索。
+**不做**：托管账号、向量检索、批量 LLM 标注、视频跳转。
 
 **栈**：Python，依赖：
 
 - `httpx`（API 调用）
 - `fugashi[unidic]`（日语分词）
-- `genanki`（Anki 包导出）
-- `typer`（CLI）
 
 **数据源**：
 
@@ -493,7 +488,7 @@ $ jpcorpus export anki       # 导出 .apkg
 - Jimaku API：注册账号，按 MAL ID 拉字幕
 - JLPT 词表：[Tanos](http://tangorin.com/) 或社区维护的 jlpt-word-list
 
-**卖点**：「我把你看过的动画变成了一个 Anki deck」— 一句话能讲清楚。
+**卖点**：「我把你看过和读过的日语内容变成了个人词典和阅读器」— 一句话能讲清楚。
 
 ### v0.5（再 1 个月，正式 MVP，简单 web）
 
@@ -557,16 +552,15 @@ $ jpcorpus export anki       # 导出 .apkg
 ~/jp-learn/
 ├── README.md
 ├── pyproject.toml
-├── jpcorpus/           # CLI 包
+├── jpcorpus/           # 本地 viewer 与语料处理包
 │   ├── __init__.py
-│   ├── cli.py          # typer 入口
+│   ├── cli.py          # 启动本地 viewer
 │   ├── bangumi.py      # OAuth + collection API
 │   ├── jimaku.py       # 字幕拉取
 │   ├── anime_db.py     # ID 映射
 │   ├── tokenize.py     # fugashi wrapping
 │   ├── jlpt.py         # JLPT 词表加载
-│   ├── corpus_export.py # 结构化语料导出
-│   └── anki_export.py  # genanki 导出
+│   └── corpus_export.py # 结构化语料导出
 ├── data/
 │   ├── anime-offline-database.json  # 缓存
 │   ├── jlpt-words.json               # 缓存
@@ -576,8 +570,8 @@ $ jpcorpus export anki       # 导出 .apkg
 
 ### Task 2：Bangumi OAuth + 拉看过列表（半天）
 
-- 实现 `jpcorpus link bangumi` — 启 local 8080 接 OAuth callback
-- 实现 `jpcorpus sync` 第一步：拉用户看过列表（type=2 表示 watched，subject_type=2 表示 anime）
+- 在 viewer 配置 Bangumi OAuth，并由维护面板触发同步
+- 同步第一步：拉用户看过列表（type=2 表示 watched，subject_type=2 表示 anime）
 - 持久化到本地 sqlite（项目内 `~/.jpcorpus/state.db`）
 
 ### Task 3：ID 映射 + Jimaku 拉字幕（半天）
@@ -613,16 +607,16 @@ $ jpcorpus export anki       # 导出 .apkg
 ...
 ```
 
-### Task 5：Anki 导出（半天）
+### Task 5：本地 viewer 与结构化语料（半天）
 
-- genanki 生成 .apkg
-- 卡片字段：`word | reading | translation | example_sentence | source`
-- 例句先用第一次出现的字幕原句（不做 LLM 优选 — 那是 v0.5）
+- 生成 `corpus.json`、`corpus.index.json`、`corpus.words/`、`corpus.sources/`
+- viewer 展示词表、例句、来源阅读器和学习状态
+- 例句使用确定性选择，避免每次重建都改变 LLM/缓存命中面
 
 ### Task 6：作者自己跑一次（半天）
 
 - 全程自跑一遍
-- 看数据质量、看报告是否真的有用、看 Anki deck 是否值得每天用
+- 看数据质量、看词表/阅读器是否真的有用
 - 如果"我自己愿意每天用这个 deck" → 继续 v0.5
 - 如果"还差点意思" → 找出差在哪，调整
 
@@ -635,7 +629,7 @@ $ jpcorpus export anki       # 导出 .apkg
 ```
 ~/jp-learn/                # 项目根
 ├── SPEC.md                # 这份文档（建议把本文件软链接进去）
-├── jpcorpus/              # v0.1 CLI 工具
+├── jpcorpus/              # v0.1 本地 viewer 工具
 ├── web/                   # v0.5+ web 应用
 ├── pipeline/              # 字幕 LLM 标注 batch（v0.5+）
 └── notes/                 # 探索性笔记
@@ -650,7 +644,7 @@ $ jpcorpus export anki       # 导出 .apkg
 - ❌ 不要 MVP 阶段就想做"完美跳转回看视频"（不可解，且不是核心）
 - ❌ 不要先做向量检索系统（70% 查询用 SQL 就够，向量是 v1 加）
 - ❌ 不要先做 chat tutor（没数据底层时是花瓶）
-- ❌ 不要 v0.1 阶段做 web（CLI 验证想法 + 发帖测水温优先）
+- ❌ 不要 v0.1 阶段做托管 web（本地 viewer 验证想法 + 发帖测水温优先）
 
 ---
 
@@ -659,7 +653,7 @@ $ jpcorpus export anki       # 导出 .apkg
 | 维度 | 决定 |
 |---|---|
 | 产品定位 | "把你看过的内容变成你的 JLPT 教材" |
-| MVP | CLI + Bangumi → Anki deck（v0.1，2-3 周）|
+| MVP | 本地 viewer + Bangumi/Jimaku/文本 → 个人语料（v0.1，2-3 周）|
 | 核心模式 | 模式 1（词表 SRS）+ 模式 2（作品浏览） |
 | 数据库 | Postgres + tsvector + pgvector，**不要 Lance** |
 | 向量检索 | v1 才上，70% 查询不用 |

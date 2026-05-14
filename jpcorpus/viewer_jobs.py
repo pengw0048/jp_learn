@@ -668,7 +668,7 @@ def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
             if not callable(answer_question):
                 raise ValueError("Configured LLM does not support reader questions.")
             return {"answer": answer_question(compact_word, compact_example, question)}
-        explanation = client.annotate_example(compact_word, compact_example)
+        explanation = client.explain_example(compact_word, compact_example)
         return {"explanation": explanation}
     finally:
         close_client = getattr(client, "close", None)

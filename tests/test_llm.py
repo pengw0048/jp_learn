@@ -7,13 +7,13 @@ from jpcorpus.llm import (
     DEFAULT_ANTHROPIC_MODEL,
     AnthropicClient,
     LLMConfig,
-    build_annotation_prompt,
-    parse_annotation_response,
+    build_explanation_prompt,
+    parse_explanation_response,
 )
 
 
-def test_parse_annotation_response_accepts_json_fence():
-    payload = parse_annotation_response(
+def test_parse_explanation_response_accepts_json_fence():
+    payload = parse_explanation_response(
         """```json
         {
           "translation_zh": "我明天去。",
@@ -28,8 +28,8 @@ def test_parse_annotation_response_accepts_json_fence():
     assert payload["scene_description"] == "角色在说明计划。"
 
 
-def test_parse_annotation_response_accepts_json_like_lines():
-    payload = parse_annotation_response(
+def test_parse_explanation_response_accepts_json_like_lines():
+    payload = parse_explanation_response(
         """
         {
           "translation_zh": "请问岡崎さん，有什么话要说吗？",
@@ -43,17 +43,17 @@ def test_parse_annotation_response_accepts_json_like_lines():
     assert payload["usage_note_zh"] == '言う表示"说"。'
 
 
-def test_parse_annotation_response_rejects_empty_required_fields():
+def test_parse_explanation_response_rejects_empty_required_fields():
     try:
-        parse_annotation_response('{"translation_zh": "", "usage_note_zh": "", "scene_description": ""}')
+        parse_explanation_response('{"translation_zh": "", "usage_note_zh": "", "scene_description": ""}')
     except ValueError as exc:
         assert "missing required fields" in str(exc)
     else:
-        raise AssertionError("empty required annotation fields should be rejected")
+        raise AssertionError("empty required explanation fields should be rejected")
 
 
-def test_build_annotation_prompt_keeps_scene_empty():
-    prompt = build_annotation_prompt(
+def test_build_explanation_prompt_keeps_scene_empty():
+    prompt = build_explanation_prompt(
         {"word": "行く", "reading": "いく", "level": "N5"},
         {"sentence": "明日行く。", "matched_text": "行く"},
     )
@@ -99,7 +99,7 @@ def test_anthropic_client_uses_messages_api():
         )
     )
 
-    payload = client.annotate_example(
+    payload = client.explain_example(
         {"word": "行く", "reading": "いく", "level": "N5"},
         {"sentence": "明日行く。", "matched_text": "行く"},
     )

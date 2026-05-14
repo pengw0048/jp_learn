@@ -14,13 +14,13 @@ import httpx
 from .paths import APP_DIR, ensure_parent
 
 
-ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
-REQUIRED_ANNOTATION_FIELDS = ("translation_zh", "usage_note_zh")
-APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_annotate.swift")
+EXPLANATION_FIELDS = ("translation_zh", "usage_note_zh", "scene_description")
+REQUIRED_EXPLANATION_FIELDS = ("translation_zh", "usage_note_zh")
+APPLE_FM_SCRIPT = Path(__file__).with_name("apple_fm_explain.swift")
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 ANTHROPIC_VERSION = "2023-06-01"
-APPLE_FM_BINARY = APP_DIR / "apple_fm_annotate"
+APPLE_FM_BINARY = APP_DIR / "apple_fm_explain"
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class OpenAICompatibleClient:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
-    def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
+    def explain_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         payload = {
             "model": self.config.model,
             "temperature": 0.2,
@@ -53,14 +53,14 @@ class OpenAICompatibleClient:
                 {
                     "role": "system",
                     "content": (
-                        "你为中文母语的日语学习者标注日语例句。"
+                        "你为中文母语的日语学习者解释日语例句。"
                         "只返回严格 JSON。除原文中复制的日语或英语外，所有字段值都必须使用自然的简体中文，"
                         "不要写英文解释。"
                     ),
                 },
                 {
                     "role": "user",
-                    "content": build_annotation_prompt(
+                    "content": build_explanation_prompt(
                         word,
                         example,
                         use_show_context=self.config.use_show_context,
@@ -79,7 +79,7 @@ class OpenAICompatibleClient:
             response = client.post(self.config.chat_completions_url, headers=headers, json=payload)
             response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
-        return parse_annotation_response(content)
+        return parse_explanation_response(content)
 
     def answer_question(self, word: dict[str, Any], example: dict[str, Any], question: str) -> str:
         payload = {
@@ -117,7 +117,7 @@ class AnthropicClient:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
-    def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
+    def explain_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         if not self.config.api_key:
             raise ValueError("Anthropic API key is required.")
         payload = {
@@ -125,13 +125,13 @@ class AnthropicClient:
             "max_tokens": 512,
             "temperature": 0.2,
             "system": (
-                "You annotate Japanese media examples for Chinese-speaking JLPT learners. "
+                "You explain Japanese media examples for Chinese-speaking JLPT learners. "
                 "Return strict JSON only."
             ),
             "messages": [
                 {
                     "role": "user",
-                    "content": build_annotation_prompt(
+                    "content": build_explanation_prompt(
                         word,
                         example,
                         use_show_context=self.config.use_show_context,
@@ -161,7 +161,7 @@ class AnthropicClient:
             for item in content
             if isinstance(item, dict) and item.get("type") == "text"
         ]
-        return parse_annotation_response("\n".join(text_parts))
+        return parse_explanation_response("\n".join(text_parts))
 
     def answer_question(self, word: dict[str, Any], example: dict[str, Any], question: str) -> str:
         if not self.config.api_key:
@@ -226,9 +226,9 @@ class AppleFoundationModelsClient:
                 process.kill()
                 process.wait(timeout=2)
 
-    def annotate_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
+    def explain_example(self, word: dict[str, Any], example: dict[str, Any]) -> dict[str, str]:
         payload = {
-            "task": "annotate",
+            "task": "explain",
             "word": word.get("word") or "",
             "reading": word.get("reading") or "",
             "level": word.get("level") or "",
@@ -242,7 +242,7 @@ class AppleFoundationModelsClient:
             "use_show_context": self.use_show_context,
         }
         with self._lock:
-            return self._annotate_with_worker(payload)
+            return self._request_worker(payload)
 
     def answer_question(self, word: dict[str, Any], example: dict[str, Any], question: str) -> str:
         payload = {
@@ -261,9 +261,9 @@ class AppleFoundationModelsClient:
             "question": question,
         }
         with self._lock:
-            return parse_question_response(self._annotate_with_worker(payload, parse=False))
+            return parse_question_response(self._request_worker(payload, parse=False))
 
-    def _annotate_with_worker(self, payload: dict[str, Any], *, parse: bool = True) -> dict[str, str] | str:
+    def _request_worker(self, payload: dict[str, Any], *, parse: bool = True) -> dict[str, str] | str:
         process = self._worker_process()
         if process.stdin is None or process.stdout is None:
             raise RuntimeError("Apple Foundation Models worker pipes are not available.")
@@ -281,7 +281,7 @@ class AppleFoundationModelsClient:
         if not response.get("ok"):
             raise RuntimeError(str(response.get("error") or "Apple Foundation Models request failed."))
         content = str(response.get("content") or "")
-        return parse_annotation_response(content) if parse else content
+        return parse_explanation_response(content) if parse else content
 
     def _worker_process(self) -> subprocess.Popen[str]:
         if self._process is not None and self._process.poll() is None:
@@ -319,7 +319,7 @@ def ensure_apple_fm_binary() -> Path:
     return APPLE_FM_BINARY
 
 
-def build_annotation_prompt(
+def build_explanation_prompt(
     word: dict[str, Any],
     example: dict[str, Any],
     *,
@@ -338,7 +338,7 @@ def build_annotation_prompt(
             f"Characters: {show_characters or '(none)'}\n\n"
         )
     return (
-        "请标注下面这个日语媒体例句，面向中文母语的日语学习者。\n\n"
+        "请解释下面这个日语媒体例句，面向中文母语的日语学习者。\n\n"
         f"目标词: {word.get('word')}\n"
         f"读音: {word.get('reading')}\n"
         f"JLPT 等级: {word.get('level')}\n"
@@ -380,7 +380,7 @@ def build_question_prompt(word: dict[str, Any], example: dict[str, Any], questio
     )
 
 
-def parse_annotation_response(content: str) -> dict[str, str]:
+def parse_explanation_response(content: str) -> dict[str, str]:
     content = content.strip()
     if content.startswith("```"):
         content = re.sub(r"^```(?:json)?\s*", "", content)
@@ -388,17 +388,17 @@ def parse_annotation_response(content: str) -> dict[str, str]:
     try:
         payload = json.loads(content)
     except json.JSONDecodeError:
-        payload = parse_loose_annotation_response(content)
+        payload = parse_loose_explanation_response(content)
     if not isinstance(payload, dict):
         raise ValueError("LLM response must be a JSON object.")
-    annotations = {
-        field: _clean_annotation_value(payload.get(field))
-        for field in ANNOTATION_FIELDS
+    explanation = {
+        field: _clean_explanation_value(payload.get(field))
+        for field in EXPLANATION_FIELDS
     }
-    missing = [field for field in REQUIRED_ANNOTATION_FIELDS if not annotations[field]]
+    missing = [field for field in REQUIRED_EXPLANATION_FIELDS if not explanation[field]]
     if missing:
         raise ValueError(f"LLM response is missing required fields: {', '.join(missing)}")
-    return annotations
+    return explanation
 
 
 def parse_question_response(content: str) -> str:
@@ -409,17 +409,17 @@ def parse_question_response(content: str) -> str:
     payload = json.loads(content)
     if not isinstance(payload, dict):
         raise ValueError("LLM response must be a JSON object.")
-    answer = _clean_annotation_value(payload.get("answer_zh") or payload.get("answer"))
+    answer = _clean_explanation_value(payload.get("answer_zh") or payload.get("answer"))
     if not answer:
         raise ValueError("LLM response is missing required field: answer_zh")
     return answer
 
 
-def parse_loose_annotation_response(content: str) -> dict[str, str]:
+def parse_loose_explanation_response(content: str) -> dict[str, str]:
     payload = {}
     for line in content.splitlines():
         line = line.strip()
-        for field in ANNOTATION_FIELDS:
+        for field in EXPLANATION_FIELDS:
             prefix = f'"{field}"'
             if not line.startswith(prefix):
                 continue
@@ -433,7 +433,7 @@ def parse_loose_annotation_response(content: str) -> dict[str, str]:
     return payload
 
 
-def _clean_annotation_value(value: Any) -> str:
+def _clean_explanation_value(value: Any) -> str:
     if value is None:
         return ""
     return re.sub(r"\s+", " ", str(value)).strip()
