@@ -29,6 +29,7 @@ const {
   readReaderPositions,
   clampStudyCount,
 } = window.JPCORPUS_STORAGE;
+const api = window.JPCORPUS_API;
 const WORD_LIST_PAGE_SIZE = 600;
 const SPLIT_LIMITS = {
   browse: { minLeft: 300, minRight: 420 },
@@ -240,7 +241,7 @@ async function init() {
   applyLanguage();
   loadMaintenanceStatus();
   try {
-    app.corpus = await loadCorpusIndex();
+    app.corpus = await api.loadCorpusIndex();
     app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
     await mergeRemoteStudyState();
     app.selectedWord = chooseInitialWord(currentWordSet());
@@ -248,18 +249,6 @@ async function init() {
   } catch (error) {
     renderLoadError(error);
   }
-}
-
-async function loadCorpusIndex() {
-  const indexResponse = await fetch("/corpus.index.json", { cache: "no-store" });
-  if (indexResponse.ok) {
-    return indexResponse.json();
-  }
-  const response = await fetch("/corpus.json", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  return response.json();
 }
 
 function bindControls() {
@@ -559,11 +548,7 @@ function updateSummaryPillStates() {
 
 async function loadMaintenanceStatus() {
   try {
-    const response = await fetch("/api/maintenance", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
+    const payload = await api.loadMaintenanceStatus();
     app.maintenance.enabled = Boolean(payload.enabled);
     app.maintenance.job = payload.job || null;
     app.maintenance.config = payload.config || null;
@@ -1138,15 +1123,7 @@ async function deleteImportedSource(source) {
   app.sourceInventoryNotice = t("sourceInventoryDeleting", { title });
   renderSourceInventory();
   try {
-    const response = await fetch("/api/delete-imported-text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source_files: sourceFiles }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
+    await api.deleteImportedText(sourceFiles);
     app.sourcePanelGroupKey = null;
     app.sourceInventoryNotice = t("sourceInventoryDeleted", { title });
     renderSourceInventory();
@@ -1600,12 +1577,8 @@ function ensureWordDetail(word) {
     return;
   }
   word._detailLoading = true;
-  const request = fetch(`/api/word-detail?word=${encodeURIComponent(key)}`, { cache: "no-store" })
-    .then(async (response) => {
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || `HTTP ${response.status}`);
-      }
+  const request = api.loadWordDetail(key)
+    .then((payload) => {
       if (payload.word && typeof payload.word === "object") {
         Object.assign(word, payload.word, {
           _detailLoaded: true,
@@ -1642,14 +1615,8 @@ function ensureSourceDetails(documents) {
     return;
   }
   keys.forEach((key) => app.sourceDetailRequests.set(key, true));
-  const params = new URLSearchParams();
-  keys.forEach((key) => params.append("key", key));
-  fetch(`/api/source-detail?${params.toString()}`, { cache: "no-store" })
-    .then(async (response) => {
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || `HTTP ${response.status}`);
-      }
+  api.loadSourceDetails(keys)
+    .then((payload) => {
       asArray(payload.sources).forEach((source) => {
         app.sourceDetails.set(sourceDocumentKey(source), source);
       });
@@ -1694,15 +1661,7 @@ async function saveConfig() {
     llm_api_key: refs.configLlmApiKey.value.trim(),
   };
   try {
-    const response = await fetch("/api/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.error || `HTTP ${response.status}`);
-    }
+    const result = await api.saveConfig(payload);
     app.maintenance.config = result.config || null;
     app.maintenance.llm = result.config?.llm || app.maintenance.llm;
     if (app.maintenance.llm?.provider) {
@@ -1724,19 +1683,11 @@ async function importTextFromMaintenance() {
   refs.importTextSave.disabled = true;
   refs.importTextStatus.textContent = t("importTextSaving");
   try {
-    const response = await fetch("/api/import-text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: refs.importTextTitle.value.trim(),
-        url: refs.importTextUrl.value.trim(),
-        text: refs.importTextContent.value,
-      }),
+    const result = await api.importText({
+      title: refs.importTextTitle.value.trim(),
+      url: refs.importTextUrl.value.trim(),
+      text: refs.importTextContent.value,
     });
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.error || `HTTP ${response.status}`);
-    }
     const title = result.imported?.title || refs.importTextTitle.value.trim() || t("sourceInventoryUnknown");
     refs.importTextTitle.value = "";
     refs.importTextUrl.value = "";
@@ -2693,18 +2644,10 @@ async function startReaderExplanation(word, selection) {
   };
   renderDetail();
   try {
-    const response = await fetch("/api/explain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        word: explanationWordPayload(word),
-        example: selection.example,
-      }),
+    const payload = await api.explain({
+      word: explanationWordPayload(word),
+      example: selection.example,
     });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
     app.reader.explanation = {
       key: selection.key,
       status: "succeeded",
@@ -2731,19 +2674,11 @@ async function startReaderQuestion(word, selection, question) {
   };
   renderDetail();
   try {
-    const response = await fetch("/api/explain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        word: explanationWordPayload(word),
-        example: selection.example,
-        question,
-      }),
+    const payload = await api.explain({
+      word: explanationWordPayload(word),
+      example: selection.example,
+      question,
     });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
     app.reader.question = {
       key: selection.key,
       status: "succeeded",
@@ -3008,15 +2943,7 @@ async function startMaintenanceJob(taskOverride = null) {
   app.maintenance.task = task;
   const spec = maintenanceJobSpec();
   try {
-    const response = await fetch("/api/jobs/maintenance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(spec),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
+    const payload = await api.startMaintenanceJob(spec);
     app.maintenance.job = payload.job;
     app.maintenance.reloadedJobId = null;
     renderMaintenance();
@@ -3042,11 +2969,7 @@ function pollMaintenanceJob() {
 
 async function refreshMaintenanceJob() {
   try {
-    const response = await fetch("/api/jobs/current", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
+    const payload = await api.currentJob();
     app.maintenance.job = payload.job || null;
     renderMaintenance();
     const job = app.maintenance.job;
@@ -3091,7 +3014,7 @@ async function reloadCorpus() {
   app.sourceDetails.clear();
   app.sourceDetailRequests.clear();
   app.sourceDetailFailures.clear();
-  app.corpus = await loadCorpusIndex();
+  app.corpus = await api.loadCorpusIndex();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
   await mergeRemoteStudyState();
   app.selectedWord = app.words.find((word) => word.word === selectedWord) || chooseInitialWord();
@@ -3248,18 +3171,10 @@ async function startExampleExplanation(word, example, key) {
   };
   renderDetail();
   try {
-    const response = await fetch("/api/explain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        word: explanationWordPayload(word),
-        example,
-      }),
+    const payload = await api.explain({
+      word: explanationWordPayload(word),
+      example,
     });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
     app.exampleExplanations[key] = {
       status: "succeeded",
       result: payload.explanation || {},
@@ -4354,11 +4269,10 @@ function writeStudySchedule() {
 
 async function mergeRemoteStudyState() {
   try {
-    const response = await fetch("/api/study-state", { cache: "no-store" });
-    if (!response.ok) {
+    const state = await api.studyState();
+    if (!state) {
       return;
     }
-    const state = await response.json();
     let changed = false;
     for (const [word, status] of Object.entries(normalizeRemoteStatusMap(state.statuses))) {
       const localStatus = app.statuses[word];
@@ -4409,15 +4323,11 @@ async function syncStudyStateToServer() {
     return;
   }
   try {
-    await Promise.all(words.map((word) => fetch("/api/word-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        word,
-        status: statusFor({ word }),
-        study_count: app.studyCounts[word] || 0,
-        study_schedule: app.studySchedule[word] || null,
-      }),
+    await Promise.all(words.map((word) => api.saveWordStatus({
+      word,
+      status: statusFor({ word }),
+      study_count: app.studyCounts[word] || 0,
+      study_schedule: app.studySchedule[word] || null,
     })));
   } catch {
     words.forEach((word) => pendingStudySyncWords.add(word));
