@@ -5,6 +5,9 @@ const MESSAGES = {
     intro: "选择网页文字，或点选页面上的文本块，然后导入本地阅读器。",
     baseUrl: "本地阅读器地址",
     saveUrl: "保存地址",
+    settings: "设置",
+    settingsTitle: "设置",
+    back: "返回",
     toggleReader: "切换网页阅读模式",
     importSelection: "导入当前选中内容",
     pickArea: "点选页面文本块",
@@ -32,6 +35,9 @@ const MESSAGES = {
     intro: "Select text, or pick a visible page area, then import it into the local viewer.",
     baseUrl: "Local viewer URL",
     saveUrl: "Save URL",
+    settings: "Settings",
+    settingsTitle: "Settings",
+    back: "Back",
     toggleReader: "Toggle page reading mode",
     importSelection: "Import current selection",
     pickArea: "Pick page area",
@@ -63,6 +69,10 @@ let hasImportableSelection = false;
 const refs = {
   baseUrl: document.querySelector("#base-url"),
   saveUrl: document.querySelector("#save-url"),
+  openSettings: document.querySelector("#open-settings"),
+  backMain: document.querySelector("#back-main"),
+  mainView: document.querySelector("#main-view"),
+  settingsView: document.querySelector("#settings-view"),
   toggleReader: document.querySelector("#toggle-reader"),
   importSelection: document.querySelector("#import-selection"),
   pickArea: document.querySelector("#pick-area"),
@@ -85,6 +95,8 @@ async function init() {
   refs.status.textContent = settings.lastStatus || "";
   applyLanguage();
   refs.importSelection.disabled = true;
+  refs.openSettings.addEventListener("click", () => showSettings(true));
+  refs.backMain.addEventListener("click", () => showSettings(false));
   refs.saveUrl.addEventListener("click", saveBaseUrl);
   refs.toggleReader.addEventListener("click", toggleReadingMode);
   refs.importSelection.addEventListener("click", importCurrentSelection);
@@ -197,6 +209,12 @@ async function activeTab() {
     throw new Error(t("noActiveTab"));
   }
   return tab;
+}
+
+function showSettings(isOpen) {
+  refs.mainView.classList.toggle("hidden", isOpen);
+  refs.settingsView.classList.toggle("hidden", !isOpen);
+  refs.openSettings.classList.toggle("hidden", isOpen);
 }
 
 async function refreshSelectionButton() {

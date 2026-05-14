@@ -28,6 +28,26 @@ h1 {
   font-size: 16px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.view {
+  display: grid;
+  gap: 10px;
+}
+
+.hidden {
+  display: none;
+}
+
+h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
 .lang-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(34px, 1fr));
@@ -83,6 +103,15 @@ button {
 button.secondary {
   background: #ffffff;
   color: #147d73;
+}
+
+button.compact {
+  min-height: 28px;
+  padding: 0 10px;
+  border-color: #d6e0e3;
+  background: #ffffff;
+  color: #657178;
+  font-size: 12px;
 }
 
 button:disabled {
