@@ -33,9 +33,15 @@ window.JPCORPUS_MAINTENANCE = (() => {
         return t("maintenanceRunningTask", { task, time });
       }
       if (job.status === "succeeded") {
+        let reload = "";
+        if (job.result?.reload_corpus) {
+          reload = app.maintenance.reloadedJobId === job.id
+            ? t("maintenanceReloaded")
+            : t("maintenanceReloadPending");
+        }
         return t("maintenanceSucceededTask", {
           task,
-          reload: job.result?.reload_corpus ? t("maintenanceReloaded") : "",
+          reload,
           time,
         });
       }

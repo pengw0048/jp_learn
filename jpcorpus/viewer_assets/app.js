@@ -101,7 +101,12 @@ const app = {
     llm: null,
     task: "sync_media",
     pollTimer: null,
+    pollIntervalMs: null,
+    pollInFlight: false,
     reloadedJobId: null,
+    pendingReloadJob: null,
+    syncApplying: false,
+    syncError: "",
   },
 };
 const {
@@ -194,6 +199,9 @@ const refs = {
   maintenanceProgressLabel: $("#maintenance-progress-label"),
   maintenanceStatus: $("#maintenance-status"),
   maintenanceLog: $("#maintenance-log"),
+  corpusSyncBanner: $("#corpus-sync-banner"),
+  corpusSyncMessage: $("#corpus-sync-message"),
+  corpusSyncApply: $("#corpus-sync-apply"),
 };
 const {
   maintenanceJobSpec,
@@ -379,13 +387,16 @@ init();
 async function init() {
   bindControls();
   applyLanguage();
-  loadMaintenanceStatus();
+  await loadMaintenanceStatus();
   try {
     app.corpus = await api.loadCorpusIndex();
     app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
     await mergeRemoteStudyState();
     app.selectedWord = chooseInitialWord(currentWordSet());
     render();
+    if (app.maintenance.enabled) {
+      startMaintenanceStatusSync(app.maintenance.job?.status === "running" ? 1500 : 6000);
+    }
   } catch (error) {
     renderLoadError(error);
   }
@@ -449,6 +460,7 @@ function bindControls() {
   refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
   refs.importTextSave.addEventListener("click", importTextFromMaintenance);
+  refs.corpusSyncApply.addEventListener("click", applyPendingCorpusReload);
   refs.importTextContent.addEventListener("input", renderMaintenance);
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
@@ -461,6 +473,11 @@ function bindControls() {
   });
   bindSplitResizer();
   window.addEventListener("resize", () => applyWorkspaceSplit());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && app.maintenance.enabled) {
+      refreshMaintenanceJob({ quiet: true });
+    }
+  });
 }
 
 function applyLanguage() {
@@ -570,6 +587,9 @@ async function loadMaintenanceStatus() {
     app.maintenance.job = payload.job || null;
     app.maintenance.config = payload.config || null;
     app.maintenance.llm = payload.llm || null;
+    if (app.maintenance.job?.status === "succeeded" && app.maintenance.job.result?.reload_corpus) {
+      app.maintenance.reloadedJobId = app.maintenance.job.id;
+    }
     if (payload.llm?.provider) {
       refs.configLlmProvider.value = payload.llm.provider;
     }
@@ -580,12 +600,11 @@ async function loadMaintenanceStatus() {
       refs.configLlmModel.value = payload.llm.model;
     }
     renderMaintenance();
-    if (app.maintenance.job?.status === "running") {
-      pollMaintenanceJob();
-    }
+    renderCorpusSyncBanner();
   } catch {
     app.maintenance.enabled = false;
     renderMaintenance();
+    renderCorpusSyncBanner();
   }
 }
 
@@ -608,6 +627,30 @@ function renderMaintenance() {
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(job);
   refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
+  renderCorpusSyncBanner();
+}
+
+function renderCorpusSyncBanner() {
+  if (!refs.corpusSyncBanner) {
+    return;
+  }
+  const job = app.maintenance.pendingReloadJob;
+  const visible = Boolean(job) && app.maintenance.reloadedJobId !== job.id;
+  refs.corpusSyncBanner.hidden = !visible;
+  if (!visible) {
+    refs.corpusSyncMessage.textContent = "";
+    refs.corpusSyncApply.disabled = false;
+    return;
+  }
+  refs.corpusSyncApply.textContent = t("corpusUpdateApply");
+  refs.corpusSyncApply.disabled = app.maintenance.syncApplying;
+  if (app.maintenance.syncApplying) {
+    refs.corpusSyncMessage.textContent = t("corpusUpdateApplying");
+  } else if (app.maintenance.syncError) {
+    refs.corpusSyncMessage.textContent = t("corpusUpdateFailed", { error: app.maintenance.syncError });
+  } else {
+    refs.corpusSyncMessage.textContent = t("corpusUpdateReady");
+  }
 }
 
 function renderConfigStatus() {
@@ -1269,6 +1312,7 @@ function setStudyMode(mode) {
   if (!MODE_VALUES.has(mode) || app.mode === mode) {
     return;
   }
+  const leavingReadMode = app.mode === "read" && mode !== "read";
   app.mode = mode;
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.study.showAnswer = false;
@@ -1283,6 +1327,9 @@ function setStudyMode(mode) {
     app.selectedWord = chooseInitialWord(currentWordSet());
   }
   render();
+  if (leavingReadMode && app.maintenance.pendingReloadJob) {
+    applyPendingCorpusReload();
+  }
 }
 
 function updateStudyModeButtons() {
@@ -1353,6 +1400,8 @@ async function startMaintenanceJob(taskOverride = null) {
     const payload = await api.startMaintenanceJob(spec);
     app.maintenance.job = payload.job;
     app.maintenance.reloadedJobId = null;
+    app.maintenance.pendingReloadJob = null;
+    app.maintenance.syncError = "";
     renderMaintenance();
     pollMaintenanceJob();
     return payload.job;
@@ -1367,30 +1416,44 @@ async function startMaintenanceJob(taskOverride = null) {
 }
 
 function pollMaintenanceJob() {
+  refreshMaintenanceJob();
+  startMaintenanceStatusSync(1500);
+}
+
+function startMaintenanceStatusSync(intervalMs) {
+  if (!app.maintenance.enabled) {
+    return;
+  }
+  if (app.maintenance.pollTimer && app.maintenance.pollIntervalMs === intervalMs) {
+    return;
+  }
   if (app.maintenance.pollTimer) {
     clearInterval(app.maintenance.pollTimer);
   }
-  refreshMaintenanceJob();
-  app.maintenance.pollTimer = setInterval(refreshMaintenanceJob, 1500);
+  app.maintenance.pollIntervalMs = intervalMs;
+  app.maintenance.pollTimer = setInterval(() => {
+    refreshMaintenanceJob({ quiet: true });
+  }, intervalMs);
 }
 
-async function refreshMaintenanceJob() {
+async function refreshMaintenanceJob({ quiet = false } = {}) {
+  if (!app.maintenance.enabled || app.maintenance.pollInFlight) {
+    return;
+  }
+  app.maintenance.pollInFlight = true;
   try {
     const payload = await api.currentJob();
     app.maintenance.job = payload.job || null;
     renderMaintenance();
     const job = app.maintenance.job;
     if (!job || job.status === "running") {
+      startMaintenanceStatusSync(job?.status === "running" ? 1500 : 6000);
       return;
     }
-    if (app.maintenance.pollTimer) {
-      clearInterval(app.maintenance.pollTimer);
-      app.maintenance.pollTimer = null;
-    }
+    startMaintenanceStatusSync(6000);
     const clearsSourceNotice = app.sourceInventoryNoticeJobId === job.id;
     if (job.status === "succeeded" && job.result?.reload_corpus && app.maintenance.reloadedJobId !== job.id) {
-      app.maintenance.reloadedJobId = job.id;
-      await reloadCorpus();
+      await handleCorpusReloadJob(job);
     }
     if (clearsSourceNotice) {
       app.sourceInventoryBusy = false;
@@ -1401,6 +1464,9 @@ async function refreshMaintenanceJob() {
       renderSourceInventory();
     }
   } catch (error) {
+    if (quiet) {
+      return;
+    }
     app.maintenance.job = {
       status: "failed",
       log: [String(error.message || error)],
@@ -1412,11 +1478,62 @@ async function refreshMaintenanceJob() {
     }
     renderMaintenance();
     renderSourceInventory();
+  } finally {
+    app.maintenance.pollInFlight = false;
+    renderCorpusSyncBanner();
+  }
+}
+
+async function handleCorpusReloadJob(job) {
+  if (app.maintenance.reloadedJobId === job.id || app.maintenance.pendingReloadJob?.id === job.id) {
+    return;
+  }
+  if (shouldDeferCorpusReload()) {
+    app.maintenance.pendingReloadJob = job;
+    app.maintenance.syncError = "";
+    renderMaintenance();
+    renderCorpusSyncBanner();
+    return;
+  }
+  await applyCorpusReload(job);
+}
+
+function shouldDeferCorpusReload() {
+  return app.mode === "read";
+}
+
+async function applyPendingCorpusReload() {
+  if (!app.maintenance.pendingReloadJob || app.maintenance.syncApplying) {
+    return;
+  }
+  await applyCorpusReload(app.maintenance.pendingReloadJob);
+}
+
+async function applyCorpusReload(job) {
+  app.maintenance.syncApplying = true;
+  app.maintenance.syncError = "";
+  renderCorpusSyncBanner();
+  try {
+    app.maintenance.reloadedJobId = job.id;
+    app.maintenance.pendingReloadJob = null;
+    await reloadCorpus();
+  } catch (error) {
+    app.maintenance.reloadedJobId = null;
+    app.maintenance.pendingReloadJob = job;
+    app.maintenance.syncError = error.message || String(error);
+  } finally {
+    app.maintenance.syncApplying = false;
+    renderMaintenance();
+    renderCorpusSyncBanner();
   }
 }
 
 async function reloadCorpus() {
   const selectedWord = app.selectedWord?.word || "";
+  const readMode = app.mode === "read";
+  if (readMode) {
+    app.reader.preserveScrollOnRender = true;
+  }
   app.wordDetailRequests.clear();
   app.sourceDetails.clear();
   app.sourceDetailRequests.clear();
@@ -1424,7 +1541,9 @@ async function reloadCorpus() {
   app.corpus = await api.loadCorpusIndex();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
   await mergeRemoteStudyState();
-  app.selectedWord = app.words.find((word) => word.word === selectedWord) || chooseInitialWord();
+  app.selectedWord = readMode
+    ? app.words.find((word) => word.word === selectedWord) || null
+    : app.words.find((word) => word.word === selectedWord) || chooseInitialWord();
   render();
 }
 

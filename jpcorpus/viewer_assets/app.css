@@ -1244,6 +1244,48 @@ mark {
   overflow: auto;
 }
 
+.corpus-sync-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 36px));
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 45%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent), white 92%);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.corpus-sync-banner span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 680;
+  line-height: 1.35;
+}
+
+.corpus-sync-banner button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 760;
+}
+
+.corpus-sync-banner button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .source-panel {
   position: fixed;
   top: 92px;
