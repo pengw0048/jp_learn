@@ -735,11 +735,14 @@
   }
 
   function onClick(event) {
-    if (!picker?.target) {
+    if (!picker) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
+    if (!picker.target) {
+      return;
+    }
     const text = readableText(picker.target);
     stopPicker();
     chrome.runtime.sendMessage({
