@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from html.parser import HTMLParser
+from textwrap import dedent
 from pathlib import Path
 
 import pytest
@@ -63,3 +64,99 @@ def test_viewer_javascript_files_parse_with_node():
             capture_output=True,
             text=True,
         )
+
+
+def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        global.setInterval = (callback, intervalMs) => ({{ callback, intervalMs }});
+        global.clearInterval = () => {{}};
+        require({str(VIEWER_ASSET_DIR / "app_sync.js")!r});
+
+        function t(key, values = {{}}) {{
+          if (values.error) {{
+            return `${{key}}: ${{values.error}}`;
+          }}
+          return key;
+        }}
+
+        function makeRefs() {{
+          return {{
+            corpusSyncBanner: {{ hidden: true }},
+            corpusSyncMessage: {{ textContent: "" }},
+            corpusSyncApply: {{ disabled: false, textContent: "" }},
+          }};
+        }}
+
+        async function runScenario(shouldDefer) {{
+          const job = {{
+            id: "job-1",
+            status: "succeeded",
+            result: {{ reload_corpus: true }},
+            log: [],
+            error: null,
+          }};
+          const app = {{
+            maintenance: {{
+              enabled: true,
+              job: null,
+              pollTimer: null,
+              pollIntervalMs: null,
+              pollInFlight: false,
+              reloadedJobId: null,
+              pendingReloadJob: null,
+              syncApplying: false,
+              syncError: "",
+            }},
+            sourceInventoryNoticeJobId: null,
+            sourceInventoryBusy: false,
+            sourceInventoryNotice: "",
+          }};
+          const refs = makeRefs();
+          const calls = {{ reloads: 0, renders: 0, sourceRenders: 0 }};
+          const helpers = window.JPCORPUS_SYNC.createCorpusSyncHelpers({{
+            api: {{ currentJob: async () => ({{ job }}) }},
+            app,
+            refs,
+            reloadCorpus: async () => {{ calls.reloads += 1; }},
+            renderMaintenance: () => {{ calls.renders += 1; }},
+            renderSourceInventory: () => {{ calls.sourceRenders += 1; }},
+            shouldDeferCorpusReload: () => shouldDefer,
+            t,
+          }});
+          await helpers.refreshMaintenanceJob();
+          return {{ app, refs, calls, helpers }};
+        }}
+
+        (async () => {{
+          const deferred = await runScenario(true);
+          assert.equal(deferred.calls.reloads, 0);
+          assert.equal(deferred.app.maintenance.pendingReloadJob.id, "job-1");
+          assert.equal(deferred.app.maintenance.reloadedJobId, null);
+          assert.equal(deferred.refs.corpusSyncBanner.hidden, false);
+          assert.equal(deferred.refs.corpusSyncMessage.textContent, "corpusUpdateReady");
+
+          await deferred.helpers.applyPendingCorpusReload();
+          assert.equal(deferred.calls.reloads, 1);
+          assert.equal(deferred.app.maintenance.pendingReloadJob, null);
+          assert.equal(deferred.app.maintenance.reloadedJobId, "job-1");
+          assert.equal(deferred.refs.corpusSyncBanner.hidden, true);
+
+          const automatic = await runScenario(false);
+          assert.equal(automatic.calls.reloads, 1);
+          assert.equal(automatic.app.maintenance.pendingReloadJob, null);
+          assert.equal(automatic.app.maintenance.reloadedJobId, "job-1");
+          assert.equal(automatic.refs.corpusSyncBanner.hidden, true);
+        }})().catch((error) => {{
+          console.error(error);
+          process.exit(1);
+        }});
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
