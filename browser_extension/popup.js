@@ -3,6 +3,7 @@ const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
 const refs = {
   baseUrl: document.querySelector("#base-url"),
   saveUrl: document.querySelector("#save-url"),
+  toggleReader: document.querySelector("#toggle-reader"),
   importSelection: document.querySelector("#import-selection"),
   pickArea: document.querySelector("#pick-area"),
   status: document.querySelector("#status"),
@@ -19,6 +20,7 @@ async function init() {
   refs.baseUrl.value = settings.baseUrl;
   refs.status.textContent = settings.lastStatus || "";
   refs.saveUrl.addEventListener("click", saveBaseUrl);
+  refs.toggleReader.addEventListener("click", toggleReadingMode);
   refs.importSelection.addEventListener("click", importCurrentSelection);
   refs.pickArea.addEventListener("click", startAreaPicker);
 }
@@ -28,6 +30,29 @@ async function saveBaseUrl() {
   await chrome.storage.local.set({ baseUrl });
   refs.baseUrl.value = baseUrl;
   refs.status.textContent = "Saved local viewer URL.";
+}
+
+async function toggleReadingMode() {
+  refs.toggleReader.disabled = true;
+  refs.status.textContent = "Toggling reading mode...";
+  try {
+    const tab = await activeTab();
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_READING_MODE" });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Could not toggle reading mode.");
+    }
+    refs.status.textContent = response.enabled
+      ? `Reading mode on. Highlighted ${response.tokenCount || 0} words.`
+      : "Reading mode off.";
+  } catch (error) {
+    refs.status.textContent = error.message || String(error);
+  } finally {
+    refs.toggleReader.disabled = false;
+  }
 }
 
 async function importCurrentSelection() {

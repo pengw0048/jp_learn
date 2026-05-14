@@ -1,16 +1,25 @@
 (() => {
-  if (window.__jpcorpusPickerLoaded) {
+  const SCRIPT_VERSION = "0.1.3";
+  if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
+  window.__jpcorpusContentVersion = SCRIPT_VERSION;
   window.__jpcorpusPickerLoaded = true;
 
   let picker = null;
+  let reader = null;
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "START_AREA_PICKER") {
       startPicker();
       sendResponse({ ok: true });
       return false;
+    }
+    if (message?.type === "TOGGLE_READING_MODE") {
+      toggleReadingMode()
+        .then((result) => sendResponse({ ok: true, ...result }))
+        .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+      return true;
     }
     if (message?.type === "EXTRACT_MAIN_ARTICLE") {
       try {
@@ -27,6 +36,356 @@
     }
     return false;
   });
+
+  async function toggleReadingMode() {
+    if (reader?.active) {
+      disableReadingMode();
+      showToast("jpcorpus reading mode off.");
+      return { enabled: false, tokenCount: 0 };
+    }
+    return enableReadingMode();
+  }
+
+  async function enableReadingMode() {
+    stopPicker();
+    ensureReaderStyles();
+    showToast("Annotating this page with jpcorpus...");
+    const root = readerRoot();
+    const blocks = [];
+    const nodesById = new Map();
+    let totalChars = 0;
+    collectReaderTextNodes(root).forEach((node) => {
+      if (blocks.length >= 260 || totalChars >= 48000) {
+        return;
+      }
+      const text = node.nodeValue || "";
+      const remaining = 48000 - totalChars;
+      if (remaining <= 0 || !hasJapaneseText(text)) {
+        return;
+      }
+      const id = String(blocks.length);
+      const blockText = text.length > remaining ? text.slice(0, remaining) : text;
+      totalChars += blockText.length;
+      nodesById.set(id, node);
+      blocks.push({ id, text: blockText });
+    });
+    if (!blocks.length) {
+      throw new Error("No Japanese text found in the main page content.");
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: "ANNOTATE_TEXT_BLOCKS",
+      payload: { blocks },
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Could not annotate this page.");
+    }
+
+    reader = {
+      active: true,
+      replacements: [],
+      selectedToken: null,
+      panel: null,
+    };
+    const tokenCount = applyReaderAnnotations(response.result?.blocks || [], nodesById);
+    document.addEventListener("click", onReaderDocumentClick, true);
+    showToast(tokenCount ? `jpcorpus highlighted ${tokenCount} words.` : "No known words found on this page.");
+    return { enabled: true, tokenCount };
+  }
+
+  function disableReadingMode() {
+    if (!reader) {
+      return;
+    }
+    document.removeEventListener("click", onReaderDocumentClick, true);
+    removeReaderPanel();
+    reader.replacements.forEach(({ wrapper, text }) => {
+      if (wrapper.parentNode) {
+        wrapper.replaceWith(document.createTextNode(text));
+      }
+    });
+    reader = null;
+  }
+
+  function readerRoot() {
+    const candidates = articleCandidates()
+      .map((element) => ({ element, score: articleScore(element), text: readableText(element) }))
+      .filter((candidate) => candidate.text.length >= 80)
+      .sort((left, right) => right.score - left.score);
+    return candidates[0]?.element || document.body;
+  }
+
+  function collectReaderTextNodes(root) {
+    const nodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return isAnnotatableTextNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    while (walker.nextNode()) {
+      nodes.push(walker.currentNode);
+    }
+    return nodes;
+  }
+
+  function isAnnotatableTextNode(node) {
+    const text = node.nodeValue || "";
+    if (!hasJapaneseText(text) || !text.trim()) {
+      return false;
+    }
+    const parent = node.parentElement;
+    if (!parent || parent.closest("#jpcorpus-reader-panel, .jpcorpus-reader-wrapper, .jpcorpus-import-toast, #jpcorpus-picker-overlay, #jpcorpus-picker-label")) {
+      return false;
+    }
+    let current = parent;
+    while (current && current !== document.body && current !== document.documentElement) {
+      const tag = current.tagName.toLowerCase();
+      if (["a", "button", "canvas", "input", "noscript", "rp", "rt", "script", "select", "style", "svg", "textarea"].includes(tag)) {
+        return false;
+      }
+      const style = window.getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden") {
+        return false;
+      }
+      if (isSkippableElement(current)) {
+        return false;
+      }
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function applyReaderAnnotations(blocks, nodesById) {
+    let tokenCount = 0;
+    blocks.forEach((block) => {
+      const node = nodesById.get(String(block.id));
+      if (!node?.parentNode) {
+        return;
+      }
+      const text = node.nodeValue || "";
+      const ranges = validReaderRanges(block.ranges || [], text);
+      if (!ranges.length) {
+        return;
+      }
+      const wrapper = document.createElement("span");
+      wrapper.className = "jpcorpus-reader-wrapper";
+      let cursor = 0;
+      ranges.forEach((range) => {
+        if (range.start > cursor) {
+          wrapper.append(document.createTextNode(text.slice(cursor, range.start)));
+        }
+        const token = document.createElement("span");
+        token.className = "jpcorpus-reader-token";
+        token.textContent = text.slice(range.start, range.end);
+        token.__jpcorpusAnnotation = range;
+        token.addEventListener("click", onReaderTokenClick, true);
+        wrapper.append(token);
+        cursor = range.end;
+        tokenCount += 1;
+      });
+      if (cursor < text.length) {
+        wrapper.append(document.createTextNode(text.slice(cursor)));
+      }
+      node.parentNode.replaceChild(wrapper, node);
+      reader.replacements.push({ wrapper, text });
+    });
+    return tokenCount;
+  }
+
+  function validReaderRanges(ranges, text) {
+    let lastEnd = -1;
+    return ranges
+      .filter((range) => Number.isInteger(range.start) && Number.isInteger(range.end))
+      .sort((left, right) => left.start - right.start)
+      .filter((range) => {
+        const valid = range.start >= 0 && range.end > range.start && range.end <= text.length && range.start >= lastEnd;
+        if (valid) {
+          lastEnd = range.end;
+        }
+        return valid;
+      });
+  }
+
+  function onReaderTokenClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const token = event.currentTarget;
+    selectReaderToken(token);
+    showReaderPanel(token.__jpcorpusAnnotation || {}, token);
+  }
+
+  function onReaderDocumentClick(event) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("#jpcorpus-reader-panel, .jpcorpus-reader-token")) {
+      return;
+    }
+    clearReaderSelection();
+  }
+
+  function selectReaderToken(token) {
+    if (!reader) {
+      return;
+    }
+    reader.selectedToken?.classList.remove("jpcorpus-reader-selected");
+    reader.selectedToken = token;
+    token.classList.add("jpcorpus-reader-selected");
+  }
+
+  function clearReaderSelection() {
+    if (!reader) {
+      return;
+    }
+    reader.selectedToken?.classList.remove("jpcorpus-reader-selected");
+    reader.selectedToken = null;
+    removeReaderPanel();
+  }
+
+  function showReaderPanel(annotation, anchor) {
+    if (!reader) {
+      return;
+    }
+    removeReaderPanel();
+    const panel = document.createElement("aside");
+    panel.id = "jpcorpus-reader-panel";
+    const title = document.createElement("div");
+    title.className = "jpcorpus-reader-panel-title";
+    const word = document.createElement("strong");
+    word.textContent = annotation.word || annotation.surface || "";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearReaderSelection();
+    });
+    title.append(word, close);
+
+    const meta = document.createElement("div");
+    meta.className = "jpcorpus-reader-panel-meta";
+    [annotation.reading, annotation.level, annotation.pos].filter(Boolean).forEach((item) => {
+      const chip = document.createElement("span");
+      chip.textContent = item;
+      meta.append(chip);
+    });
+
+    const meaning = document.createElement("p");
+    meaning.className = "jpcorpus-reader-panel-meaning";
+    meaning.textContent = annotation.meaning_zh || annotation.meaning || "No glossary entry found.";
+
+    const detail = document.createElement("p");
+    detail.className = "jpcorpus-reader-panel-detail";
+    detail.textContent = annotation.surface && annotation.surface !== annotation.word
+      ? `Matched form: ${annotation.surface}`
+      : "";
+
+    panel.append(title, meta, meaning);
+    if (detail.textContent) {
+      panel.append(detail);
+    }
+    document.documentElement.append(panel);
+    positionReaderPanel(panel, anchor);
+    reader.panel = panel;
+  }
+
+  function positionReaderPanel(panel, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    const panelWidth = Math.min(340, window.innerWidth - 24);
+    const left = Math.max(12, Math.min(window.innerWidth - panelWidth - 12, rect.left));
+    const top = Math.max(12, Math.min(window.innerHeight - 220, rect.bottom + 8));
+    Object.assign(panel.style, {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${panelWidth}px`,
+    });
+  }
+
+  function removeReaderPanel() {
+    reader?.panel?.remove();
+    if (reader) {
+      reader.panel = null;
+    }
+  }
+
+  function ensureReaderStyles() {
+    if (document.querySelector("#jpcorpus-reader-style")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = "jpcorpus-reader-style";
+    style.textContent = `
+      .jpcorpus-reader-token {
+        border-radius: 3px !important;
+        box-shadow: inset 0 -0.28em rgba(20, 125, 115, 0.18) !important;
+        cursor: pointer !important;
+        transition: background 120ms ease, box-shadow 120ms ease, outline-color 120ms ease !important;
+      }
+      .jpcorpus-reader-token:hover,
+      .jpcorpus-reader-token.jpcorpus-reader-selected {
+        background: rgba(255, 226, 132, 0.50) !important;
+        box-shadow: inset 0 -0.36em rgba(255, 197, 61, 0.45) !important;
+        outline: 1px solid rgba(183, 90, 53, 0.55) !important;
+      }
+      #jpcorpus-reader-panel {
+        position: fixed !important;
+        z-index: 2147483647 !important;
+        max-height: min(420px, calc(100vh - 24px)) !important;
+        overflow: auto !important;
+        box-sizing: border-box !important;
+        padding: 14px !important;
+        border: 1px solid #d6e0e3 !important;
+        border-left: 4px solid #147d73 !important;
+        border-radius: 10px !important;
+        background: #ffffff !important;
+        box-shadow: 0 18px 45px rgba(31, 39, 42, 0.20) !important;
+        color: #1f272a !important;
+        font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+      }
+      .jpcorpus-reader-panel-title {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 12px !important;
+        margin: 0 0 8px !important;
+      }
+      .jpcorpus-reader-panel-title strong {
+        font-size: 24px !important;
+        line-height: 1.1 !important;
+      }
+      .jpcorpus-reader-panel-title button {
+        min-height: 28px !important;
+        padding: 4px 8px !important;
+        border: 1px solid #d6e0e3 !important;
+        border-radius: 7px !important;
+        background: #ffffff !important;
+        color: #657178 !important;
+        font: 700 12px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        cursor: pointer !important;
+      }
+      .jpcorpus-reader-panel-meta {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+        margin: 0 0 10px !important;
+      }
+      .jpcorpus-reader-panel-meta span {
+        padding: 3px 7px !important;
+        border-radius: 999px !important;
+        background: #eef5f4 !important;
+        color: #147d73 !important;
+        font-weight: 760 !important;
+      }
+      .jpcorpus-reader-panel-meaning,
+      .jpcorpus-reader-panel-detail {
+        margin: 8px 0 0 !important;
+        color: #1f272a !important;
+      }
+      .jpcorpus-reader-panel-detail {
+        color: #657178 !important;
+        font-size: 12px !important;
+      }
+    `;
+    document.documentElement.append(style);
+  }
 
   function startPicker() {
     stopPicker();
@@ -452,6 +811,10 @@
       return element.className;
     }
     return element.className?.baseVal || "";
+  }
+
+  function hasJapaneseText(text) {
+    return /[\u3040-\u30ff\u3400-\u9fff々〆ヵヶー]/.test(String(text || ""));
   }
 
   function cleanText(text) {

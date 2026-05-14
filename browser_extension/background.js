@@ -1,6 +1,7 @@
 const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
 const MENU_IMPORT_SELECTION = "jpcorpus-import-selection";
 const MENU_IMPORT_ARTICLE = "jpcorpus-import-article";
+const MENU_TOGGLE_READER = "jpcorpus-toggle-reader";
 const NOTIFICATION_ICON = "icon.svg";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -13,6 +14,11 @@ chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
       id: MENU_IMPORT_ARTICLE,
       title: "Add main article to jpcorpus",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: MENU_TOGGLE_READER,
+      title: "Toggle jpcorpus reading mode",
       contexts: ["page"],
     });
   });
@@ -30,22 +36,58 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
   if (info.menuItemId === MENU_IMPORT_ARTICLE) {
     importMainArticle(tab).catch((error) => reportImportError(error, tab?.id));
+    return;
+  }
+  if (info.menuItemId === MENU_TOGGLE_READER) {
+    toggleReadingMode(tab).catch((error) => reportImportError(error, tab?.id, "jpcorpus reading mode failed"));
   }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== "IMPORT_TEXT") {
-    return false;
+  if (message?.type === "IMPORT_TEXT") {
+    const tabId = sender.tab?.id || message.payload?.tabId;
+    importSelectedText({ ...(message.payload || {}), tabId })
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch(async (error) => {
+        await reportImportError(error, tabId);
+        sendResponse({ ok: false, error: error.message || String(error) });
+      });
+    return true;
   }
-  const tabId = sender.tab?.id || message.payload?.tabId;
-  importSelectedText({ ...(message.payload || {}), tabId })
-    .then((result) => sendResponse({ ok: true, result }))
-    .catch(async (error) => {
-      await reportImportError(error, tabId);
-      sendResponse({ ok: false, error: error.message || String(error) });
-    });
-  return true;
+  if (message?.type === "ANNOTATE_TEXT_BLOCKS") {
+    annotateTextBlocks(message.payload || {})
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
+  }
+  return false;
 });
+
+async function annotateTextBlocks(payload) {
+  const baseUrl = await localBaseUrl();
+  return requestJson(`${baseUrl}/api/annotate-text`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  }, "Reading mode");
+}
+
+async function toggleReadingMode(tab) {
+  if (!tab?.id) {
+    throw new Error("No active tab to annotate.");
+  }
+  await ensureContentScript(tab.id);
+  const response = await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_READING_MODE" });
+  if (!response?.ok) {
+    throw new Error(response?.error || "Could not toggle reading mode.");
+  }
+  const message = response.enabled
+    ? `Reading mode on. Highlighted ${response.tokenCount || 0} words.`
+    : "Reading mode off.";
+  await setStatus(message);
+  await showPageToast(tab.id, message);
+  return response;
+}
 
 async function importSelectedText(payload) {
   const text = String(payload.text || "").trim();
@@ -177,13 +219,13 @@ async function setStatus(message) {
   });
 }
 
-async function reportImportError(error, tabId = null) {
+async function reportImportError(error, tabId = null, title = "jpcorpus import failed") {
   const message = error.message || String(error);
   await setStatus(message);
   await chrome.action.setBadgeText({ text: "ERR" });
   await chrome.action.setBadgeBackgroundColor({ color: "#b75a35" });
   await showPageToast(tabId, message, "error");
-  await notify("jpcorpus import failed", message);
+  await notify(title, message);
 }
 
 async function notify(title, message) {

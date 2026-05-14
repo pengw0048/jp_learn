@@ -12,6 +12,7 @@ import webbrowser
 from .env import load_dotenv
 from .viewer_jobs import (
     ViewerJobRunner,
+    annotate_text_blocks,
     delete_imported_text_documents,
     explain_reader_usage,
     import_text_document,
@@ -74,6 +75,7 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             "/api/explain",
             "/api/import-text",
             "/api/delete-imported-text",
+            "/api/annotate-text",
         }:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
@@ -94,6 +96,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
                 return
             if request_path == "/api/delete-imported-text":
                 self._send_json(delete_imported_text_documents(payload))
+                return
+            if request_path == "/api/annotate-text":
+                self._send_json(annotate_text_blocks(payload, corpus_path=self.corpus_path))
                 return
             job = self.job_runner.start_maintenance(payload)
         except Exception as exc:

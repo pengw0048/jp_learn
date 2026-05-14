@@ -59,7 +59,7 @@ Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi musi
 
 Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh. The corpus importer will add them as `source_type: text`, using EPUB metadata when available and the file name as a fallback title.
 
-Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then starts a local corpus refresh. Exact duplicate web text is detected by content hash, so importing the same page or selection again reuses the existing file and skips the refresh. Imported web texts can be deleted from the Sources panel; the viewer removes the saved `.txt` and `.meta.json` files and rebuilds the corpus. The optional unpacked Chrome extension in `browser_extension/` adds right-click selection import, right-click main-article import, and a small page-area picker that call the same local import endpoint. Extension imports show an in-page toast and a notification for both success and failure, so a stopped or stale local viewer is visible without opening the popup.
+Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then starts a local corpus refresh. Exact duplicate web text is detected by content hash, so importing the same page or selection again reuses the existing file and skips the refresh. Imported web texts can be deleted from the Sources panel; the viewer removes the saved `.txt` and `.meta.json` files and rebuilds the corpus. The optional unpacked Chrome extension in `browser_extension/` adds right-click selection import, right-click main-article import, a small page-area picker, and an in-page reading mode that asks the local viewer to annotate visible Japanese text with subtle highlights and a floating glossary panel. Extension imports show an in-page toast and a notification for both success and failure, so a stopped or stale local viewer is visible without opening the popup.
 
 Optional reader AI explanation uses Anthropic, OpenAI-compatible endpoints, or Apple Foundation Models configured through `.env` or the viewer Configuration form. The Apple provider compiles `jpcorpus/apple_fm_annotate.swift` into `~/.jpcorpus/apple_fm_annotate` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout for reader explanation requests.
 
@@ -73,7 +73,7 @@ data/
   lyrics-cache/                # downloaded .lrc/.txt lyric files
 texts/                         # optional local Japanese .txt/.epub books/articles
 texts/web/                     # web selections imported by the viewer or extension
-browser_extension/             # optional unpacked Chrome extension for web selection import
+browser_extension/             # optional unpacked Chrome extension for web import and page annotation
 ~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index, versioned caches
 ```
 

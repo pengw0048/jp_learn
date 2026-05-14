@@ -14,6 +14,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+from .jlpt import JLPTWords, load_jlpt_words
 from .llm import (
     DEFAULT_ANTHROPIC_BASE_URL,
     DEFAULT_ANTHROPIC_MODEL,
@@ -22,8 +23,11 @@ from .llm import (
     LLMConfig,
     OpenAICompatibleClient,
 )
-from .paths import DEFAULT_STATE_DB, ensure_parent
+from .models import WordEntry
+from .paths import DEFAULT_JLPT_WORDS, DEFAULT_STATE_DB, DEFAULT_ZH_DICT, ensure_parent
 from .texts import normalize_display_text
+from .tokenize import JapaneseTokenizer
+from .zh_dict import ChineseGlossary
 
 
 ALLOWED_PROVIDERS = {"openai-compatible", "anthropic", "apple"}
@@ -45,6 +49,30 @@ CORPUS_RELOAD_TASKS = {"export_corpus"}
 CONFIG_ENV_PATH = Path(".env")
 DEFAULT_WEB_TEXT_DIR = Path("texts") / "web"
 MAX_IMPORTED_TEXT_CHARS = 1_500_000
+MAX_ANNOTATION_BLOCKS = 260
+MAX_ANNOTATION_TEXT_CHARS = 48_000
+MAX_ANNOTATIONS = 1_400
+ANNOTATION_EXCLUDED_POS = {"助詞", "助動詞", "補助記号", "記号", "空白"}
+NAME_TITLE_SURFACES = {
+    "大統領",
+    "国家主席",
+    "主席",
+    "首相",
+    "氏",
+    "さん",
+    "君",
+    "ちゃん",
+    "先生",
+    "選手",
+    "監督",
+    "社長",
+    "教授",
+    "容疑者",
+}
+KANJI_RE = re.compile(r"[\u3400-\u9fff々〆]")
+JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff々〆ヵヶー]")
+KATAKANA_RE = re.compile(r"[\u30a1-\u30f6]")
+_ANNOTATION_INDEX_CACHE: dict[tuple[str, float], "AnnotationIndex"] = {}
 
 
 def _now_iso() -> str:
@@ -77,6 +105,13 @@ class ViewerJob:
             "log": self.log[-200:],
             "error": self.error,
         }
+
+
+@dataclass(frozen=True)
+class AnnotationIndex:
+    words_by_surface: dict[str, dict[str, Any]]
+    jlpt_words: JLPTWords | None
+    zh_glossary: ChineseGlossary
 
 
 class ViewerJobRunner:
@@ -388,6 +423,224 @@ def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
         close_client = getattr(client, "close", None)
         if callable(close_client):
             close_client()
+
+
+def annotate_text_blocks(raw: dict[str, Any], *, corpus_path: Path) -> dict[str, Any]:
+    raw_blocks = raw.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise ValueError("Annotation requires a blocks array.")
+
+    blocks: list[dict[str, str]] = []
+    total_chars = 0
+    for index, item in enumerate(raw_blocks[:MAX_ANNOTATION_BLOCKS]):
+        if not isinstance(item, dict):
+            continue
+        block_id = text_limit(item.get("id") if item.get("id") is not None else index, 80)
+        text = unicodedata.normalize("NFC", str(item.get("text") or ""))
+        if not block_id or not text or not JAPANESE_RE.search(text):
+            continue
+        remaining = MAX_ANNOTATION_TEXT_CHARS - total_chars
+        if remaining <= 0:
+            break
+        if len(text) > remaining:
+            text = text[:remaining]
+        total_chars += len(text)
+        blocks.append({"id": block_id, "text": text})
+
+    index = load_annotation_index(corpus_path)
+    tokenizer = JapaneseTokenizer()
+    annotated_blocks = []
+    total_annotations = 0
+    for block in blocks:
+        ranges = annotate_one_text_block(block["text"], tokenizer=tokenizer, index=index)
+        if total_annotations + len(ranges) > MAX_ANNOTATIONS:
+            ranges = ranges[: max(0, MAX_ANNOTATIONS - total_annotations)]
+        total_annotations += len(ranges)
+        annotated_blocks.append({"id": block["id"], "ranges": ranges})
+        if total_annotations >= MAX_ANNOTATIONS:
+            break
+
+    return {
+        "blocks": annotated_blocks,
+        "stats": {
+            "requested_blocks": len(raw_blocks),
+            "annotated_blocks": len(annotated_blocks),
+            "annotations": total_annotations,
+            "truncated": len(raw_blocks) > len(blocks) or total_chars >= MAX_ANNOTATION_TEXT_CHARS,
+        },
+    }
+
+
+def load_annotation_index(corpus_path: Path) -> AnnotationIndex:
+    resolved = corpus_path.resolve()
+    try:
+        mtime = resolved.stat().st_mtime
+    except FileNotFoundError:
+        mtime = 0.0
+    key = (str(resolved), mtime)
+    cached = _ANNOTATION_INDEX_CACHE.get(key)
+    if cached:
+        return cached
+
+    words_by_surface: dict[str, dict[str, Any]] = {}
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        payload = {}
+    word_items = payload.get("words", []) if isinstance(payload, dict) else []
+    for word in word_items:
+        if not isinstance(word, dict):
+            continue
+        for surface in corpus_word_surfaces(word):
+            existing = words_by_surface.get(surface)
+            if not existing or int(word.get("count") or 0) > int(existing.get("count") or 0):
+                words_by_surface[surface] = word
+
+    try:
+        jlpt_words: JLPTWords | None = load_jlpt_words(DEFAULT_JLPT_WORDS)
+    except Exception:
+        jlpt_words = None
+    try:
+        zh_glossary = ChineseGlossary.load(DEFAULT_ZH_DICT)
+    except Exception:
+        zh_glossary = ChineseGlossary({})
+
+    index = AnnotationIndex(
+        words_by_surface=words_by_surface,
+        jlpt_words=jlpt_words,
+        zh_glossary=zh_glossary,
+    )
+    _ANNOTATION_INDEX_CACHE.clear()
+    _ANNOTATION_INDEX_CACHE[key] = index
+    return index
+
+
+def corpus_word_surfaces(word: dict[str, Any]) -> list[str]:
+    surfaces: list[str] = []
+    primary = str(word.get("word") or "").strip()
+    if primary:
+        surfaces.append(primary)
+    notes = word.get("lexical_notes")
+    if isinstance(notes, dict):
+        for spelling in notes.get("spellings") or []:
+            if isinstance(spelling, dict):
+                text = str(spelling.get("text") or "").strip()
+                if text:
+                    surfaces.append(text)
+    return list(dict.fromkeys(surfaces))
+
+
+def annotate_one_text_block(
+    text: str,
+    *,
+    tokenizer: JapaneseTokenizer,
+    index: AnnotationIndex,
+) -> list[dict[str, Any]]:
+    ranges: list[dict[str, Any]] = []
+    last_end = -1
+    tokens = tokenizer.tokenize(text)
+    for token_index, token in enumerate(tokens):
+        if token.start is None or token.end is None or token.start < last_end:
+            continue
+        next_token = tokens[token_index + 1] if token_index + 1 < len(tokens) else None
+        word = lookup_annotation_word(token, index)
+        if not word or not should_annotate_token(token, word, next_token=next_token):
+            continue
+        ranges.append(
+            {
+                "start": token.start,
+                "end": token.end,
+                "surface": text[token.start : token.end],
+                "word": word["word"],
+                "reading": word.get("reading") or "",
+                "level": word.get("level") or "",
+                "meaning_zh": word.get("meaning_zh") or "",
+                "meaning": word.get("meaning") or "",
+                "pos": token.pos or "",
+            }
+        )
+        last_end = token.end
+    return ranges
+
+
+def lookup_annotation_word(token: Any, index: AnnotationIndex) -> dict[str, Any] | None:
+    for key in dict.fromkeys([token.base, token.surface]):
+        if key and key in index.words_by_surface:
+            return corpus_annotation_word(index.words_by_surface[key], index.zh_glossary)
+
+    if not index.jlpt_words:
+        return None
+    jlpt_entry = index.jlpt_words.lookup(token.base, token.surface)
+    if not jlpt_entry and is_kana_text(token.surface):
+        reading = katakana_to_hiragana(token.reading or token.surface)
+        jlpt_entry = index.jlpt_words.lookup_reading(token.surface, reading)
+    if not jlpt_entry:
+        return None
+    return jlpt_annotation_word(jlpt_entry, index.zh_glossary, token.surface, token.base)
+
+
+def corpus_annotation_word(word: dict[str, Any], zh_glossary: ChineseGlossary) -> dict[str, Any]:
+    surface = str(word.get("word") or "").strip()
+    level = str(word.get("level") or "").strip()
+    if not level and word.get("level_number"):
+        level = f"N{word.get('level_number')}"
+    meaning_zh = str(word.get("meaning_zh") or "").strip() or (zh_glossary.lookup(surface) or "")
+    return {
+        "word": surface,
+        "reading": str(word.get("reading") or "").strip(),
+        "level": level,
+        "meaning_zh": meaning_zh,
+        "meaning": str(word.get("meaning") or "").strip(),
+        "count": int(word.get("count") or 0),
+    }
+
+
+def jlpt_annotation_word(
+    entry: WordEntry,
+    zh_glossary: ChineseGlossary,
+    surface: str | None,
+    base: str | None,
+) -> dict[str, Any]:
+    meaning_zh = zh_glossary.lookup(entry.surface, base, surface) or ""
+    return {
+        "word": entry.surface,
+        "reading": entry.reading or "",
+        "level": entry.level_label,
+        "meaning_zh": meaning_zh,
+        "meaning": entry.meaning or "",
+        "count": 0,
+    }
+
+
+def should_annotate_token(token: Any, word: dict[str, Any], *, next_token: Any | None = None) -> bool:
+    surface = str(token.surface or "")
+    canonical = str(word.get("word") or "")
+    if not surface or not JAPANESE_RE.search(surface):
+        return False
+    if token.pos in ANNOTATION_EXCLUDED_POS:
+        return False
+    if is_likely_name_before_title(surface, next_token):
+        return False
+    if len(surface) <= 1 and not KANJI_RE.search(surface + canonical):
+        return False
+    return True
+
+
+def is_kana_text(value: str | None) -> bool:
+    text = str(value or "")
+    return bool(text) and not KANJI_RE.search(text) and bool(re.fullmatch(r"[\u3040-\u30ffー]+", text))
+
+
+def is_likely_name_before_title(surface: str, next_token: Any | None) -> bool:
+    if not next_token or not surface or not KATAKANA_RE.search(surface):
+        return False
+    title = str(next_token.surface or next_token.base or "")
+    return title in NAME_TITLE_SURFACES
+
+
+def katakana_to_hiragana(value: str | None) -> str:
+    text = str(value or "")
+    return KATAKANA_RE.sub(lambda match: chr(ord(match.group(0)) - 0x60), text)
 
 
 def compact_reader_word(word: dict[str, Any]) -> dict[str, Any]:
