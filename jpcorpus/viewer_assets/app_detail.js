@@ -125,7 +125,9 @@ window.JPCORPUS_DETAIL = (() => {
         const button = el("button", "");
         button.type = "button";
         button.textContent = stateLabels[status][app.lang];
-        button.classList.toggle("active", statusFor(word) === status);
+        const active = statusFor(word) === status;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
         button.addEventListener("click", () => {
           setStatus(word, status);
           render();
@@ -159,6 +161,7 @@ window.JPCORPUS_DETAIL = (() => {
         const button = el("button", item.className || "", item.label);
         button.type = "button";
         button.classList.toggle("active", item.active);
+        button.setAttribute("aria-pressed", item.active ? "true" : "false");
         button.addEventListener("click", () => {
           item.action();
           app.reader.preserveScrollOnRender = true;

@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.11";
+  const SCRIPT_VERSION = "0.1.12";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -433,6 +433,7 @@
     if (isActive && options.status !== "none") {
       button.classList.add("active");
     }
+    button.setAttribute("aria-pressed", isActive && options.status !== "none" ? "true" : "false");
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -540,6 +541,7 @@
       .jpcorpus-reader-token:hover,
       .jpcorpus-reader-token.jpcorpus-reader-selected {
         background: rgba(255, 226, 132, 0.50) !important;
+        opacity: 1 !important;
         box-shadow: inset 0 -0.36em rgba(255, 197, 61, 0.45) !important;
         outline: 1px solid rgba(183, 90, 53, 0.55) !important;
       }

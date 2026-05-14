@@ -1965,6 +1965,20 @@ mark {
   box-shadow: inset 0 -0.22em 0 rgba(20, 116, 111, 0.16);
 }
 
+.reader-token.status-learning,
+.reader-token.status-uncertain {
+  box-shadow: inset 0 -0.24em 0 rgba(184, 92, 56, 0.24);
+}
+
+.reader-token.status-known {
+  box-shadow: inset 0 -0.18em 0 rgba(101, 113, 120, 0.15);
+}
+
+.reader-token.status-ignored {
+  opacity: 0.72;
+  box-shadow: inset 0 -0.14em 0 rgba(101, 113, 120, 0.10);
+}
+
 .reader-token:hover {
   background: var(--accent-soft);
   box-shadow: inset 0 -0.22em 0 rgba(20, 116, 111, 0.28);
@@ -2013,6 +2027,7 @@ mark {
 
 .reader-token.active {
   background: #ffe9a6;
+  opacity: 1;
   box-shadow: inset 0 -0.18em 0 #ffd866;
   outline: 1px solid rgba(184, 92, 56, 0.45);
   outline-offset: 1px;

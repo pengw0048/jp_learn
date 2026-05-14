@@ -13,6 +13,7 @@ window.JPCORPUS_READER = (() => {
     sourceDocumentKey,
     sourceDocumentLineCount,
     sourceDocumentWords,
+    statusFor,
     strong,
     t,
   }) {
@@ -202,7 +203,11 @@ window.JPCORPUS_READER = (() => {
         if (match.start > cursor) {
           target.append(document.createTextNode(text.slice(cursor, match.start)));
         }
-        const button = el("button", "reader-token", text.slice(match.start, match.end));
+        const button = el(
+          "button",
+          ["reader-token", readerTokenStatusClass(match)].filter(Boolean).join(" "),
+          text.slice(match.start, match.end),
+        );
         button.type = "button";
         button.title = match.word;
         button.dataset.word = match.word;
@@ -219,6 +224,11 @@ window.JPCORPUS_READER = (() => {
       if (target.childNodes.length === 0) {
         target.textContent = text;
       }
+    }
+
+    function readerTokenStatusClass(match) {
+      const status = statusFor({ word: match.word });
+      return ["learning", "uncertain", "known", "ignored"].includes(status) ? `status-${status}` : "";
     }
 
     function readerLineDomKey(document, line, lineIndex) {
