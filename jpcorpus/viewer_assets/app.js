@@ -502,6 +502,8 @@ const app = {
   },
 };
 const searchIndexCache = new WeakMap();
+let studySyncTimer = null;
+const pendingStudySyncWords = new Set();
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -566,6 +568,7 @@ async function init() {
     }
     app.corpus = await response.json();
     app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
+    await mergeRemoteStudyState();
     app.selectedWord = chooseInitialWord(currentWordSet());
     render();
   } catch (error) {
@@ -3264,6 +3267,7 @@ async function reloadCorpus() {
   }
   app.corpus = await response.json();
   app.words = Array.isArray(app.corpus.words) ? app.corpus.words : [];
+  await mergeRemoteStudyState();
   app.selectedWord = app.words.find((word) => word.word === selectedWord) || chooseInitialWord();
   render();
 }
@@ -4481,6 +4485,7 @@ function setStatus(word, status) {
     }
   }
   localStorage.setItem(STORAGE_STATUS, JSON.stringify(app.statuses));
+  queueStudyStateSync(word.word);
 }
 
 function studyCountFor(word) {
@@ -4495,6 +4500,7 @@ function setStudyCount(word, count) {
     app.studyCounts[word.word] = normalized;
   }
   localStorage.setItem(STORAGE_STUDY_COUNTS, JSON.stringify(app.studyCounts));
+  queueStudyStateSync(word.word);
 }
 
 function studyDueDateFor(word) {
@@ -4624,6 +4630,117 @@ function readStudySchedule() {
 
 function writeStudySchedule() {
   localStorage.setItem(STORAGE_STUDY_SCHEDULE, JSON.stringify(app.studySchedule));
+}
+
+async function mergeRemoteStudyState() {
+  try {
+    const response = await fetch("/api/study-state", { cache: "no-store" });
+    if (!response.ok) {
+      return;
+    }
+    const state = await response.json();
+    let changed = false;
+    for (const [word, status] of Object.entries(normalizeRemoteStatusMap(state.statuses))) {
+      const localStatus = app.statuses[word];
+      if (!localStatus || localStatus === "none") {
+        app.statuses[word] = status;
+        changed = true;
+      }
+    }
+    for (const [word, count] of Object.entries(normalizeRemoteStudyCounts(state.study_counts))) {
+      const localCount = clampStudyCount(app.studyCounts[word] || 0);
+      if (count > localCount) {
+        app.studyCounts[word] = count;
+        changed = true;
+      }
+    }
+    for (const [word, schedule] of Object.entries(normalizeRemoteStudySchedule(state.study_schedule))) {
+      if (!app.studySchedule[word]) {
+        app.studySchedule[word] = schedule;
+        changed = true;
+      }
+    }
+    if (changed) {
+      writeLocalStudyState();
+    }
+  } catch {
+    // The viewer still works offline; web-extension study additions sync when the local API is available.
+  }
+}
+
+function writeLocalStudyState() {
+  localStorage.setItem(STORAGE_STATUS, JSON.stringify(app.statuses));
+  localStorage.setItem(STORAGE_STUDY_COUNTS, JSON.stringify(app.studyCounts));
+  localStorage.setItem(STORAGE_STUDY_SCHEDULE, JSON.stringify(app.studySchedule));
+}
+
+function queueStudyStateSync(word) {
+  if (word) {
+    pendingStudySyncWords.add(word);
+  }
+  window.clearTimeout(studySyncTimer);
+  studySyncTimer = window.setTimeout(syncStudyStateToServer, 300);
+}
+
+async function syncStudyStateToServer() {
+  const words = Array.from(pendingStudySyncWords);
+  pendingStudySyncWords.clear();
+  if (!words.length) {
+    return;
+  }
+  try {
+    await Promise.all(words.map((word) => fetch("/api/word-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word,
+        status: statusFor({ word }),
+        study_count: app.studyCounts[word] || 0,
+        study_schedule: app.studySchedule[word] || null,
+      }),
+    })));
+  } catch {
+    words.forEach((word) => pendingStudySyncWords.add(word));
+    // LocalStorage remains the primary viewer fallback if the API is unavailable.
+  }
+}
+
+function normalizeRemoteStatusMap(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, status]) => ["learning", "uncertain", "known", "ignored"].includes(status)),
+  );
+}
+
+function normalizeRemoteStudyCounts(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([word, count]) => [word, clampStudyCount(count)])
+      .filter(([, count]) => count > 0),
+  );
+}
+
+function normalizeRemoteStudySchedule(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([word, schedule]) => [
+        word,
+        {
+          last_seen: typeof schedule?.last_seen === "string" ? schedule.last_seen : "",
+          due_date: typeof schedule?.due_date === "string" ? schedule.due_date : todayKey(),
+        },
+      ])
+      .filter(([word]) => word),
+  );
 }
 
 function writeStudySession(session) {

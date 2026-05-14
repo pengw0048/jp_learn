@@ -24,7 +24,7 @@ from .llm import (
     OpenAICompatibleClient,
 )
 from .models import WordEntry
-from .paths import DEFAULT_JLPT_WORDS, DEFAULT_STATE_DB, DEFAULT_ZH_DICT, ensure_parent
+from .paths import APP_DIR, DEFAULT_JLPT_WORDS, DEFAULT_STATE_DB, DEFAULT_ZH_DICT, ensure_parent
 from .texts import normalize_display_text
 from .tokenize import JapaneseTokenizer
 from .zh_dict import ChineseGlossary
@@ -48,6 +48,7 @@ ALLOWED_MAINTENANCE_TASKS = {
 CORPUS_RELOAD_TASKS = {"export_corpus"}
 CONFIG_ENV_PATH = Path(".env")
 DEFAULT_WEB_TEXT_DIR = Path("texts") / "web"
+DEFAULT_VIEWER_STUDY_STATE = APP_DIR / "viewer-study-state.json"
 MAX_IMPORTED_TEXT_CHARS = 1_500_000
 MAX_ANNOTATION_BLOCKS = 260
 MAX_ANNOTATION_TEXT_CHARS = 48_000
@@ -72,6 +73,8 @@ NAME_TITLE_SURFACES = {
 KANJI_RE = re.compile(r"[\u3400-\u9fff々〆]")
 JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff々〆ヵヶー]")
 KATAKANA_RE = re.compile(r"[\u30a1-\u30f6]")
+STUDY_STATUS_VALUES = {"none", "learning", "uncertain", "known", "ignored"}
+STUDY_TARGET_COUNT = 7
 _ANNOTATION_INDEX_CACHE: dict[tuple[str, float], "AnnotationIndex"] = {}
 
 
@@ -394,6 +397,178 @@ def maintenance_status(runner: ViewerJobRunner | None) -> dict[str, Any]:
     }
 
 
+def viewer_study_state() -> dict[str, Any]:
+    return normalize_viewer_study_state(read_viewer_study_state())
+
+
+def save_viewer_study_state(raw: dict[str, Any]) -> dict[str, Any]:
+    state = normalize_viewer_study_state(raw)
+    state["updated_at"] = _now_iso()
+    write_viewer_study_state(state)
+    return state
+
+
+def update_viewer_word_status(raw: dict[str, Any]) -> dict[str, Any]:
+    word = text_limit(raw.get("word"), 120).strip()
+    if not word:
+        raise ValueError("word is required.")
+    status = str(raw.get("status") or "learning").strip()
+    if status not in STUDY_STATUS_VALUES:
+        raise ValueError(f"Unsupported word status: {status}")
+
+    state = normalize_viewer_study_state(read_viewer_study_state())
+    statuses = state["statuses"]
+    counts = state["study_counts"]
+    schedule = state["study_schedule"]
+
+    if status == "none":
+        statuses.pop(word, None)
+        counts.pop(word, None)
+        schedule.pop(word, None)
+    else:
+        statuses[word] = status
+        if status == "known":
+            counts[word] = STUDY_TARGET_COUNT
+            schedule.pop(word, None)
+        elif status == "ignored":
+            counts.pop(word, None)
+            schedule.pop(word, None)
+        elif status in {"learning", "uncertain"}:
+            count = clamp_study_count(raw.get("study_count", counts.get(word, 0)))
+            if count > 0:
+                counts[word] = count
+            else:
+                counts.pop(word, None)
+            raw_schedule = raw.get("study_schedule")
+            schedule[word] = (
+                normalize_study_schedule({word: raw_schedule}).get(word)
+                if isinstance(raw_schedule, dict)
+                else None
+            ) or {
+                "last_seen": today_key(),
+                "due_date": add_days_key(today_key(), 1),
+            }
+
+    state["updated_at"] = _now_iso()
+    write_viewer_study_state(state)
+    return {
+        "word": word,
+        "status": study_status_for_word(word, state),
+        "study_count": counts.get(word, 0),
+        "study_schedule": schedule.get(word),
+        "state": state,
+    }
+
+
+def read_viewer_study_state(path: Path = DEFAULT_VIEWER_STUDY_STATE) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def write_viewer_study_state(state: dict[str, Any], path: Path = DEFAULT_VIEWER_STUDY_STATE) -> None:
+    ensure_parent(path)
+    payload = normalize_viewer_study_state(state)
+    payload["updated_at"] = str(payload.get("updated_at") or _now_iso())
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def normalize_viewer_study_state(raw: dict[str, Any]) -> dict[str, Any]:
+    statuses = raw.get("statuses") if isinstance(raw, dict) else {}
+    study_counts = raw.get("study_counts") if isinstance(raw, dict) else {}
+    study_schedule = raw.get("study_schedule") if isinstance(raw, dict) else {}
+    return {
+        "statuses": normalize_status_map(statuses),
+        "study_counts": normalize_study_counts(study_counts),
+        "study_schedule": normalize_study_schedule(study_schedule),
+        "updated_at": str(raw.get("updated_at") or "") if isinstance(raw, dict) else "",
+    }
+
+
+def normalize_status_map(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for word, status in value.items():
+        word_text = text_limit(word, 120).strip()
+        status_text = str(status or "").strip()
+        if word_text and status_text in STUDY_STATUS_VALUES and status_text != "none":
+            normalized[word_text] = status_text
+    return normalized
+
+
+def normalize_study_counts(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, int] = {}
+    for word, count in value.items():
+        word_text = text_limit(word, 120).strip()
+        count_value = clamp_study_count(count)
+        if word_text and count_value > 0:
+            normalized[word_text] = count_value
+    return normalized
+
+
+def normalize_study_schedule(value: Any) -> dict[str, dict[str, str]]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict[str, str]] = {}
+    for word, schedule in value.items():
+        if not isinstance(schedule, dict):
+            continue
+        word_text = text_limit(word, 120).strip()
+        if not word_text:
+            continue
+        last_seen = str(schedule.get("last_seen") or "")
+        due_date = str(schedule.get("due_date") or today_key())
+        normalized[word_text] = {
+            "last_seen": last_seen,
+            "due_date": due_date,
+        }
+    return normalized
+
+
+def clamp_study_count(value: Any) -> int:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return 0
+    if count <= 0:
+        return 0
+    return min(count, STUDY_TARGET_COUNT)
+
+
+def study_status_for_word(word: str, state: dict[str, Any]) -> str:
+    statuses = state.get("statuses") if isinstance(state, dict) else {}
+    counts = state.get("study_counts") if isinstance(state, dict) else {}
+    status = statuses.get(word) if isinstance(statuses, dict) else None
+    if status in {"ignored", "known", "learning", "uncertain"}:
+        return status
+    count = clamp_study_count(counts.get(word) if isinstance(counts, dict) else 0)
+    if count >= STUDY_TARGET_COUNT:
+        return "known"
+    if count > 0:
+        return "learning"
+    return "none"
+
+
+def today_key(date: datetime | None = None) -> str:
+    value = date or datetime.now()
+    return value.strftime("%Y-%m-%d")
+
+
+def add_days_key(date_key: str, days: int) -> str:
+    from datetime import timedelta
+
+    try:
+        value = datetime.strptime(date_key, "%Y-%m-%d")
+    except ValueError:
+        value = datetime.now()
+    return (value + timedelta(days=days)).strftime("%Y-%m-%d")
+
+
 def explain_reader_usage(raw: dict[str, Any]) -> dict[str, Any]:
     word = raw.get("word")
     example = raw.get("example")
@@ -448,11 +623,12 @@ def annotate_text_blocks(raw: dict[str, Any], *, corpus_path: Path) -> dict[str,
         blocks.append({"id": block_id, "text": text})
 
     index = load_annotation_index(corpus_path)
+    study_state = viewer_study_state()
     tokenizer = JapaneseTokenizer()
     annotated_blocks = []
     total_annotations = 0
     for block in blocks:
-        ranges = annotate_one_text_block(block["text"], tokenizer=tokenizer, index=index)
+        ranges = annotate_one_text_block(block["text"], tokenizer=tokenizer, index=index, study_state=study_state)
         if total_annotations + len(ranges) > MAX_ANNOTATIONS:
             ranges = ranges[: max(0, MAX_ANNOTATIONS - total_annotations)]
         total_annotations += len(ranges)
@@ -535,6 +711,7 @@ def annotate_one_text_block(
     *,
     tokenizer: JapaneseTokenizer,
     index: AnnotationIndex,
+    study_state: dict[str, Any],
 ) -> list[dict[str, Any]]:
     ranges: list[dict[str, Any]] = []
     last_end = -1
@@ -557,6 +734,8 @@ def annotate_one_text_block(
                 "meaning_zh": word.get("meaning_zh") or "",
                 "meaning": word.get("meaning") or "",
                 "pos": token.pos or "",
+                "status": study_status_for_word(word["word"], study_state),
+                "study_count": clamp_study_count(study_state.get("study_counts", {}).get(word["word"], 0)),
             }
         )
         last_end = token.end

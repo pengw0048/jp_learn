@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.3";
+  const SCRIPT_VERSION = "0.1.4";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -252,7 +252,7 @@
     word.textContent = annotation.word || annotation.surface || "";
     const close = document.createElement("button");
     close.type = "button";
-    close.textContent = "Close";
+    close.textContent = "关闭";
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -282,9 +282,74 @@
     if (detail.textContent) {
       panel.append(detail);
     }
+    panel.append(renderReaderStudyButton(annotation));
     document.documentElement.append(panel);
     positionReaderPanel(panel, anchor);
     reader.panel = panel;
+  }
+
+  function renderReaderStudyButton(annotation) {
+    const row = document.createElement("div");
+    row.className = "jpcorpus-reader-panel-actions";
+    const button = document.createElement("button");
+    button.type = "button";
+    updateReaderStudyButton(button, annotation.status);
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      button.disabled = true;
+      button.textContent = "保存中...";
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "SET_WORD_STATUS",
+          payload: {
+            word: annotation.word,
+            status: "learning",
+          },
+        });
+        if (!response?.ok) {
+          throw new Error(response?.error || "Could not update study status.");
+        }
+        annotation.status = response.result?.status || "learning";
+        annotation.study_count = response.result?.study_count || annotation.study_count || 0;
+        updateReaderAnnotationsForWord(annotation.word, annotation.status, annotation.study_count);
+        updateReaderStudyButton(button, annotation.status);
+        showToast(`已加入学习：${annotation.word}`);
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "加入学习";
+        showToast(error.message || String(error), "error");
+      }
+    });
+    row.append(button);
+    return row;
+  }
+
+  function updateReaderAnnotationsForWord(word, status, studyCount) {
+    document.querySelectorAll(".jpcorpus-reader-token").forEach((token) => {
+      if (token.__jpcorpusAnnotation?.word !== word) {
+        return;
+      }
+      token.__jpcorpusAnnotation.status = status;
+      token.__jpcorpusAnnotation.study_count = studyCount;
+    });
+  }
+
+  function updateReaderStudyButton(button, status) {
+    button.className = "jpcorpus-reader-study-button";
+    button.disabled = status === "known" || status === "ignored" || status === "learning" || status === "uncertain";
+    if (status === "known") {
+      button.textContent = "已认识";
+      button.classList.add("saved");
+    } else if (status === "learning" || status === "uncertain") {
+      button.textContent = "复习中";
+      button.classList.add("saved");
+    } else if (status === "ignored") {
+      button.textContent = "已忽略";
+      button.classList.add("saved");
+    } else {
+      button.textContent = "加入学习";
+    }
   }
 
   function positionReaderPanel(panel, anchor) {
@@ -382,6 +447,28 @@
       .jpcorpus-reader-panel-detail {
         color: #657178 !important;
         font-size: 12px !important;
+      }
+      .jpcorpus-reader-panel-actions {
+        display: flex !important;
+        gap: 8px !important;
+        margin-top: 14px !important;
+      }
+      .jpcorpus-reader-study-button {
+        min-height: 34px !important;
+        padding: 6px 12px !important;
+        border: 1px solid #147d73 !important;
+        border-radius: 8px !important;
+        background: #147d73 !important;
+        color: #ffffff !important;
+        font: 760 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        cursor: pointer !important;
+      }
+      .jpcorpus-reader-study-button.saved,
+      .jpcorpus-reader-study-button:disabled {
+        border-color: #d6e0e3 !important;
+        background: #eef5f4 !important;
+        color: #657178 !important;
+        cursor: default !important;
       }
     `;
     document.documentElement.append(style);

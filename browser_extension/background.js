@@ -60,6 +60,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
     return true;
   }
+  if (message?.type === "SET_WORD_STATUS") {
+    setWordStatus(message.payload || {})
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
+  }
   return false;
 });
 
@@ -70,6 +76,15 @@ async function annotateTextBlocks(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
   }, "Reading mode");
+}
+
+async function setWordStatus(payload) {
+  const baseUrl = await localBaseUrl();
+  return requestJson(`${baseUrl}/api/word-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  }, "Study update");
 }
 
 async function toggleReadingMode(tab) {

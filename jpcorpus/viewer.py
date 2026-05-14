@@ -17,7 +17,10 @@ from .viewer_jobs import (
     explain_reader_usage,
     import_text_document,
     maintenance_status,
+    save_viewer_study_state,
     save_viewer_config,
+    update_viewer_word_status,
+    viewer_study_state,
 )
 
 
@@ -57,6 +60,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
         if request_path == "/api/maintenance":
             self._send_json(maintenance_status(self.job_runner))
             return
+        if request_path == "/api/study-state":
+            self._send_json(viewer_study_state())
+            return
         if request_path == "/api/jobs/current":
             self._send_json({"job": self.job_runner.current_job() if self.job_runner else None})
             return
@@ -76,6 +82,8 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             "/api/import-text",
             "/api/delete-imported-text",
             "/api/annotate-text",
+            "/api/study-state",
+            "/api/word-status",
         }:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
@@ -99,6 +107,12 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
                 return
             if request_path == "/api/annotate-text":
                 self._send_json(annotate_text_blocks(payload, corpus_path=self.corpus_path))
+                return
+            if request_path == "/api/study-state":
+                self._send_json(save_viewer_study_state(payload))
+                return
+            if request_path == "/api/word-status":
+                self._send_json(update_viewer_word_status(payload))
                 return
             job = self.job_runner.start_maintenance(payload)
         except Exception as exc:
