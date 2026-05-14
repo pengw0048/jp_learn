@@ -670,11 +670,10 @@ def _meaning_zh(
 
 def _zh_lookup_keys(word: WordStats, *, notes: dict[str, object] | None) -> list[str]:
     surface = word.entry.surface
-    keys = [surface]
+    keys = [surface, *_lexical_spelling_texts(notes)]
     if is_kana_text(surface):
-        keys.extend(_lexical_spelling_texts(notes))
         keys.append(word.display_reading)
-    return keys
+    return list(dict.fromkeys(key for key in keys if key))
 
 
 def _lexical_spelling_texts(notes: dict[str, object] | None) -> list[str]:

@@ -137,7 +137,6 @@ TRADITIONAL_GLOSS_CHARS = str.maketrans(
     }
 )
 CHINESE_GLOSS_OVERRIDES = {
-    "音": "声音；声响；音色",
     "ありがとう": "谢谢",
     "有難う": "谢谢",
     "有り難う": "谢谢",

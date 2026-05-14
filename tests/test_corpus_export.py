@@ -850,7 +850,6 @@ def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):
 
     assert glossary.lookup("おはよう") == "早上好"
     assert glossary.lookup("ありがとう") == "谢谢"
-    assert glossary.lookup("音", reading="おと") == "声音；声响；音色"
 
 
 def test_select_examples_prefers_quality_and_source_diversity():
