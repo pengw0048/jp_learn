@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ CHINESE_GLOSS_OVERRIDES = {
 @dataclass(frozen=True)
 class ChineseGlossary:
     entries: dict[str, str]
+    readings: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path = DEFAULT_ZH_DICT) -> "ChineseGlossary":
@@ -44,16 +45,29 @@ class ChineseGlossary:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError(f"Chinese glossary must be a JSON object: {path}")
-        entries = {str(key): clean_gloss(str(value)) for key, value in payload.items()}
+        entries: dict[str, str] = {}
+        readings: dict[str, tuple[str, ...]] = {}
+        for key, value in payload.items():
+            key_text = str(key)
+            value_text = str(value)
+            entries[key_text] = clean_gloss(value_text)
+            entry_readings = extract_gloss_readings(value_text)
+            if entry_readings:
+                readings[key_text] = entry_readings
         entries.update(CHINESE_GLOSS_OVERRIDES)
-        return cls(entries)
+        for key in CHINESE_GLOSS_OVERRIDES:
+            readings.pop(key, None)
+        return cls(entries, readings)
 
-    def lookup(self, *keys: str | None) -> str | None:
+    def lookup(self, *keys: str | None, reading: str | None = None) -> str | None:
         for key in keys:
             if not key:
                 continue
             gloss = self.entries.get(key)
             if gloss:
+                expected_readings = self.readings.get(key)
+                if expected_readings and reading and not readings_match(reading, expected_readings):
+                    continue
                 return gloss
         return None
 
@@ -71,13 +85,47 @@ def download_zh_dict(
     payload: Any = response.json()
     if not isinstance(payload, dict):
         raise ValueError("Downloaded Chinese glossary is not a JSON object.")
-    normalized = {str(key): clean_gloss(str(value)) for key, value in payload.items()}
+    normalized = {str(key): normalize_gloss_source(str(value)) for key, value in payload.items()}
     path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
 
-def clean_gloss(value: str) -> str:
+def normalize_gloss_source(value: str) -> str:
     value = value.replace("\\n", " ")
-    value = re.sub(r"\s+", " ", value).strip()
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def extract_gloss_readings(value: str) -> tuple[str, ...]:
+    value = normalize_gloss_source(value)
+    match = re.match(r"^[（(]([ぁ-んァ-ンー・\s0-9０-９⓪①②③④⑤⑥⑦⑧⑨/／;；]+)[）)]", value)
+    if not match:
+        return ()
+    return split_readings(match.group(1))
+
+
+def readings_match(reading: str, expected_readings: tuple[str, ...]) -> bool:
+    normalized = set(split_readings(reading))
+    expected = {katakana_to_hiragana(value) for value in expected_readings}
+    return bool(normalized & expected)
+
+
+def split_readings(value: str) -> tuple[str, ...]:
+    readings: list[str] = []
+    for item in re.split(r"[/／;；]", value):
+        cleaned = re.sub(r"[0-9０-９⓪①②③④⑤⑥⑦⑧⑨\s]+", "", item)
+        if cleaned:
+            readings.append(katakana_to_hiragana(cleaned))
+    return tuple(dict.fromkeys(readings))
+
+
+def katakana_to_hiragana(value: str) -> str:
+    return "".join(
+        chr(ord(char) - 0x60) if "ァ" <= char <= "ヶ" else char
+        for char in str(value or "")
+    )
+
+
+def clean_gloss(value: str) -> str:
+    value = normalize_gloss_source(value)
     value = re.sub(r"^[（(][ぁ-んァ-ンー・\s0-9０-９⓪①②③④⑤⑥⑦⑧⑨/／;；]+[）)]\s*", "", value)
     return value

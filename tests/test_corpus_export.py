@@ -28,7 +28,7 @@ from jpcorpus.lexical_notes import LexicalResourceIndex, label_pos
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
 from jpcorpus.subtitle import clean_subtitle_text
 from jpcorpus.texts import discover_text_files, parse_text, text_file_from_path
-from jpcorpus.zh_dict import ChineseGlossary, clean_gloss
+from jpcorpus.zh_dict import ChineseGlossary, clean_gloss, extract_gloss_readings
 
 
 def test_export_corpus_json(tmp_path: Path):
@@ -141,6 +141,23 @@ def test_chinese_glossary_does_not_use_reading_for_kanji_homophones(tmp_path: Pa
     payload = analysis_to_dict(
         analysis,
         zh_glossary=ChineseGlossary({"おと": "wrong homophone fallback"}),
+    )
+    word = next(word for word in payload["words"] if word["word"] == "音")
+
+    assert word["meaning_zh"] is None
+
+
+def test_chinese_glossary_skips_surface_entry_with_mismatched_reading(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    jlpt_path.write_text(
+        '[{"word":"音","reading":"おと","level":"N5","meaning":"sound"}]',
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(
+        analysis,
+        zh_glossary=ChineseGlossary({"音": "发音，读音，字音"}, {"音": ("おん",)}),
     )
     word = next(word for word in payload["words"] if word["word"] == "音")
 
@@ -718,6 +735,26 @@ def test_clean_chinese_gloss_removes_leading_reading():
     assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
     assert clean_gloss("(いま1) 现在") == "现在"
     assert clean_gloss("（いい/よい）①【イ形】好的") == "①【イ形】好的"
+
+
+def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):
+    path = tmp_path / "dict.json"
+    path.write_text('{"音": "（おん）名词 发音，读音，字音"}', encoding="utf-8")
+
+    glossary = ChineseGlossary.load(path)
+
+    assert extract_gloss_readings("（いい/よい）①【イ形】好的") == ("いい", "よい")
+    assert glossary.lookup("音", reading="おん") == "名词 发音，读音，字音"
+    assert glossary.lookup("音", reading="おと") is None
+
+
+def test_chinese_glossary_matches_multi_reading_words(tmp_path: Path):
+    path = tmp_path / "dict.json"
+    path.write_text('{"良い": "（いい/よい）①【イ形】好的"}', encoding="utf-8")
+
+    glossary = ChineseGlossary.load(path)
+
+    assert glossary.lookup("良い", reading="よい; いい") == "①【イ形】好的"
 
 
 def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):

@@ -758,10 +758,13 @@ def corpus_annotation_word(word: dict[str, Any], zh_glossary: ChineseGlossary) -
     level = str(word.get("level") or "").strip()
     if not level and word.get("level_number"):
         level = f"N{word.get('level_number')}"
-    meaning_zh = str(word.get("meaning_zh") or "").strip() or (zh_glossary.lookup(surface) or "")
+    reading = str(word.get("reading") or "").strip()
+    meaning_zh = str(word.get("meaning_zh") or "").strip() or (
+        zh_glossary.lookup(surface, reading=reading) or ""
+    )
     return {
         "word": surface,
-        "reading": str(word.get("reading") or "").strip(),
+        "reading": reading,
         "level": level,
         "meaning_zh": meaning_zh,
         "meaning": str(word.get("meaning") or "").strip(),
@@ -775,7 +778,7 @@ def jlpt_annotation_word(
     surface: str | None,
     base: str | None,
 ) -> dict[str, Any]:
-    meaning_zh = zh_glossary.lookup(entry.surface, base, surface) or ""
+    meaning_zh = zh_glossary.lookup(entry.surface, base, surface, reading=entry.reading) or ""
     return {
         "word": entry.surface,
         "reading": entry.reading or "",

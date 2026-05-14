@@ -659,7 +659,7 @@ def _meaning_zh(
     notes: dict[str, object] | None = None,
 ) -> str | None:
     if zh_glossary:
-        meaning = zh_glossary.lookup(*_zh_lookup_keys(word, notes=notes))
+        meaning = zh_glossary.lookup(*_zh_lookup_keys(word, notes=notes), reading=word.display_reading)
         if meaning:
             return meaning
     return word.entry.meaning_zh
