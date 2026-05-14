@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import json
+from functools import lru_cache
 import gzip
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
 import httpx
+from opencc import OpenCC
 
 from .paths import DEFAULT_ZH_DICT, DEFAULT_ZHWIKTIONARY_JA_DICT, DEFAULT_ZHWIKTIONARY_RAW, ensure_parent
 
@@ -18,124 +20,6 @@ DEFAULT_ZH_DICT_URL = (
 )
 ZHWIKTIONARY_RAW_URL = "https://kaikki.org/zhwiktionary/raw-wiktextract-data.jsonl.gz"
 ZHWIKTIONARY_FORM_SKIP_TAGS = {"romanization", "past", "continuative", "archaic"}
-TRADITIONAL_GLOSS_CHARS = str.maketrans(
-    {
-        "與": "与",
-        "專": "专",
-        "業": "业",
-        "叢": "丛",
-        "喪": "丧",
-        "嚴": "严",
-        "國": "国",
-        "圓": "圆",
-        "圖": "图",
-        "場": "场",
-        "聲": "声",
-        "學": "学",
-        "實": "实",
-        "對": "对",
-        "屬": "属",
-        "島": "岛",
-        "帶": "带",
-        "幫": "帮",
-        "廣": "广",
-        "廢": "废",
-        "後": "后",
-        "從": "从",
-        "動": "动",
-        "復": "复",
-        "愛": "爱",
-        "應": "应",
-        "戀": "恋",
-        "戰": "战",
-        "戶": "户",
-        "拋": "抛",
-        "據": "据",
-        "數": "数",
-        "斷": "断",
-        "於": "于",
-        "時": "时",
-        "會": "会",
-        "條": "条",
-        "樣": "样",
-        "標": "标",
-        "樂": "乐",
-        "權": "权",
-        "氣": "气",
-        "漢": "汉",
-        "為": "为",
-        "無": "无",
-        "狀": "状",
-        "獸": "兽",
-        "現": "现",
-        "產": "产",
-        "畫": "画",
-        "發": "发",
-        "盜": "盗",
-        "確": "确",
-        "禮": "礼",
-        "稱": "称",
-        "種": "种",
-        "穩": "稳",
-        "簡": "简",
-        "類": "类",
-        "紅": "红",
-        "級": "级",
-        "經": "经",
-        "繼": "继",
-        "續": "续",
-        "聲": "声",
-        "聽": "听",
-        "與": "与",
-        "舊": "旧",
-        "處": "处",
-        "號": "号",
-        "蟲": "虫",
-        "補": "补",
-        "見": "见",
-        "親": "亲",
-        "覺": "觉",
-        "覽": "览",
-        "讀": "读",
-        "變": "变",
-        "讓": "让",
-        "詞": "词",
-        "試": "试",
-        "該": "该",
-        "話": "话",
-        "語": "语",
-        "說": "说",
-        "調": "调",
-        "論": "论",
-        "證": "证",
-        "譯": "译",
-        "豐": "丰",
-        "貓": "猫",
-        "貿": "贸",
-        "資": "资",
-        "賣": "卖",
-        "質": "质",
-        "起": "起",
-        "車": "车",
-        "轉": "转",
-        "進": "进",
-        "過": "过",
-        "選": "选",
-        "還": "还",
-        "醫": "医",
-        "關": "关",
-        "開": "开",
-        "間": "间",
-        "題": "题",
-        "顯": "显",
-        "風": "风",
-        "馬": "马",
-        "體": "体",
-        "高": "高",
-        "鳴": "鸣",
-        "鳥": "鸟",
-    }
-)
 CHINESE_GLOSS_OVERRIDES = {
     "ありがとう": "谢谢",
     "有難う": "谢谢",
@@ -370,7 +254,12 @@ def normalize_gloss_source(value: str) -> str:
 
 
 def simplify_zh_gloss(value: str) -> str:
-    return value.translate(TRADITIONAL_GLOSS_CHARS)
+    return opencc_t2s().convert(value)
+
+
+@lru_cache(maxsize=1)
+def opencc_t2s() -> OpenCC:
+    return OpenCC("t2s")
 
 
 def extract_gloss_readings(value: str) -> tuple[str, ...]:
