@@ -669,3 +669,166 @@ def test_refresh_imported_texts_uses_split_files_without_rewriting_corpus(tmp_pa
     updated_index = json.loads(corpus_index_path(corpus).read_text(encoding="utf-8"))
     assert updated_index["sources"] == []
     assert updated_index["words"][0]["count"] == 0
+
+
+def test_refresh_imported_texts_split_only_analyzes_new_files(monkeypatch, tmp_path):
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text("legacy corpus payload", encoding="utf-8")
+    web_dir = tmp_path / "texts" / "web"
+    web_dir.mkdir(parents=True)
+    old_path = web_dir / "old.txt"
+    old_path.write_text("古い記事へ行く。", encoding="utf-8")
+    new_path = web_dir / "new.txt"
+    new_path.write_text("新しい記事の新語。", encoding="utf-8")
+
+    old_source = {
+        "source_type": "text",
+        "source_title": "Old Web",
+        "source_file": "web/old.txt",
+        "token_count": 1,
+        "lines": [
+            {
+                "text": "古い記事へ行く。",
+                "matches": [{"word": "行く", "matched_text": "行く"}],
+            }
+        ],
+    }
+    old_source["source_key"] = source_document_key(old_source)
+    old_word = {
+        "word": "行く",
+        "reading": "いく",
+        "level": "N5",
+        "level_number": 5,
+        "meaning": "to go",
+        "count": 1,
+        "source_type_counts": {"text": 1},
+        "subtitle_count": 0,
+        "lyrics_count": 0,
+        "text_count": 1,
+        "sources": [{"title": "Old Web", "count": 1}],
+        "examples": [
+            {
+                "sentence": "古い記事へ行く。",
+                "source_type": "text",
+                "source_title": "Old Web",
+                "subtitle_file": "web/old.txt",
+                "matched_text": "行く",
+                "reference": {"source_file": "web/old.txt"},
+            }
+        ],
+    }
+    new_source = {
+        "source_type": "text",
+        "source_title": "New Web",
+        "source_file": "web/new.txt",
+        "token_count": 1,
+        "lines": [
+            {
+                "text": "新しい記事の新語。",
+                "matches": [{"word": "新語", "matched_text": "新語"}],
+            }
+        ],
+    }
+    new_source["source_key"] = source_document_key(new_source)
+    new_word = {
+        "word": "新語",
+        "reading": "しんご",
+        "meaning": "new word",
+        "count": 1,
+        "source_type_counts": {"text": 1},
+        "subtitle_count": 0,
+        "lyrics_count": 0,
+        "text_count": 1,
+        "sources": [{"title": "New Web", "count": 1}],
+        "examples": [
+            {
+                "sentence": "新しい記事の新語。",
+                "source_type": "text",
+                "source_title": "New Web",
+                "subtitle_file": "web/new.txt",
+                "matched_text": "新語",
+                "reference": {"source_file": "web/new.txt"},
+            }
+        ],
+    }
+    write_json_file(word_detail_path(corpus, "行く"), old_word)
+    write_json_file(source_detail_path(corpus, old_source["source_key"]), old_source)
+    write_json_file(
+        corpus_index_path(corpus),
+        {
+            "index_schema_version": 2,
+            "schema_version": 13,
+            "generated_at": "old",
+            "summary": {
+                "text_file_count": 1,
+                "total_tokens": 1,
+                "source_type_counts": {"text": 1},
+                "word_source_coverage": {"exported_word_count": 1},
+            },
+            "shows": [{"title": "Old Web", "total_tokens": 1}],
+            "sources": [
+                {
+                    "source_key": old_source["source_key"],
+                    "source_type": "text",
+                    "source_title": "Old Web",
+                    "source_file": "web/old.txt",
+                    "token_count": 1,
+                    "line_count": 1,
+                    "match_count": 1,
+                    "words": ["行く"],
+                }
+            ],
+            "words": [
+                {
+                    "word": "行く",
+                    "reading": "いく",
+                    "level": "N5",
+                    "level_number": 5,
+                    "meaning": "to go",
+                    "count": 1,
+                    "source_type_counts": {"text": 1},
+                    "subtitle_count": 0,
+                    "lyrics_count": 0,
+                    "text_count": 1,
+                    "example_count": 1,
+                    "has_detail": True,
+                    "search_terms": ["行く", "いく"],
+                    "annotation_surfaces": ["行く"],
+                }
+            ],
+        },
+    )
+    analyzed_path_names = []
+
+    def fake_imported_texts_payload(*, directory, paths=None):
+        assert directory == web_dir
+        analyzed_path_names.append([path.name for path in paths or []])
+        return {
+            "summary": {
+                "text_file_count": 1,
+                "total_tokens": 1,
+                "source_type_counts": {"text": 1},
+            },
+            "shows": [{"title": "New Web", "total_tokens": 1}],
+            "sources": [new_source],
+            "words": [new_word],
+        }
+
+    monkeypatch.setattr("jpcorpus.imported_texts.imported_texts_payload", fake_imported_texts_payload)
+
+    result = refresh_imported_texts_corpus(corpus_path=corpus, directory=web_dir)
+
+    assert analyzed_path_names == [["new.txt"]]
+    assert result["split_output"] is True
+    assert result["refreshed_imported_text_count"] == 1
+    assert result["removed_imported_text_count"] == 0
+    assert corpus.read_text(encoding="utf-8") == "legacy corpus payload"
+    assert source_detail_path(corpus, old_source["source_key"]).exists()
+    assert source_detail_path(corpus, new_source["source_key"]).exists()
+    updated_old_word = json.loads(word_detail_path(corpus, "行く").read_text(encoding="utf-8"))
+    assert updated_old_word["count"] == 1
+    updated_new_word = json.loads(word_detail_path(corpus, "新語").read_text(encoding="utf-8"))
+    assert updated_new_word["count"] == 1
+    updated_index = json.loads(corpus_index_path(corpus).read_text(encoding="utf-8"))
+    assert [source["source_file"] for source in updated_index["sources"]] == ["web/old.txt", "web/new.txt"]
+    assert {word["word"] for word in updated_index["words"]} == {"行く", "新語"}
