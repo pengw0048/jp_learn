@@ -48,17 +48,27 @@ def analysis_to_dict(
     zh_glossary: ChineseGlossary | None = None,
     jmdict_path: Path | None = None,
     kanjidic2_path: Path | None = None,
+    include_zero_count_words: bool = True,
 ) -> dict[str, Any]:
     lexical_index = None
     if jmdict_path or kanjidic2_path:
-        lexical_targets = _lexical_target_words(analysis, level=level)
+        lexical_targets = _lexical_target_words(
+            analysis,
+            level=level,
+            include_zero_count_words=include_zero_count_words,
+        )
         lexical_index = LexicalResourceIndex.load_optional(
             jmdict_path=jmdict_path,
             kanjidic2_path=kanjidic2_path,
             target_keys=target_keys_for_words(lexical_targets),
             target_kanji=target_kanji_for_words(lexical_targets),
         )
-    words = _export_words(analysis, level=level, lexical_index=lexical_index)
+    words = _export_words(
+        analysis,
+        level=level,
+        lexical_index=lexical_index,
+        include_zero_count_words=include_zero_count_words,
+    )
     if limit is not None:
         words = words[:limit]
     word_payloads = [
@@ -297,15 +307,17 @@ def _export_words(
     *,
     level: int | None,
     lexical_index: LexicalResourceIndex | None = None,
+    include_zero_count_words: bool = True,
 ) -> list[WordStats]:
     words_by_surface = {
         surface: _copy_word_stats(stats)
         for surface, stats in analysis.word_stats.items()
     }
-    for entry in analysis.jlpt_words.by_surface.values():
-        if level is not None and entry.level != level:
-            continue
-        words_by_surface.setdefault(entry.surface, WordStats(entry=entry))
+    if include_zero_count_words:
+        for entry in analysis.jlpt_words.by_surface.values():
+            if level is not None and entry.level != level:
+                continue
+            words_by_surface.setdefault(entry.surface, WordStats(entry=entry))
     if level is None and lexical_index:
         for surface, stats in analysis.candidate_word_stats.items():
             if surface in analysis.word_stats or stats.count <= 0:
@@ -335,8 +347,17 @@ def _export_words(
     return words
 
 
-def _lexical_target_words(analysis: CorpusAnalysis, *, level: int | None) -> list[WordStats]:
-    targets = _export_words(analysis, level=level)
+def _lexical_target_words(
+    analysis: CorpusAnalysis,
+    *,
+    level: int | None,
+    include_zero_count_words: bool = True,
+) -> list[WordStats]:
+    targets = _export_words(
+        analysis,
+        level=level,
+        include_zero_count_words=include_zero_count_words,
+    )
     if level is None:
         seen = {word.entry.surface for word in targets}
         targets.extend(

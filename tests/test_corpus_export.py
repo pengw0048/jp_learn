@@ -92,6 +92,24 @@ def test_export_corpus_json(tmp_path: Path):
     assert "lines" not in index_payload["sources"][0]
 
 
+def test_analysis_to_dict_can_skip_zero_count_words(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    write_sample_jlpt(jlpt_path)
+    subtitle = tmp_path / "sample.srt"
+    subtitle.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\n私は約束を見る。\n",
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
+
+    payload = analysis_to_dict(analysis, include_zero_count_words=False)
+
+    words = {word["word"]: word for word in payload["words"]}
+    assert "気持ち" not in words
+    assert words["約束"]["count"] == 1
+    assert words["見る"]["count"] == 1
+
+
 def test_kanji_tokens_do_not_fall_back_to_homophone_jlpt_entry(tmp_path: Path):
     jlpt_path = tmp_path / "jlpt.json"
     jlpt_path.write_text(

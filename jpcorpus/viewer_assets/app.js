@@ -205,9 +205,9 @@ const text = {
     sourceInventoryCollapse: "收起",
     sourceInventoryLines: "行",
     sourceInventoryDelete: "删除",
-    sourceInventoryDeleteConfirm: "删除“{title}”？这会移除导入的网页文本并重建语料。",
+    sourceInventoryDeleteConfirm: "删除“{title}”？这会移除导入的网页文本并更新语料。",
     sourceInventoryDeleting: "正在删除“{title}”…",
-    sourceInventoryDeleted: "已删除“{title}”，正在重建语料。",
+    sourceInventoryDeleted: "已删除“{title}”，正在更新网页文本。",
     sourceInventoryDeleteFailed: "删除失败：{error}",
     sourceReaderTitle: "阅读器",
     sourceReaderFallback: "当前 corpus 还没有完整阅读数据，先显示已抽取的例句片段；点“刷新”后会生成完整来源行。",
@@ -246,6 +246,7 @@ const text = {
     maintenanceReloaded: "，页面已刷新",
     taskSyncMedia: "刷新",
     taskExportCorpus: "刷新语料",
+    taskRefreshImportedTexts: "更新网页文本",
     taskFetchLexicalResources: "更新词语资源",
     taskRefreshAll: "完整刷新",
     maintenanceTaskSyncMedia: "同步动画、字幕、音乐和歌词，并重新生成页面语料",
@@ -253,14 +254,15 @@ const text = {
     maintenanceTaskFetchLexicalResources: "下载 JMdict 和 KANJIDIC2；之后点“刷新语料”才会出现在页面里",
     maintenanceTaskRefreshAll: "词典、词表和动画库也一起更新；平时不用点这个",
     importTextTitle: "导入网页文本",
-    importTextHelp: "只有文本必填；标题和 URL 只是用来之后识别来源。保存后会写入 texts/web/ 并自动刷新语料。",
+    importTextHelp: "只有文本必填；标题和 URL 只是用来之后识别来源。保存后会写入 texts/web/ 并自动更新网页文本。",
     importTextPageTitle: "标题（可选）",
     importTextSourceUrl: "URL（可选）",
     importTextContent: "文本（必填）",
     importTextPlaceholder: "粘贴网页正文，或者从网页选中一段文字后用浏览器扩展导入。",
     importTextSave: "保存并刷新",
     importTextSaving: "正在保存…",
-    importTextSaved: "已保存《{title}》，正在刷新语料…",
+    importTextSaved: "已保存《{title}》，正在更新网页文本…",
+    importTextDuplicate: "《{title}》已经导入过了。",
     importTextFailed: "导入失败：{error}",
     maintenanceDisabled: "维护 API 未启用",
     maintenanceIdle: "还没有运行任务",
@@ -373,9 +375,9 @@ const text = {
     sourceInventoryCollapse: "Collapse",
     sourceInventoryLines: "Lines",
     sourceInventoryDelete: "Delete",
-    sourceInventoryDeleteConfirm: "Delete \"{title}\"? This removes the imported web text and rebuilds the corpus.",
+    sourceInventoryDeleteConfirm: "Delete \"{title}\"? This removes the imported web text and updates the corpus.",
     sourceInventoryDeleting: "Deleting \"{title}\"...",
-    sourceInventoryDeleted: "Deleted \"{title}\". Rebuilding the corpus.",
+    sourceInventoryDeleted: "Deleted \"{title}\". Refreshing web texts.",
     sourceInventoryDeleteFailed: "Delete failed: {error}",
     sourceReaderTitle: "Reader",
     sourceReaderFallback: "This corpus has no full reader data yet, so extracted examples are shown for now. Refresh to generate full source lines.",
@@ -414,6 +416,7 @@ const text = {
     maintenanceReloaded: ", page refreshed",
     taskSyncMedia: "Refresh",
     taskExportCorpus: "Export corpus",
+    taskRefreshImportedTexts: "Refresh web texts",
     taskFetchLexicalResources: "Update word resources",
     taskRefreshAll: "Full refresh",
     maintenanceTaskSyncMedia: "Sync anime, subtitles, music, and lyrics, then regenerate the viewer corpus",
@@ -421,14 +424,15 @@ const text = {
     maintenanceTaskFetchLexicalResources: "Downloads JMdict and KANJIDIC2; refresh the corpus afterwards to show them",
     maintenanceTaskRefreshAll: "Also refetches dictionaries, word lists, and the anime database; rarely needed day to day",
     importTextTitle: "Import web text",
-    importTextHelp: "Only text is required. Title and URL are just source metadata. Saving writes to texts/web/ and refreshes the corpus.",
+    importTextHelp: "Only text is required. Title and URL are just source metadata. Saving writes to texts/web/ and refreshes web texts.",
     importTextPageTitle: "Title (optional)",
     importTextSourceUrl: "URL (optional)",
     importTextContent: "Text (required)",
     importTextPlaceholder: "Paste web article text here, or import a selected passage with the browser extension.",
     importTextSave: "Save and refresh",
     importTextSaving: "Saving...",
-    importTextSaved: "Saved {title}; refreshing corpus...",
+    importTextSaved: "Saved {title}; refreshing web texts...",
+    importTextDuplicate: "{title} was already imported.",
     importTextFailed: "Import failed: {error}",
     maintenanceDisabled: "Maintenance API disabled",
     maintenanceIdle: "No task has run yet",
@@ -1476,7 +1480,7 @@ async function deleteImportedSource(source) {
     app.sourcePanelGroupKey = null;
     app.sourceInventoryNotice = t("sourceInventoryDeleted", { title });
     renderSourceInventory();
-    const job = await startMaintenanceJob("export_corpus");
+    const job = await startMaintenanceJob("refresh_imported_texts");
     if (job?.id) {
       app.sourceInventoryNoticeJobId = job.id;
       renderSourceInventory();
@@ -2067,8 +2071,12 @@ async function importTextFromMaintenance() {
     refs.importTextTitle.value = "";
     refs.importTextUrl.value = "";
     refs.importTextContent.value = "";
-    refs.importTextStatus.textContent = t("importTextSaved", { title });
-    await startMaintenanceJob("export_corpus");
+    if (result.imported?.duplicate) {
+      refs.importTextStatus.textContent = t("importTextDuplicate", { title });
+    } else {
+      refs.importTextStatus.textContent = t("importTextSaved", { title });
+      await startMaintenanceJob("refresh_imported_texts");
+    }
   } catch (error) {
     refs.importTextStatus.textContent = t("importTextFailed", { error: error.message || String(error) });
   } finally {
@@ -4403,6 +4411,7 @@ function maintenanceTaskLabel(task) {
   const key = {
     sync_media: "taskSyncMedia",
     export_corpus: "taskExportCorpus",
+    refresh_imported_texts: "taskRefreshImportedTexts",
     fetch_lexical_resources: "taskFetchLexicalResources",
     refresh_all: "taskRefreshAll",
   }[task];

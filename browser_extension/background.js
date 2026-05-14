@@ -238,7 +238,7 @@ async function startCorpusRefresh(baseUrl) {
     return await requestJson(`${baseUrl}/api/jobs/maintenance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "export_corpus" }),
+      body: JSON.stringify({ type: "refresh_imported_texts" }),
     }, t(lang, "corpusRefreshAction"), lang);
   } catch (error) {
     if (String(error.message || error).includes("Another maintenance job is already running")) {

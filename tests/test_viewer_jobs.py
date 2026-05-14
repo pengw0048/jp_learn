@@ -10,6 +10,7 @@ from jpcorpus.viewer_jobs import (
     import_text_document,
     load_viewer_source_details,
     llm_config_status,
+    merge_imported_text_payload,
     normalize_maintenance_spec,
     save_viewer_config,
     viewer_config_status,
@@ -281,6 +282,243 @@ def test_import_text_document_writes_txt_and_metadata(tmp_path):
     assert text_path.read_text(encoding="utf-8") == "一行目です。\n\n二行目です。\n"
     assert '"title": "テスト 記事"' in metadata_path.read_text(encoding="utf-8")
     assert result["characters"] == len("一行目です。\n\n二行目です。")
+
+
+def test_import_text_document_detects_duplicate_content(tmp_path):
+    directory = tmp_path / "texts" / "web"
+    first = import_text_document(
+        {
+            "title": "同じ記事",
+            "url": "https://example.com/article",
+            "text": "一行目です。",
+        },
+        directory=directory,
+    )
+    second = import_text_document(
+        {
+            "title": "違うタイトル",
+            "url": "https://example.com/again",
+            "text": " 一行目です。 \n",
+        },
+        directory=directory,
+    )
+
+    assert second["duplicate"] is True
+    assert second["path"] == first["path"]
+    assert len(list(directory.glob("*.txt"))) == 1
+
+
+def test_normalize_maintenance_spec_accepts_imported_text_refresh():
+    assert normalize_maintenance_spec({"type": "refresh_imported_texts"}) == {
+        "type": "refresh_imported_texts",
+        "limit": None,
+        "concurrency": 4,
+        "overwrite": False,
+    }
+
+
+def test_merge_imported_text_payload_replaces_only_web_text_sources():
+    base_payload = {
+        "schema_version": 13,
+        "generated_at": "old",
+        "summary": {
+            "text_file_count": 1,
+            "total_tokens": 8,
+            "source_type_counts": {"subtitle": 5, "text": 3},
+            "word_source_coverage": {"exported_word_count": 2},
+        },
+        "shows": [
+            {"title": "Old Web", "total_tokens": 3},
+            {"title": "CLANNAD", "total_tokens": 5},
+        ],
+        "sources": [
+            {
+                "source_type": "subtitle",
+                "source_title": "CLANNAD",
+                "source_file": "ep01.srt",
+                "token_count": 5,
+                "lines": [
+                    {
+                        "text": "学校へ行く。",
+                        "matches": [{"word": "学校", "matched_text": "学校"}],
+                    }
+                ],
+            },
+            {
+                "source_type": "text",
+                "source_title": "Old Web",
+                "source_file": "web/old.txt",
+                "token_count": 3,
+                "lines": [
+                    {
+                        "text": "古い記事へ行く。",
+                        "matches": [{"word": "行く", "matched_text": "行く"}],
+                    }
+                ],
+            },
+        ],
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "level_number": 5,
+                "meaning": "to go",
+                "count": 1,
+                "source_type_counts": {"text": 1},
+                "subtitle_count": 0,
+                "lyrics_count": 0,
+                "text_count": 1,
+                "sources": [{"title": "Old Web", "count": 1}],
+                "examples": [
+                    {
+                        "sentence": "古い記事へ行く。",
+                        "source_type": "text",
+                        "source_title": "Old Web",
+                        "subtitle_file": "web/old.txt",
+                        "matched_text": "行く",
+                        "reference": {"source_file": "web/old.txt"},
+                    }
+                ],
+            },
+            {
+                "word": "学校",
+                "reading": "がっこう",
+                "level": "N5",
+                "level_number": 5,
+                "meaning": "school",
+                "count": 1,
+                "source_type_counts": {"subtitle": 1},
+                "subtitle_count": 1,
+                "lyrics_count": 0,
+                "text_count": 0,
+                "sources": [{"title": "CLANNAD", "count": 1}],
+                "examples": [],
+            },
+        ],
+    }
+    web_payload = {
+        "summary": {
+            "text_file_count": 1,
+            "total_tokens": 4,
+            "source_type_counts": {"text": 4},
+        },
+        "shows": [{"title": "New Web", "total_tokens": 4}],
+        "sources": [
+            {
+                "source_type": "text",
+                "source_title": "New Web",
+                "source_file": "web/new.txt",
+                "token_count": 4,
+                "lines": [
+                    {
+                        "text": "新しい記事へ行く。",
+                        "matches": [{"word": "行く", "matched_text": "行く"}],
+                    }
+                ],
+            }
+        ],
+        "words": [
+            {
+                "word": "行く",
+                "reading": "いく",
+                "level": "N5",
+                "level_number": 5,
+                "meaning": "to go",
+                "count": 1,
+                "source_type_counts": {"text": 1},
+                "subtitle_count": 0,
+                "lyrics_count": 0,
+                "text_count": 1,
+                "sources": [{"title": "New Web", "count": 1}],
+                "examples": [
+                    {
+                        "sentence": "新しい記事へ行く。",
+                        "source_type": "text",
+                        "source_title": "New Web",
+                        "subtitle_file": "web/new.txt",
+                        "matched_text": "行く",
+                        "reference": {"source_file": "web/new.txt"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    merged, stats = merge_imported_text_payload(base_payload, web_payload)
+
+    assert stats["old_imported_text_count"] == 1
+    assert stats["imported_text_count"] == 1
+    assert [source["source_file"] for source in merged["sources"]] == ["ep01.srt", "web/new.txt"]
+    assert [show["title"] for show in merged["shows"]] == ["CLANNAD", "New Web"]
+    assert merged["summary"]["total_tokens"] == 9
+    assert merged["summary"]["source_type_counts"]["text"] == 4
+    words = {word["word"]: word for word in merged["words"]}
+    assert words["行く"]["count"] == 1
+    assert words["行く"]["sources"] == [{"title": "New Web", "count": 1}]
+    assert words["行く"]["examples"][0]["source_title"] == "New Web"
+    assert words["学校"]["count"] == 1
+
+
+def test_merge_imported_text_payload_keeps_unchanged_web_sources():
+    base_payload = {
+        "summary": {
+            "text_file_count": 1,
+            "total_tokens": 3,
+            "source_type_counts": {"text": 3},
+        },
+        "shows": [{"title": "Old Web", "total_tokens": 3}],
+        "sources": [
+            {
+                "source_type": "text",
+                "source_title": "Old Web",
+                "source_file": "web/old.txt",
+                "token_count": 3,
+                "lines": [
+                    {
+                        "text": "古い専門語。",
+                        "matches": [{"word": "専門語", "matched_text": "専門語"}],
+                    }
+                ],
+            },
+        ],
+        "words": [
+            {
+                "word": "専門語",
+                "reading": "せんもんご",
+                "level": None,
+                "level_number": None,
+                "meaning": "technical term",
+                "count": 1,
+                "source_type_counts": {"text": 1},
+                "subtitle_count": 0,
+                "lyrics_count": 0,
+                "text_count": 1,
+                "sources": [{"title": "Old Web", "count": 1}],
+                "examples": [
+                    {
+                        "sentence": "古い専門語。",
+                        "source_type": "text",
+                        "source_title": "Old Web",
+                        "subtitle_file": "web/old.txt",
+                        "matched_text": "専門語",
+                        "reference": {"source_file": "web/old.txt"},
+                    }
+                ],
+            },
+        ],
+    }
+
+    merged, stats = merge_imported_text_payload(
+        base_payload,
+        {"sources": [], "words": [], "shows": []},
+        current_imported_files={"web/old.txt"},
+    )
+
+    assert stats["refreshed_imported_text_count"] == 0
+    assert stats["removed_imported_text_count"] == 0
+    assert merged["sources"][0]["source_file"] == "web/old.txt"
+    assert merged["words"][0]["word"] == "専門語"
 
 
 def test_viewer_config_status_reports_missing_keys(monkeypatch):

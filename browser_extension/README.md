@@ -19,7 +19,7 @@ The popup language switch controls popup labels, context menu labels, in-page to
 
 Add main article uses Mozilla Readability first, then falls back to the extension's generic visible-text picker logic. For pages with many nested spans or ruby annotations, imported article text strips `rt`/`rp` ruby text before saving. Selecting the exact text first is still the most precise option for a small snippet.
 
-The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local corpus refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.
+The extension posts the selected text to `http://127.0.0.1:8767/api/import-text`, saves it under `texts/web/`, and starts a local imported-text refresh. If the same text was already imported, the viewer returns the existing file and the extension skips the refresh.
 
 Right-click imports show transient in-page toasts when importing, imported, or skipped as a duplicate. Successful imports leave the extension popup status and badge clear; failures persist the popup status, show a desktop notification, and show a small badge marker so the error is easier to notice.
 
