@@ -160,3 +160,44 @@ def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
         """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_maintenance_status_hides_successful_imported_text_refresh():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_maintenance.js")!r});
+
+        const helpers = window.JPCORPUS_MAINTENANCE.createMaintenanceHelpers({{
+          app: {{ maintenance: {{ task: "sync_media", reloadedJobId: "job-1" }} }},
+          formatNumber: (value) => String(value),
+          refs: {{}},
+          t: (key) => key,
+        }});
+
+        const succeededImportRefresh = {{
+          id: "job-1",
+          kind: "refresh_imported_texts",
+          status: "succeeded",
+          result: {{ reload_corpus: true }},
+          finished_at: "2026-05-14T20:00:00Z",
+        }};
+        assert.equal(helpers.visibleMaintenanceJob(succeededImportRefresh), null);
+        assert.equal(helpers.maintenanceStatusLabel(succeededImportRefresh), "maintenanceIdle");
+
+        const failedImportRefresh = {{
+          id: "job-2",
+          kind: "refresh_imported_texts",
+          status: "failed",
+          finished_at: "2026-05-14T20:00:00Z",
+        }};
+        assert.equal(helpers.visibleMaintenanceJob(failedImportRefresh), failedImportRefresh);
+        assert.equal(helpers.maintenanceStatusLabel(failedImportRefresh), "maintenanceFailedTask");
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)

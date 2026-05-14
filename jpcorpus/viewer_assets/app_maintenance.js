@@ -26,16 +26,30 @@ window.JPCORPUS_MAINTENANCE = (() => {
       return key ? t(key) : task || t("maintenance");
     }
 
+    function visibleMaintenanceJob(job) {
+      if (!job) {
+        return null;
+      }
+      if (job.status === "succeeded" && maintenanceJobKind(job) === "refresh_imported_texts") {
+        return null;
+      }
+      return job;
+    }
+
     function maintenanceStatusLabel(job) {
-      const task = maintenanceTaskLabel(job.kind || job.spec?.type || maintenanceTask());
-      const time = formatJobTime(job.finished_at || job.started_at);
-      if (job.status === "running") {
+      const visibleJob = visibleMaintenanceJob(job);
+      if (!visibleJob) {
+        return t("maintenanceIdle");
+      }
+      const task = maintenanceTaskLabel(maintenanceJobKind(visibleJob));
+      const time = formatJobTime(visibleJob.finished_at || visibleJob.started_at);
+      if (visibleJob.status === "running") {
         return t("maintenanceRunningTask", { task, time });
       }
-      if (job.status === "succeeded") {
+      if (visibleJob.status === "succeeded") {
         let reload = "";
-        if (job.result?.reload_corpus) {
-          reload = app.maintenance.reloadedJobId === job.id
+        if (visibleJob.result?.reload_corpus) {
+          reload = app.maintenance.reloadedJobId === visibleJob.id
             ? t("maintenanceReloaded")
             : t("maintenanceReloadPending");
         }
@@ -45,10 +59,14 @@ window.JPCORPUS_MAINTENANCE = (() => {
           time,
         });
       }
-      if (job.status === "failed") {
+      if (visibleJob.status === "failed") {
         return t("maintenanceFailedTask", { task, time });
       }
       return t("maintenanceIdle");
+    }
+
+    function maintenanceJobKind(job) {
+      return job.kind || job.spec?.type || maintenanceTask();
     }
 
     function renderMaintenanceProgress(job) {
@@ -108,6 +126,7 @@ window.JPCORPUS_MAINTENANCE = (() => {
       maintenanceStatusLabel,
       maintenanceTask,
       renderMaintenanceProgress,
+      visibleMaintenanceJob,
     };
   }
 

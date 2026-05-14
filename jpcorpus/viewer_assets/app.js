@@ -208,6 +208,7 @@ const {
   maintenanceStatusLabel,
   maintenanceTask,
   renderMaintenanceProgress,
+  visibleMaintenanceJob,
 } = window.JPCORPUS_MAINTENANCE.createMaintenanceHelpers({
   app,
   formatNumber,
@@ -669,6 +670,7 @@ function renderMaintenance() {
   renderConfigStatus();
   const task = maintenanceTask();
   const job = app.maintenance.job;
+  const visibleJob = visibleMaintenanceJob(job);
   refs.maintenanceToggle.disabled = !app.maintenance.enabled;
   refs.maintenanceActionButtons.forEach((button) => {
     button.disabled = !app.maintenance.enabled || job?.status === "running";
@@ -679,8 +681,8 @@ function renderMaintenance() {
     || job?.status === "running"
     || !refs.importTextContent.value.trim();
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
-  renderMaintenanceProgress(job);
-  refs.maintenanceLog.textContent = job?.log?.join("\n") || "";
+  renderMaintenanceProgress(visibleJob);
+  refs.maintenanceLog.textContent = visibleJob?.log?.join("\n") || "";
   renderCorpusSyncBanner();
 }
 
