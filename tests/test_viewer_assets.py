@@ -302,6 +302,10 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
         assert.equal(fallbackText.includes("to do"), false);
         assert.equal(fallbackText.includes("词典义项"), false);
         assert.equal(fallbackText.includes("旧语"), false);
+        const parsedMeaning = helpers.renderMeaningValue({{
+          meaning_zh: "（いい/よい）①【イ形】好的",
+        }}, "meaning-main").textContent;
+        assert.equal(parsedMeaning, "①イ形好的");
 
         const enHelpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
           el: makeNode,

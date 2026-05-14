@@ -717,6 +717,7 @@ def test_jlpt_common_greeting_overrides_are_beginner_level(tmp_path: Path):
 def test_clean_chinese_gloss_removes_leading_reading():
     assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
     assert clean_gloss("(いま1) 现在") == "现在"
+    assert clean_gloss("（いい/よい）①【イ形】好的") == "①【イ形】好的"
 
 
 def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):

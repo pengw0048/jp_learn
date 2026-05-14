@@ -283,7 +283,7 @@ window.JPCORPUS_LEXICAL = (() => {
   }
 
   function parseMeaning(value) {
-    let textValue = String(value || "").trim();
+    let textValue = stripLeadingReading(String(value || "").trim());
     const raw = textValue;
     let accent = "";
     let pos = "";
@@ -304,6 +304,10 @@ window.JPCORPUS_LEXICAL = (() => {
       }
     }
     return { raw, accent, pos, text: textValue };
+  }
+
+  function stripLeadingReading(value) {
+    return value.replace(/^[（(][ぁ-んァ-ンー・\s0-9０-９⓪①②③④⑤⑥⑦⑧⑨/／;；]+[）)]\s*/u, "");
   }
 
   function meaningPosPrefix(value) {

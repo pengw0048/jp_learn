@@ -79,5 +79,5 @@ def download_zh_dict(
 def clean_gloss(value: str) -> str:
     value = value.replace("\\n", " ")
     value = re.sub(r"\s+", " ", value).strip()
-    value = re.sub(r"^[（(][ぁ-んァ-ンー・\s0-9０-９⓪①②③④⑤⑥⑦⑧⑨]+[）)]\s*", "", value)
+    value = re.sub(r"^[（(][ぁ-んァ-ンー・\s0-9０-９⓪①②③④⑤⑥⑦⑧⑨/／;；]+[）)]\s*", "", value)
     return value
