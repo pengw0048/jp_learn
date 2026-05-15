@@ -498,16 +498,11 @@ function bindControls() {
     });
   });
   refs.maintenanceToggle.addEventListener("click", () => {
-    refs.maintenancePanel.hidden = !refs.maintenancePanel.hidden;
-    refs.maintenanceToggle.classList.toggle("active", !refs.maintenancePanel.hidden);
-    if (!refs.maintenancePanel.hidden) {
-      hideSourcePanel();
-    }
+    setMaintenanceOpen(refs.maintenancePanel.hidden);
     renderMaintenance();
   });
   refs.maintenanceClose.addEventListener("click", () => {
-    refs.maintenancePanel.hidden = true;
-    refs.maintenanceToggle.classList.remove("active");
+    setMaintenanceOpen(false);
   });
   refs.maintenanceActionButtons.forEach((button) => {
     button.addEventListener("click", () => startMaintenanceJob(button.dataset.maintenanceTask));
@@ -622,6 +617,14 @@ function hideSourcePanel() {
   app.sourcePanelType = null;
   app.sourcePanelGroupKey = null;
   updateSummaryPillStates();
+}
+
+function setMaintenanceOpen(open) {
+  refs.maintenancePanel.hidden = !open;
+  refs.maintenanceToggle.classList.toggle("active", open);
+  if (open) {
+    hideSourcePanel();
+  }
 }
 
 function updateSummaryPillStates() {
@@ -971,7 +974,12 @@ function renderWordList() {
   }
   if (words.length === 0) {
     app.selectedWord = null;
-    refs.wordList.replaceChildren(emptyMessage(t(app.mode === "study" ? "noStudyWords" : "noWords")));
+    const messageKey = app.words.length === 0
+      ? "emptyCorpusList"
+      : app.mode === "study"
+        ? "noStudyWords"
+        : "noWords";
+    refs.wordList.replaceChildren(emptyMessage(t(messageKey)));
     return;
   }
   if (!app.selectedWord || !words.some((word) => word.word === app.selectedWord.word)) {
@@ -1152,9 +1160,11 @@ function renderDetail() {
   const word = app.selectedWord;
   if (!word) {
     refs.wordDetail.hidden = true;
-    refs.emptyState.hidden = false;
-    refs.emptyState.querySelector("h2").textContent = t(app.mode === "read" ? "readerNoSelection" : "noWords");
-    refs.emptyState.querySelector("p").textContent = "";
+    if (app.words.length === 0) {
+      renderEmptyState("emptyCorpusTitle", "emptyCorpusBody", "emptyCorpusAction");
+    } else {
+      renderEmptyState(app.mode === "read" ? "readerNoSelection" : "noWords");
+    }
     return;
   }
   refs.emptyState.hidden = true;
@@ -1179,9 +1189,11 @@ function renderStudyDetail() {
   const words = studyQueue();
   if (words.length === 0) {
     refs.wordDetail.hidden = true;
-    refs.emptyState.hidden = false;
-    refs.emptyState.querySelector("h2").textContent = t("noStudyWords");
-    refs.emptyState.querySelector("p").textContent = "";
+    if (app.words.length === 0) {
+      renderEmptyState("emptyCorpusTitle", "emptyCorpusBody", "emptyCorpusAction");
+    } else {
+      renderEmptyState("noStudyWords");
+    }
     return;
   }
   const selectedIndex = Math.max(0, words.findIndex((word) => word.word === app.selectedWord?.word));
@@ -1659,9 +1671,24 @@ function statusDot(status) {
 
 function renderLoadError(error) {
   refs.wordDetail.hidden = true;
+  renderEmptyState("loadErrorTitle", `${t("loadErrorBody")} (${error.message})`, null, { bodyIsLiteral: true });
+}
+
+function renderEmptyState(titleKey, bodyKey = "", actionKey = null, options = {}) {
   refs.emptyState.hidden = false;
-  refs.emptyState.querySelector("h2").textContent = t("loadErrorTitle");
-  refs.emptyState.querySelector("p").textContent = `${t("loadErrorBody")} (${error.message})`;
+  refs.emptyState.querySelector("h2").textContent = t(titleKey);
+  refs.emptyState.querySelector("p").textContent = options.bodyIsLiteral ? bodyKey : (bodyKey ? t(bodyKey) : "");
+  refs.emptyState.querySelectorAll(".empty-state-action").forEach((node) => node.remove());
+  if (!actionKey || !app.maintenance.enabled) {
+    return;
+  }
+  const button = el("button", "secondary-button empty-state-action", t(actionKey));
+  button.type = "button";
+  button.addEventListener("click", () => {
+    setMaintenanceOpen(true);
+    renderMaintenance();
+  });
+  refs.emptyState.append(button);
 }
 
 function t(key, values = {}) {

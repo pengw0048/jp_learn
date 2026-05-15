@@ -546,6 +546,11 @@ select {
   font-size: 22px;
 }
 
+.empty-state-action {
+  justify-self: center;
+  margin-top: 6px;
+}
+
 .word-detail {
   width: 100%;
   display: grid;
