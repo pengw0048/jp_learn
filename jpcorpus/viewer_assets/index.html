@@ -106,14 +106,66 @@
         <section class="maintenance-card">
           <div class="maintenance-section-header">
             <div>
-              <h3 data-i18n="configTitle">配置状态</h3>
+              <h3 data-i18n="quickActionsTitle">常用操作</h3>
+              <p class="maintenance-help" data-i18n="quickActionsHelp">平时点“刷新”就够了；词典或词表需要重拉时再用“完整刷新”。</p>
+            </div>
+          </div>
+          <div class="maintenance-action-grid">
+            <button type="button" data-maintenance-task="sync_media">
+              <strong data-i18n="taskSyncMedia">刷新</strong>
+              <span data-i18n="maintenanceTaskSyncMedia">同步动画、字幕、音乐和歌词，并重新生成页面语料</span>
+            </button>
+            <button type="button" data-maintenance-task="refresh_all">
+              <strong data-i18n="taskRefreshAll">完整刷新</strong>
+              <span data-i18n="maintenanceTaskRefreshAll">词典、词表和动画库也一起更新；平时不用点这个</span>
+            </button>
+          </div>
+        </section>
+        <section class="maintenance-card">
+          <div class="maintenance-section-header">
+            <div>
+              <h3 data-i18n="ttsTitle">朗读</h3>
+              <p class="maintenance-help" data-i18n="ttsHelp">朗读设置会自动保存在这个浏览器里。默认使用浏览器日语语音；如果本机开着 VOICEVOX engine，可以切到 VOICEVOX。</p>
+            </div>
+          </div>
+          <div class="tts-settings">
+            <div class="segmented tts-provider-segmented" aria-label="Read aloud provider">
+              <button type="button" data-tts-provider="browser" data-i18n="ttsProviderBrowser">浏览器语音</button>
+              <button type="button" data-tts-provider="voicevox" data-i18n="ttsProviderVoicevox">VOICEVOX</button>
+            </div>
+            <div class="maintenance-grid tts-settings-grid">
+              <label id="tts-browser-voice-field">
+                <span data-i18n="ttsBrowserVoice">浏览器声音</span>
+                <select id="tts-browser-voice"></select>
+              </label>
+              <label id="tts-voicevox-speaker-field" hidden>
+                <span data-i18n="ttsVoicevoxSpeaker">VOICEVOX 声音</span>
+                <select id="tts-voicevox-speaker"></select>
+              </label>
+              <label class="tts-rate-field">
+                <span data-i18n="ttsRate">速度</span>
+                <div class="tts-rate-control">
+                  <input id="tts-rate" type="range" min="0.6" max="1.4" step="0.05" />
+                  <output id="tts-rate-value" for="tts-rate"></output>
+                </div>
+              </label>
+            </div>
+            <div class="tts-preview-row">
+              <button id="tts-preview" class="secondary-button" type="button" data-i18n="ttsPreview">预览</button>
+              <p id="tts-status" class="maintenance-help"></p>
+            </div>
+          </div>
+        </section>
+        <section class="maintenance-card">
+          <div class="maintenance-section-header">
+            <div>
+              <h3 data-i18n="configTitle">API key 状态</h3>
               <p id="config-path" class="maintenance-help"></p>
             </div>
-            <button id="config-save" class="secondary-button" type="button" data-i18n="configSave">保存配置</button>
           </div>
           <div id="config-status-list" class="config-status-list"></div>
           <details id="config-form" class="config-form">
-            <summary data-i18n="configEdit">填写或更新 key</summary>
+            <summary data-i18n="configEdit">填写或更新 API key</summary>
             <div class="maintenance-grid">
               <label>
                 <span>Bangumi Client ID</span>
@@ -148,61 +200,11 @@
                 <input id="config-llm-api-key" type="password" autocomplete="off" />
               </label>
             </div>
-            <p id="config-save-status" class="maintenance-help"></p>
+            <div class="config-form-actions">
+              <button id="config-save" class="secondary-button" type="button" data-i18n="configSave">保存 key</button>
+              <p id="config-save-status" class="maintenance-help"></p>
+            </div>
           </details>
-        </section>
-        <section class="maintenance-card">
-          <div class="maintenance-section-header">
-            <div>
-              <h3 data-i18n="ttsTitle">朗读</h3>
-              <p class="maintenance-help" data-i18n="ttsHelp">默认使用浏览器日语语音；如果本机开着 VOICEVOX engine，可以切到 VOICEVOX。</p>
-            </div>
-          </div>
-          <div class="tts-settings">
-            <div class="segmented tts-provider-segmented" aria-label="Read aloud provider">
-              <button type="button" data-tts-provider="browser" data-i18n="ttsProviderBrowser">浏览器语音</button>
-              <button type="button" data-tts-provider="voicevox" data-i18n="ttsProviderVoicevox">VOICEVOX</button>
-            </div>
-            <div class="maintenance-grid tts-settings-grid">
-              <label id="tts-browser-voice-field">
-                <span data-i18n="ttsBrowserVoice">浏览器声音</span>
-                <select id="tts-browser-voice"></select>
-              </label>
-              <label id="tts-voicevox-speaker-field" hidden>
-                <span data-i18n="ttsVoicevoxSpeaker">VOICEVOX 声音</span>
-                <select id="tts-voicevox-speaker"></select>
-              </label>
-              <label class="tts-rate-field">
-                <span data-i18n="ttsRate">速度</span>
-                <div class="tts-rate-control">
-                  <input id="tts-rate" type="range" min="0.6" max="1.4" step="0.05" />
-                  <output id="tts-rate-value" for="tts-rate"></output>
-                </div>
-              </label>
-            </div>
-            <div class="tts-preview-row">
-              <button id="tts-preview" class="secondary-button" type="button" data-i18n="ttsPreview">预览</button>
-              <p id="tts-status" class="maintenance-help"></p>
-            </div>
-          </div>
-        </section>
-        <section class="maintenance-card">
-          <div class="maintenance-section-header">
-            <div>
-              <h3 data-i18n="quickActionsTitle">常用操作</h3>
-              <p class="maintenance-help" data-i18n="quickActionsHelp">这些按钮会直接开始，不需要再选任务。</p>
-            </div>
-          </div>
-          <div class="maintenance-action-grid">
-            <button type="button" data-maintenance-task="sync_media">
-              <strong data-i18n="taskSyncMedia">刷新</strong>
-              <span data-i18n="maintenanceTaskSyncMedia">同步动画、字幕、音乐和歌词，并重新生成页面语料</span>
-            </button>
-            <button type="button" data-maintenance-task="refresh_all">
-              <strong data-i18n="taskRefreshAll">完整刷新</strong>
-              <span data-i18n="maintenanceTaskRefreshAll">词典、词表和动画库也一起更新；平时不用点这个</span>
-            </button>
-          </div>
         </section>
         <div id="maintenance-progress" class="maintenance-progress" hidden>
           <div class="maintenance-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">

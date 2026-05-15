@@ -1542,6 +1542,18 @@ mark {
   margin-top: 10px;
 }
 
+.config-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.config-form-actions .maintenance-help {
+  margin-top: 0;
+}
+
 .tts-settings {
   display: grid;
   gap: 10px;
