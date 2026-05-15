@@ -22,6 +22,7 @@ from .viewer_jobs import (
 )
 from .viewer_config import save_viewer_config
 from .viewer_study import save_viewer_study_state, update_viewer_word_status, viewer_study_state
+from .viewer_tts import synthesize_voicevox, voicevox_speakers
 
 
 ASSET_DIR = Path(__file__).with_name("viewer_assets")
@@ -84,6 +85,15 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
         if request_path == "/api/jobs/current":
             self._send_json({"job": self.job_runner.current_job() if self.job_runner else None})
             return
+        if request_path == "/api/tts/voicevox-speakers":
+            if self.job_runner is None:
+                self._send_json({"error": "Local TTS API is disabled."}, status=HTTPStatus.FORBIDDEN)
+                return
+            try:
+                self._send_json(voicevox_speakers())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
         asset_name = "index.html" if request_path in {"", "/"} else request_path.lstrip("/")
         asset_path = (self.asset_dir / asset_name).resolve()
         if not asset_path.is_file() or self.asset_dir.resolve() not in asset_path.parents:
@@ -102,6 +112,7 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             "/api/annotate-text",
             "/api/study-state",
             "/api/word-status",
+            "/api/tts/voicevox",
         }:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
@@ -131,6 +142,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
                 return
             if request_path == "/api/word-status":
                 self._send_json(update_viewer_word_status(payload))
+                return
+            if request_path == "/api/tts/voicevox":
+                self._send_bytes(synthesize_voicevox(payload), "audio/wav")
                 return
             job = self.job_runner.start_maintenance(payload)
         except Exception as exc:

@@ -15,6 +15,7 @@ window.JPCORPUS_EXAMPLES = (() => {
     refs,
     renderDetail,
     renderExplanationResult,
+    renderSpeakButton,
     storage,
     t,
   }) {
@@ -86,6 +87,9 @@ window.JPCORPUS_EXAMPLES = (() => {
       const footer = el("div", "example-footer");
       footer.append(el("small", `reference reference-${sourceClass}`, formatReference(example)));
       const actions = el("div", "example-footer-actions");
+      if (renderSpeakButton) {
+        actions.append(renderSpeakButton(example.sentence || example.matched_text || word.word, "tts-button example-tts-button"));
+      }
       if (options.allowAiExplain) {
         actions.append(renderExampleExplainButton(word, example, exampleExplanationKey(word, example)));
       }

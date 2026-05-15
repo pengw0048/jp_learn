@@ -24,6 +24,26 @@ window.JPCORPUS_API = (() => {
     });
   }
 
+  async function postBlob(url, payload) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try {
+        const error = await response.json();
+        message = error.error || message;
+      } catch {
+        const text = await response.text();
+        message = text || message;
+      }
+      throw new Error(message);
+    }
+    return response.blob();
+  }
+
   async function loadCorpusIndex() {
     const indexResponse = await fetch("/corpus.index.json", { cache: "no-store" });
     if (indexResponse.ok) {
@@ -79,6 +99,14 @@ window.JPCORPUS_API = (() => {
     return postJson("/api/word-status", payload);
   }
 
+  function voicevoxSpeakers() {
+    return fetchJson("/api/tts/voicevox-speakers", { cache: "no-store" });
+  }
+
+  function voicevoxSynthesize(payload) {
+    return postBlob("/api/tts/voicevox", payload);
+  }
+
   return {
     loadCorpusIndex,
     loadMaintenanceStatus,
@@ -92,5 +120,7 @@ window.JPCORPUS_API = (() => {
     currentJob,
     studyState,
     saveWordStatus,
+    voicevoxSpeakers,
+    voicevoxSynthesize,
   };
 })();

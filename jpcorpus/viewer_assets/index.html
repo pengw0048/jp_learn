@@ -154,6 +154,28 @@
         <section class="maintenance-card">
           <div class="maintenance-section-header">
             <div>
+              <h3 data-i18n="ttsTitle">朗读</h3>
+              <p class="maintenance-help" data-i18n="ttsHelp">默认使用浏览器日语语音；如果本机开着 VOICEVOX engine，可以切到 VOICEVOX。</p>
+            </div>
+          </div>
+          <div class="maintenance-grid tts-settings-grid">
+            <label>
+              <span data-i18n="ttsProviderLabel">朗读方式</span>
+              <select id="tts-provider">
+                <option value="browser" data-i18n="ttsProviderBrowser">浏览器语音</option>
+                <option value="voicevox" data-i18n="ttsProviderVoicevox">VOICEVOX</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="ttsVoicevoxSpeaker">VOICEVOX 声音</span>
+              <select id="tts-voicevox-speaker"></select>
+            </label>
+          </div>
+          <p id="tts-status" class="maintenance-help"></p>
+        </section>
+        <section class="maintenance-card">
+          <div class="maintenance-section-header">
+            <div>
               <h3 data-i18n="quickActionsTitle">常用操作</h3>
               <p class="maintenance-help" data-i18n="quickActionsHelp">这些按钮会直接开始，不需要再选任务。</p>
             </div>
@@ -210,6 +232,7 @@
     <script src="/app_config.js"></script>
     <script src="/app_dom.js"></script>
     <script src="/app_api.js"></script>
+    <script src="/app_tts.js"></script>
     <script src="/app_search.js"></script>
     <script src="/app_format.js"></script>
     <script src="/app_lexical.js"></script>

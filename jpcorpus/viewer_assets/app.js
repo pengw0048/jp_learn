@@ -16,6 +16,8 @@ const {
   readMode,
   readReaderWordList,
   readReaderPositions,
+  readTtsProvider,
+  readTtsVoicevoxSpeaker,
 } = window.JPCORPUS_STORAGE;
 const api = window.JPCORPUS_API;
 const {
@@ -113,6 +115,13 @@ const app = {
     syncApplying: false,
     syncError: "",
   },
+  tts: {
+    provider: readTtsProvider(),
+    voicevoxSpeaker: readTtsVoicevoxSpeaker(),
+    voicevoxSpeakers: [],
+    loading: false,
+    error: "",
+  },
 };
 const {
   displayMeaningRaw,
@@ -194,6 +203,9 @@ const refs = {
   configLlmBaseUrl: $("#config-llm-base-url"),
   configLlmModel: $("#config-llm-model"),
   configLlmApiKey: $("#config-llm-api-key"),
+  ttsProvider: $("#tts-provider"),
+  ttsVoicevoxSpeaker: $("#tts-voicevox-speaker"),
+  ttsStatus: $("#tts-status"),
   importTextTitle: $("#import-text-title"),
   importTextUrl: $("#import-text-url"),
   importTextContent: $("#import-text-content"),
@@ -340,6 +352,19 @@ const {
   persistReaderPositions,
 });
 const {
+  bindTtsSettings,
+  renderSpeakButton,
+  renderTtsSettings,
+  speechTextForWord,
+} = window.JPCORPUS_TTS.createTtsHelpers({
+  api,
+  app,
+  el,
+  refs,
+  storage: window.JPCORPUS_STORAGE,
+  t,
+});
+const {
   canUseReaderAi,
   explanationWordPayload,
   renderExplanationResult,
@@ -374,6 +399,7 @@ const {
   refs,
   renderDetail,
   renderExplanationResult,
+  renderSpeakButton,
   storage: window.JPCORPUS_STORAGE,
   t,
 });
@@ -391,8 +417,10 @@ const {
   renderExamples,
   renderLexicalNotes,
   renderMeaningValue,
+  renderSpeakButton,
   scheduleStudyReview,
   setStatus,
+  speechTextForWord,
   statChip,
   stateLabels,
   statusFor,
@@ -517,6 +545,7 @@ function bindControls() {
   refs.importTextSave.addEventListener("click", importTextFromMaintenance);
   refs.corpusSyncApply.addEventListener("click", applyPendingCorpusReload);
   refs.importTextContent.addEventListener("input", renderMaintenance);
+  bindTtsSettings();
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
   });
@@ -677,6 +706,7 @@ function renderMaintenance() {
   }
   renderConfigStatus();
   renderLlmConfigFields();
+  renderTtsSettings();
   const task = maintenanceTask();
   const job = app.maintenance.job;
   const visibleJob = visibleMaintenanceJob(job);
@@ -1231,6 +1261,7 @@ function renderReaderContextPanel(word) {
   const top = el("div", "reader-context-top");
   top.append(el("h3", "section-title", t("readerContextTitle")));
   const actions = el("div", "reader-context-actions");
+  actions.append(renderSpeakButton(example.sentence || word.word, "tts-button reader-context-tts-button"));
   const explain = el("button", "reader-explain-button", t("readerExplain"));
   explain.type = "button";
   const canExplain = canUseReaderAi();

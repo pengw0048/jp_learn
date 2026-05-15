@@ -10,8 +10,10 @@ window.JPCORPUS_DETAIL = (() => {
     renderExamples,
     renderLexicalNotes,
     renderMeaningValue,
+    renderSpeakButton,
     scheduleStudyReview,
     setStatus,
+    speechTextForWord,
     statChip,
     stateLabels,
     statusFor,
@@ -25,6 +27,9 @@ window.JPCORPUS_DETAIL = (() => {
       const titleRow = el("div", "detail-title-row");
       const title = el("div", "detail-title");
       title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
+      if (renderSpeakButton) {
+        title.append(renderSpeakButton(() => speechTextForWord(word), "tts-button detail-tts-button"));
+      }
       const stats = el("div", "detail-stats");
       const examples = examplesForWord(word);
       const exampleCount = examples.length || Number(word.example_count || 0);
@@ -61,6 +66,9 @@ window.JPCORPUS_DETAIL = (() => {
       const titleRow = el("div", "study-title-row");
       const title = el("div", "detail-title");
       title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
+      if (renderSpeakButton) {
+        title.append(renderSpeakButton(() => speechTextForWord(word), "tts-button detail-tts-button"));
+      }
       const stats = el("div", "detail-stats");
       stats.append(
         ...(word.level ? [statChip(word.level)] : []),

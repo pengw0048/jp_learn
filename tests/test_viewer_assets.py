@@ -42,6 +42,7 @@ def test_viewer_index_references_existing_scripts_in_loader_order():
     assert "/app_config.js" in sources
     assert "/app_dom.js" in sources
     assert "/app_api.js" in sources
+    assert "/app_tts.js" in sources
     assert "/app_detail.js" in sources
 
     app_index = sources.index("/app.js")
@@ -52,6 +53,7 @@ def test_viewer_index_references_existing_scripts_in_loader_order():
         if source != "/app.js":
             assert sources.index(source) < app_index
     assert sources.index("/app_i18n.js") < sources.index("/app_config.js") < app_index
+    assert sources.index("/app_api.js") < sources.index("/app_tts.js") < app_index
 
 
 def test_viewer_javascript_files_parse_with_node():

@@ -576,6 +576,7 @@ select {
   align-items: baseline;
   gap: 12px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .detail-title h2 {
@@ -1271,6 +1272,32 @@ mark {
   color: var(--muted);
   font-size: 13px;
   font-weight: 760;
+}
+
+.tts-button {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.tts-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail-tts-button {
+  align-self: center;
+  margin-left: -2px;
 }
 
 .example-explain-button:hover:not(:disabled) {

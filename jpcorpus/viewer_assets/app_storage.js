@@ -9,6 +9,8 @@ window.JPCORPUS_STORAGE = (() => {
   const STORAGE_SPLIT_RATIOS = "jpcorpus.viewer.splitRatios.v1";
   const STORAGE_READER_WORD_LIST = "jpcorpus.viewer.readerWordList.v1";
   const STORAGE_READER_POSITIONS = "jpcorpus.viewer.readerPositions.v1";
+  const STORAGE_TTS_PROVIDER = "jpcorpus.viewer.ttsProvider.v1";
+  const STORAGE_TTS_VOICEVOX_SPEAKER = "jpcorpus.viewer.ttsVoicevoxSpeaker.v1";
 
   const DAILY_STUDY_LIMIT = 30;
   const STUDY_REVIEW_DELAY_DAYS = 1;
@@ -16,6 +18,7 @@ window.JPCORPUS_STORAGE = (() => {
   const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
   const MODE_VALUES = new Set(["browse", "study", "read"]);
   const READER_WORD_LIST_VALUES = new Set(["focus", "all", "study", "piece", "N5", "N4", "N3", "N2", "N1"]);
+  const TTS_PROVIDER_VALUES = new Set(["browser", "voicevox"]);
   const SPLIT_DEFAULT_RATIOS = {
     browse: 0.28,
     study: 0.28,
@@ -138,6 +141,16 @@ window.JPCORPUS_STORAGE = (() => {
     );
   }
 
+  function readTtsProvider() {
+    const value = localStorage.getItem(STORAGE_TTS_PROVIDER) || "browser";
+    return TTS_PROVIDER_VALUES.has(value) ? value : "browser";
+  }
+
+  function readTtsVoicevoxSpeaker() {
+    const value = localStorage.getItem(STORAGE_TTS_VOICEVOX_SPEAKER) || "";
+    return /^\d+$/.test(value) ? value : "";
+  }
+
   return {
     STORAGE_LANG,
     STORAGE_STATUS,
@@ -149,12 +162,15 @@ window.JPCORPUS_STORAGE = (() => {
     STORAGE_SPLIT_RATIOS,
     STORAGE_READER_WORD_LIST,
     STORAGE_READER_POSITIONS,
+    STORAGE_TTS_PROVIDER,
+    STORAGE_TTS_VOICEVOX_SPEAKER,
     DAILY_STUDY_LIMIT,
     STUDY_REVIEW_DELAY_DAYS,
     STUDY_TARGET_COUNT,
     EXAMPLE_COLUMN_VALUES,
     MODE_VALUES,
     READER_WORD_LIST_VALUES,
+    TTS_PROVIDER_VALUES,
     SPLIT_DEFAULT_RATIOS,
     readStatuses,
     readStudyCounts,
@@ -167,6 +183,8 @@ window.JPCORPUS_STORAGE = (() => {
     readMode,
     readReaderWordList,
     readReaderPositions,
+    readTtsProvider,
+    readTtsVoicevoxSpeaker,
     clampStudyCount,
   };
 })();

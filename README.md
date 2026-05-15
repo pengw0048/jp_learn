@@ -54,6 +54,7 @@ $EDITOR .env
 - Jimaku API key: <https://jimaku.cc/api/docs>
 - `JPCORPUS_USER_AGENT`: Bangumi API 需要一个有意义的 User-Agent。默认值可以跑，但建议换成你自己的。
 - 可选 LLM: 用于阅读时的临时解释，可以配置 Anthropic、OpenAI-compatible endpoint，或 macOS Apple Foundation Models。
+- 可选朗读：默认使用浏览器的日语语音；如果想用 VOICEVOX，先在本机启动 VOICEVOX engine，让它监听 `127.0.0.1:50021`，然后在维护面板切换朗读方式。音频按需生成，不会缓存到本地。
 
 Shell 里的环境变量优先级高于 `.env`。网页 UI 只有在 `127.0.0.1` 打开时才会写入本地 `.env`。
 
@@ -82,7 +83,7 @@ EPUB 会优先使用书内 metadata，文件名作为备用标题。
 主界面提供两种常用方式：
 
 - **浏览/学习单词**：按 JLPT、频次、五十音、状态等筛选单词；每个词可以加入学习、标记已认识、忽略或清除状态。
-- **阅读模式**：选择字幕、歌词、小说或网页文章，直接在上下文里点词查词。右侧会显示释义、词性、例句、学习状态和可选 AI 解释。
+- **阅读模式**：选择字幕、歌词、小说或网页文章，直接在上下文里点词查词。右侧会显示释义、词性、例句、学习状态、朗读按钮和可选 AI 解释。
 
 学习进度用本地状态保存，不依赖远端账号。
 
@@ -188,6 +189,7 @@ Common settings:
 - Jimaku API key: <https://jimaku.cc/api/docs>
 - `JPCORPUS_USER_AGENT`: Bangumi API clients should use a meaningful User-Agent. The default works, but setting your own is recommended.
 - Optional LLM provider: used for on-demand reading explanations. Supported options include Anthropic, OpenAI-compatible endpoints, and macOS Apple Foundation Models.
+- Optional read-aloud: browser Japanese speech is used by default. To use VOICEVOX, start a local VOICEVOX engine on `127.0.0.1:50021`, then switch the voice provider in Maintenance. Audio is generated on demand and is not cached locally.
 
 Shell environment variables take precedence over `.env`. The viewer writes to `.env` only when opened on `127.0.0.1`.
 
@@ -216,7 +218,7 @@ EPUB imports prefer book metadata and fall back to the file name.
 The viewer has two core workflows:
 
 - **Browse/study vocabulary**: filter by JLPT level, frequency, gojuon order, source, and study state. Words can be added to review, marked known, ignored, or cleared.
-- **Reader mode**: choose a subtitle, lyric, book, or web article and click words in context. The side panel shows meanings, parts of speech, examples, study state, and optional AI explanations.
+- **Reader mode**: choose a subtitle, lyric, book, or web article and click words in context. The side panel shows meanings, parts of speech, examples, study state, read-aloud buttons, and optional AI explanations.
 
 Study progress is stored locally.
 
