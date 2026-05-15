@@ -217,11 +217,6 @@ const refs = {
   ttsRateValue: $("#tts-rate-value"),
   ttsPreview: $("#tts-preview"),
   ttsStatus: $("#tts-status"),
-  importTextTitle: $("#import-text-title"),
-  importTextUrl: $("#import-text-url"),
-  importTextContent: $("#import-text-content"),
-  importTextSave: $("#import-text-save"),
-  importTextStatus: $("#import-text-status"),
   maintenanceProgress: $("#maintenance-progress"),
   maintenanceProgressFill: $("#maintenance-progress-fill"),
   maintenanceProgressLabel: $("#maintenance-progress-label"),
@@ -446,8 +441,6 @@ const {
 });
 
 let remoteStudyRefreshInFlight = false;
-let importTextStatusTimer = null;
-
 init();
 
 async function init() {
@@ -553,9 +546,7 @@ function bindControls() {
   });
   refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
-  refs.importTextSave.addEventListener("click", importTextFromMaintenance);
   refs.corpusSyncApply.addEventListener("click", applyPendingCorpusReload);
-  refs.importTextContent.addEventListener("input", renderMaintenance);
   bindTtsSettings();
   refs.configForm.addEventListener("toggle", () => {
     refs.configForm.dataset.userToggled = "1";
@@ -726,10 +717,6 @@ function renderMaintenance() {
     button.disabled = !app.maintenance.enabled || job?.status === "running";
     button.classList.toggle("active", button.dataset.maintenanceTask === task && job?.status === "running");
   });
-  refs.importTextSave.disabled =
-    !app.maintenance.enabled
-    || job?.status === "running"
-    || !refs.importTextContent.value.trim();
   refs.maintenanceStatus.textContent = job ? maintenanceStatusLabel(job) : t("maintenanceIdle");
   renderMaintenanceProgress(visibleJob);
   refs.maintenanceLog.textContent = visibleJob?.log?.join("\n") || "";
@@ -950,47 +937,6 @@ async function saveConfig() {
     refs.configSaveStatus.textContent = t("configSaveFailed", { error: error.message });
   } finally {
     refs.configSave.disabled = !app.maintenance.enabled;
-  }
-}
-
-async function importTextFromMaintenance() {
-  refs.importTextSave.disabled = true;
-  setImportTextStatus(t("importTextSaving"));
-  try {
-    const result = await api.importText({
-      title: refs.importTextTitle.value.trim(),
-      url: refs.importTextUrl.value.trim(),
-      text: refs.importTextContent.value,
-    });
-    const title = result.imported?.title || refs.importTextTitle.value.trim() || t("sourceInventoryUnknown");
-    refs.importTextTitle.value = "";
-    refs.importTextUrl.value = "";
-    refs.importTextContent.value = "";
-    if (result.imported?.duplicate) {
-      setImportTextStatus(t("importTextDuplicate", { title }), { transient: true });
-    } else {
-      const job = await startMaintenanceJob("refresh_imported_texts");
-      if (job) {
-        setImportTextStatus("");
-      } else {
-        const error = app.maintenance.job?.log?.[0] || "could not start refresh";
-        setImportTextStatus(t("importTextRefreshFailed", { error }));
-      }
-    }
-  } catch (error) {
-    setImportTextStatus(t("importTextFailed", { error: error.message || String(error) }));
-  } finally {
-    renderMaintenance();
-  }
-}
-
-function setImportTextStatus(message, options = {}) {
-  window.clearTimeout(importTextStatusTimer);
-  refs.importTextStatus.textContent = message;
-  if (message && options.transient) {
-    importTextStatusTimer = window.setTimeout(() => {
-      refs.importTextStatus.textContent = "";
-    }, 3500);
   }
 }
 

@@ -74,7 +74,7 @@ Shell 里的环境变量优先级高于 `.env`。网页 UI 只有在 `127.0.0.1`
 - **字幕**：从 Bangumi 收藏映射到外部动画条目，再通过 Jimaku 搜索和下载日语字幕。
 - **歌词**：从 Bangumi 音乐收藏和曲目信息搜索 LRCLIB，缓存命中和 miss。
 - **本地文本**：把日语 `.txt` 或 `.epub` 放进 `texts/`，然后点“刷新”。
-- **网页文章**：在维护面板粘贴文章，或使用 `browser_extension/` 里的 Chrome 扩展从网页导入。
+- **网页文章**：使用 `browser_extension/` 里的 Chrome 扩展从网页导入选中文字或主要正文。
 
 EPUB 会优先使用书内 metadata，文件名作为备用标题。
 
@@ -209,7 +209,7 @@ Supported sources:
 - **Subtitles**: Bangumi collection entries are mapped to anime IDs, then Jimaku is searched for Japanese subtitles.
 - **Lyrics**: Bangumi music collections and track metadata are matched against LRCLIB; hits and misses are cached locally.
 - **Local text**: put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh.
-- **Web articles**: paste text in the Maintenance panel or use the Chrome extension in `browser_extension/`.
+- **Web articles**: use the Chrome extension in `browser_extension/` to import selected text or the main article body.
 
 EPUB imports prefer book metadata and fall back to the file name.
 

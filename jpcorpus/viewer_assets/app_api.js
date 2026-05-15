@@ -74,10 +74,6 @@ window.JPCORPUS_API = (() => {
     return postJson("/api/config", payload);
   }
 
-  function importText(payload) {
-    return postJson("/api/import-text", payload);
-  }
-
   function explain(payload) {
     return postJson("/api/explain", payload);
   }
@@ -114,7 +110,6 @@ window.JPCORPUS_API = (() => {
     loadWordDetail,
     loadSourceDetails,
     saveConfig,
-    importText,
     explain,
     startMaintenanceJob,
     currentJob,
