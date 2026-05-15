@@ -12,7 +12,6 @@ data/jp-zh-dict.json
 data/zhwiktionary-ja-dict.json
 data/zhwiktionary-raw.jsonl.gz
 data/JMdict_e.gz
-data/kanjidic2.xml.gz
 data/jimaku-cache/
 data/lyrics-cache/
 *.apkg

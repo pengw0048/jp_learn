@@ -11,7 +11,6 @@ from .analysis import CorpusAnalysis, SourceDocument, SourceLine, SourceLineMatc
 from .lexical_notes import (
     LexicalResourceIndex,
     is_kana_text,
-    target_kanji_for_words,
     target_keys_for_words,
 )
 from .models import WordEntry
@@ -48,11 +47,10 @@ def analysis_to_dict(
     examples_per_word: int = 5,
     zh_glossary: ChineseGlossary | None = None,
     jmdict_path: Path | None = None,
-    kanjidic2_path: Path | None = None,
     include_zero_count_words: bool = True,
 ) -> dict[str, Any]:
     lexical_index = None
-    if jmdict_path or kanjidic2_path:
+    if jmdict_path:
         lexical_targets = _lexical_target_words(
             analysis,
             level=level,
@@ -60,9 +58,7 @@ def analysis_to_dict(
         )
         lexical_index = LexicalResourceIndex.load_optional(
             jmdict_path=jmdict_path,
-            kanjidic2_path=kanjidic2_path,
             target_keys=target_keys_for_words(lexical_targets),
-            target_kanji=target_kanji_for_words(lexical_targets),
         )
     words = _export_words(
         analysis,
@@ -135,7 +131,6 @@ def write_corpus_json(
     examples_per_word: int = 5,
     zh_glossary: ChineseGlossary | None = None,
     jmdict_path: Path | None = None,
-    kanjidic2_path: Path | None = None,
 ) -> Path:
     ensure_parent(output)
     payload = analysis_to_dict(
@@ -145,7 +140,6 @@ def write_corpus_json(
         examples_per_word=examples_per_word,
         zh_glossary=zh_glossary,
         jmdict_path=jmdict_path,
-        kanjidic2_path=kanjidic2_path,
     )
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_corpus_detail_json(payload, output)
@@ -284,16 +278,6 @@ def _word_search_terms(word: dict[str, Any]) -> list[str]:
             for value in sense.get("parts_of_speech") or []:
                 add(value)
             for value in sense.get("tags") or []:
-                add(value)
-        for kanji in notes.get("kanji") or []:
-            if not isinstance(kanji, dict):
-                continue
-            add(kanji.get("literal"))
-            for value in kanji.get("meanings") or []:
-                add(value)
-            for value in kanji.get("on_readings") or []:
-                add(value)
-            for value in kanji.get("kun_readings") or []:
                 add(value)
         for example in notes.get("dictionary_examples") or []:
             if not isinstance(example, dict):

@@ -51,7 +51,7 @@ The app intentionally does not expose a command tree. Data sync, dictionary refr
 
 The Maintenance panel has two normal buttons: Refresh and Full refresh. Refresh is the day-to-day action for new media, local text, web imports, subtitles, lyrics, and rebuilding the viewer data. Full refresh also refetches dictionaries, word lists, and the anime database, so it is only needed occasionally.
 
-The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary, and offline JMdict/KANJIDIC2 lexical resources. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
+The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary, and offline JMdict lexical resources. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
 
 The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/viewer_assets/app_i18n.js` so future UI work can add more languages without chasing hard-coded labels.
 

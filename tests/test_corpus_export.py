@@ -300,21 +300,6 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
         "</JMdict>",
         encoding="utf-8",
     )
-    kanjidic2 = tmp_path / "kanjidic2.xml"
-    kanjidic2.write_text(
-        "<kanjidic2>"
-        "<character>"
-        "<literal>約</literal>"
-        "<misc><grade>4</grade><jlpt>3</jlpt></misc>"
-        "<reading_meaning><rmgroup>"
-        '<reading r_type="ja_on">ヤク</reading>'
-        '<reading r_type="ja_kun">つづ.まる</reading>'
-        "<meaning>promise</meaning>"
-        "</rmgroup></reading_meaning>"
-        "</character>"
-        "</kanjidic2>",
-        encoding="utf-8",
-    )
     analysis = analyze_paths(paths=[subtitle], jlpt_words=load_jlpt_words(jlpt_path))
 
     payload = analysis_to_dict(
@@ -322,7 +307,6 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
         level=4,
         examples_per_word=2,
         jmdict_path=jmdict,
-        kanjidic2_path=kanjidic2,
     )
     notes = payload["words"][0]["lexical_notes"]
 
@@ -339,9 +323,7 @@ def test_export_corpus_json_includes_offline_lexical_notes(tmp_path: Path):
         "eng": "I remember that promise."
     }
     assert notes["dictionary_examples"][0]["source"] == {"id": "162365", "type": "tat"}
-    assert notes["kanji"][0]["literal"] == "約"
-    assert notes["kanji"][0]["on_readings"] == ["ヤク"]
-    assert notes["kanji"][0]["meanings"] == ["promise"]
+    assert "kanji" not in notes
     coverage = payload["summary"]["word_source_coverage"]
     assert coverage["exported_dictionary_example_word_count"] >= 1
     assert coverage["exported_no_jmdict_word_count"] >= 0
@@ -369,7 +351,6 @@ def test_jmdict_notes_prefer_common_entry_over_exact_kana_suffix(tmp_path: Path)
 
     index = LexicalResourceIndex.load_optional(
         jmdict_path=jmdict,
-        kanjidic2_path=None,
         target_keys={"とき"},
     )
     notes = index.notes_for("とき", "とき")
@@ -395,7 +376,6 @@ def test_jmdict_notes_do_not_use_reading_fallback_for_kanji_homophones(tmp_path:
 
     index = LexicalResourceIndex.load_optional(
         jmdict_path=jmdict,
-        kanjidic2_path=None,
         target_keys={"視界", "しかい"},
     )
 

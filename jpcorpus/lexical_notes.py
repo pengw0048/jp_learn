@@ -10,16 +10,14 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
-from .paths import DEFAULT_JMDICT, DEFAULT_KANJIDIC2, ensure_parent
+from .paths import DEFAULT_JMDICT, ensure_parent
 
 
 JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz"
-KANJIDIC2_URL = "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz"
 
 MAX_JMDICT_ENTRIES_PER_WORD = 1
 MAX_FORMS_PER_WORD = 4
 MAX_TAGS_PER_WORD = 4
-MAX_KANJI_PER_WORD = 8
 MAX_SENSES_PER_WORD = 3
 MAX_GLOSSES_PER_SENSE = 3
 MAX_DICTIONARY_EXAMPLES_PER_WORD = 2
@@ -202,62 +200,28 @@ class JMDictSense:
         return payload
 
 
-@dataclass(frozen=True)
-class KanjiNote:
-    literal: str
-    meanings: tuple[str, ...] = ()
-    on_readings: tuple[str, ...] = ()
-    kun_readings: tuple[str, ...] = ()
-    grade: str | None = None
-    jlpt: str | None = None
-
-    def to_dict(self) -> dict[str, object]:
-        payload: dict[str, object] = {"literal": self.literal}
-        if self.meanings:
-            payload["meanings"] = list(self.meanings)
-        if self.on_readings:
-            payload["on_readings"] = list(self.on_readings)
-        if self.kun_readings:
-            payload["kun_readings"] = list(self.kun_readings)
-        if self.grade:
-            payload["grade"] = self.grade
-        if self.jlpt:
-            payload["jlpt"] = self.jlpt
-        return payload
-
-
 class LexicalResourceIndex:
     def __init__(
         self,
         *,
         jmdict_by_key: dict[str, list[JMDictEntry]] | None = None,
-        kanji_by_literal: dict[str, KanjiNote] | None = None,
     ) -> None:
         self.jmdict_by_key = jmdict_by_key or {}
-        self.kanji_by_literal = kanji_by_literal or {}
 
     @classmethod
     def load_optional(
         cls,
         *,
         jmdict_path: Path | None = DEFAULT_JMDICT,
-        kanjidic2_path: Path | None = DEFAULT_KANJIDIC2,
         target_keys: Iterable[str] = (),
-        target_kanji: Iterable[str] = (),
     ) -> "LexicalResourceIndex":
         target_key_set = {key for key in target_keys if key}
-        target_kanji_set = {char for char in target_kanji if char}
         jmdict = (
             parse_jmdict(jmdict_path, target_keys=target_key_set)
             if jmdict_path and jmdict_path.exists() and target_key_set
             else {}
         )
-        kanji = (
-            parse_kanjidic2(kanjidic2_path, target_kanji=target_kanji_set)
-            if kanjidic2_path and kanjidic2_path.exists() and target_kanji_set
-            else {}
-        )
-        return cls(jmdict_by_key=jmdict, kanji_by_literal=kanji)
+        return cls(jmdict_by_key=jmdict)
 
     def notes_for(
         self,
@@ -267,51 +231,43 @@ class LexicalResourceIndex:
         meaning_hint: str | None = None,
     ) -> dict[str, object] | None:
         jmdict_entries = self._jmdict_entries(surface, reading, meaning_hint=meaning_hint)
-        kanji_notes = [
-            note
-            for char in surface
-            if (note := self.kanji_by_literal.get(char)) is not None
-        ][:MAX_KANJI_PER_WORD]
-        if not jmdict_entries and not kanji_notes:
+        if not jmdict_entries:
             return None
 
         payload: dict[str, object] = {}
-        if jmdict_entries:
-            spellings = visible_forms(
-                unique_forms(form for entry in jmdict_entries for form in entry.spellings),
-                preferred_text=surface,
-            )
-            readings = visible_forms(
-                unique_forms(form for entry in jmdict_entries for form in entry.readings),
-                preferred_text=reading,
-            )
-            parts_of_speech = compact_pos_labels(
-                label_pos(pos) for entry in jmdict_entries for pos in entry.parts_of_speech
-            )
-            if spellings:
-                payload["spellings"] = [form.to_dict() for form in spellings[:MAX_FORMS_PER_WORD]]
-            if readings:
-                payload["readings"] = [form.to_dict() for form in readings[:MAX_FORMS_PER_WORD]]
-            if parts_of_speech:
-                payload["parts_of_speech"] = parts_of_speech[:MAX_TAGS_PER_WORD]
-            senses = unique_senses(
-                sense for entry in jmdict_entries for sense in entry.senses
-            )
-            if senses:
-                payload["senses"] = [
-                    sense.to_dict()
-                    for sense in senses[:MAX_SENSES_PER_WORD]
-                ]
-            examples = unique_examples(
-                example for sense in senses for example in sense.examples
-            )
-            if examples:
-                payload["dictionary_examples"] = [
-                    example.to_dict()
-                    for example in examples[:MAX_DICTIONARY_EXAMPLES_PER_WORD]
-                ]
-        if kanji_notes:
-            payload["kanji"] = [note.to_dict() for note in kanji_notes]
+        spellings = visible_forms(
+            unique_forms(form for entry in jmdict_entries for form in entry.spellings),
+            preferred_text=surface,
+        )
+        readings = visible_forms(
+            unique_forms(form for entry in jmdict_entries for form in entry.readings),
+            preferred_text=reading,
+        )
+        parts_of_speech = compact_pos_labels(
+            label_pos(pos) for entry in jmdict_entries for pos in entry.parts_of_speech
+        )
+        if spellings:
+            payload["spellings"] = [form.to_dict() for form in spellings[:MAX_FORMS_PER_WORD]]
+        if readings:
+            payload["readings"] = [form.to_dict() for form in readings[:MAX_FORMS_PER_WORD]]
+        if parts_of_speech:
+            payload["parts_of_speech"] = parts_of_speech[:MAX_TAGS_PER_WORD]
+        senses = unique_senses(
+            sense for entry in jmdict_entries for sense in entry.senses
+        )
+        if senses:
+            payload["senses"] = [
+                sense.to_dict()
+                for sense in senses[:MAX_SENSES_PER_WORD]
+            ]
+        examples = unique_examples(
+            example for sense in senses for example in sense.examples
+        )
+        if examples:
+            payload["dictionary_examples"] = [
+                example.to_dict()
+                for example in examples[:MAX_DICTIONARY_EXAMPLES_PER_WORD]
+            ]
         return payload
 
     def has_jmdict_entry(
@@ -391,15 +347,6 @@ def download_jmdict(
     return download_binary_resource(path, source_url=source_url, timeout=timeout)
 
 
-def download_kanjidic2(
-    path: Path = DEFAULT_KANJIDIC2,
-    *,
-    source_url: str = KANJIDIC2_URL,
-    timeout: float = 120.0,
-) -> Path:
-    return download_binary_resource(path, source_url=source_url, timeout=timeout)
-
-
 def download_binary_resource(path: Path, *, source_url: str, timeout: float) -> Path:
     ensure_parent(path)
     temp_path = path.with_name(f".{path.name}.tmp")
@@ -428,21 +375,6 @@ def parse_jmdict(path: Path, *, target_keys: set[str]) -> dict[str, list[JMDictE
                     entries_by_key.setdefault(key, []).append(entry)
             element.clear()
     return entries_by_key
-
-
-def parse_kanjidic2(path: Path, *, target_kanji: set[str]) -> dict[str, KanjiNote]:
-    notes: dict[str, KanjiNote] = {}
-    if not target_kanji:
-        return notes
-    with open_maybe_gzip(path) as handle:
-        for _event, element in ET.iterparse(handle, events=("end",)):
-            if element.tag != "character":
-                continue
-            literal = child_text(element, "literal")
-            if literal in target_kanji:
-                notes[literal] = kanji_note_from_xml(element)
-            element.clear()
-    return notes
 
 
 def jmdict_entry_from_xml(element: ET.Element) -> JMDictEntry:
@@ -528,35 +460,6 @@ def jmdict_example_from_xml(element: ET.Element) -> JMDictExample | None:
     )
 
 
-def kanji_note_from_xml(element: ET.Element) -> KanjiNote:
-    literal = child_text(element, "literal") or ""
-    meanings = unique_strings(
-        meaning.text.strip()
-        for meaning in element.findall("./reading_meaning/rmgroup/meaning")
-        if meaning.text and not meaning.attrib.get("m_lang")
-    )
-    on_readings = unique_strings(
-        reading.text.strip()
-        for reading in element.findall("./reading_meaning/rmgroup/reading")
-        if reading.text and reading.attrib.get("r_type") == "ja_on"
-    )
-    kun_readings = unique_strings(
-        reading.text.strip()
-        for reading in element.findall("./reading_meaning/rmgroup/reading")
-        if reading.text and reading.attrib.get("r_type") == "ja_kun"
-    )
-    grade = child_text(element, "./misc/grade")
-    jlpt = child_text(element, "./misc/jlpt")
-    return KanjiNote(
-        literal=literal,
-        meanings=tuple(meanings[:4]),
-        on_readings=tuple(on_readings[:6]),
-        kun_readings=tuple(kun_readings[:6]),
-        grade=grade,
-        jlpt=jlpt,
-    )
-
-
 def target_keys_for_words(words: Iterable[object]) -> set[str]:
     keys: set[str] = set()
     for word in words:
@@ -568,19 +471,6 @@ def target_keys_for_words(words: Iterable[object]) -> set[str]:
         if reading:
             keys.add(str(reading))
     return keys
-
-
-def target_kanji_for_words(words: Iterable[object]) -> set[str]:
-    chars: set[str] = set()
-    for word in words:
-        entry = getattr(word, "entry", None)
-        surface = str(getattr(entry, "surface", "") or "")
-        chars.update(char for char in surface if is_cjk_kanji(char))
-    return chars
-
-
-def is_cjk_kanji(char: str) -> bool:
-    return "\u4e00" <= char <= "\u9fff" or "\u3400" <= char <= "\u4dbf"
 
 
 def child_text(element: ET.Element, path: str) -> str | None:

@@ -158,15 +158,6 @@ window.JPCORPUS_SEARCH = (() => {
       asArray(sense.parts_of_speech).forEach((value) => add(value, 8));
       asArray(sense.tags).forEach((value) => add(value, 8));
     });
-    asArray(notes.kanji).forEach((kanji) => {
-      add(kanji.literal, 26);
-      asArray(kanji.meanings).forEach((value) => add(value, 8));
-      asArray(kanji.on_readings).forEach((value) => add(value, 16));
-      asArray(kanji.kun_readings).forEach((value) => {
-        add(value, 16);
-        add(String(value || "").replace(/\./gu, ""), 18);
-      });
-    });
     asArray(notes.dictionary_examples).forEach((example) => {
       add(example.japanese, 8);
       Object.values(example.translations || {}).forEach((value) => add(value, 6));

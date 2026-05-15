@@ -57,7 +57,6 @@ ALLOWED_MAINTENANCE_TASKS = {
     "fetch_zh_dict",
     "fetch_jlpt_words",
     "fetch_jmdict",
-    "fetch_kanjidic2",
     "fetch_lexical_resources",
 }
 CORPUS_RELOAD_TASKS = {"export_corpus", "refresh_imported_texts"}
@@ -318,7 +317,6 @@ class ViewerJobRunner:
             context_max_lines=4,
             zh_dict=tasks.DEFAULT_ZH_DICT,
             jmdict=tasks.DEFAULT_JMDICT,
-            kanjidic2=tasks.DEFAULT_KANJIDIC2,
             lexical_notes=True,
             subtitles=None,
             texts=None,
@@ -393,21 +391,12 @@ class ViewerJobRunner:
                 output=tasks.DEFAULT_JMDICT,
                 source_url="http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz",
             )
-        if task_type == "fetch_kanjidic2":
-            return self._run_callable(
-                job,
-                "Update KANJIDIC2",
-                tasks.fetch_kanjidic2,
-                output=tasks.DEFAULT_KANJIDIC2,
-                source_url="http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz",
-            )
         if task_type == "fetch_lexical_resources":
             return self._run_callable(
                 job,
                 "Update lexical resources",
                 tasks.fetch_lexical_resources,
                 jmdict_output=tasks.DEFAULT_JMDICT,
-                kanjidic2_output=tasks.DEFAULT_KANJIDIC2,
             )
         raise ValueError(f"Unsupported maintenance task: {task_type}")
 

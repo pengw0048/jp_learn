@@ -113,7 +113,6 @@ def test_maintenance_task_can_fetch_lexical_resources(monkeypatch, tmp_path):
 
     assert runner._run_maintenance_task(job, spec) == {"ok": True}
     assert calls["jmdict_output"].name == "JMdict_e.gz"
-    assert calls["kanjidic2_output"].name == "kanjidic2.xml.gz"
 
 
 def test_composite_sync_media_finishes_with_corpus_export():

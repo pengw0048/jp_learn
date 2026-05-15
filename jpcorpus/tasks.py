@@ -12,7 +12,7 @@ from .corpus_export import write_corpus_json
 from .env import load_dotenv
 from .jimaku import JimakuClient
 from .jlpt import download_jlpt_words, load_jlpt_words, write_sample_jlpt
-from .lexical_notes import download_jmdict, download_kanjidic2
+from .lexical_notes import download_jmdict
 from .models import SubtitleFile
 from .lyrics import (
     LRCLIB_ALBUM_CACHE_PURPOSE,
@@ -32,7 +32,6 @@ from .paths import (
     DEFAULT_JMDICT,
     DEFAULT_JIMAKU_CACHE,
     DEFAULT_JLPT_WORDS,
-    DEFAULT_KANJIDIC2,
     DEFAULT_LYRICS_CACHE,
     DEFAULT_STATE_DB,
     DEFAULT_TEXTS_DIR,
@@ -564,7 +563,6 @@ def export_corpus_json(
     context_max_lines: int | None = 4,
     zh_dict: Path = DEFAULT_ZH_DICT,
     jmdict: Path = DEFAULT_JMDICT,
-    kanjidic2: Path = DEFAULT_KANJIDIC2,
     lexical_notes: bool = True,
     subtitles: list[Path] | None = None,
     texts: list[Path] | None = None,
@@ -590,7 +588,6 @@ def export_corpus_json(
         examples_per_word=examples_per_word,
         zh_glossary=ChineseGlossary.load(zh_dict),
         jmdict_path=jmdict if lexical_notes else None,
-        kanjidic2_path=kanjidic2 if lexical_notes else None,
     )
     print(f"Wrote corpus JSON: {output}")
 
@@ -635,23 +632,12 @@ def fetch_jmdict(
     print(f"Downloaded JMdict: {path}")
 
 
-def fetch_kanjidic2(
-    output: Path = DEFAULT_KANJIDIC2,
-    source_url: str = "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz",
-) -> None:
-    """Download KANJIDIC2 for offline kanji notes."""
-    path = download_kanjidic2(output, source_url=source_url)
-    print(f"Downloaded KANJIDIC2: {path}")
-
-
 def fetch_lexical_resources(
     jmdict_output: Path = DEFAULT_JMDICT,
-    kanjidic2_output: Path = DEFAULT_KANJIDIC2,
 ) -> None:
     """Download offline lexical resources used by the viewer."""
     jmdict_path = download_jmdict(jmdict_output)
-    kanjidic2_path = download_kanjidic2(kanjidic2_output)
-    print(f"Downloaded lexical resources: {jmdict_path}, {kanjidic2_path}")
+    print(f"Downloaded lexical resources: {jmdict_path}")
 
 
 def fetch_zh_dict(
