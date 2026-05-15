@@ -324,8 +324,75 @@ def normalize_gloss_source(value: str) -> str:
 
 
 def clean_zhwiktionary_gloss(value: str) -> str:
+    lines = [
+        simplify_zh_gloss(normalize_gloss_source(line))
+        for line in value.replace("\\n", "\n").splitlines()
+        if line.strip()
+    ]
+    if len(lines) > 1:
+        line_glosses = zhwiktionary_definition_lines(lines)
+        if line_glosses:
+            return "；".join(line_glosses)
     value = simplify_zh_gloss(normalize_gloss_source(value))
-    return strip_japanese_form_prefix(value)
+    value = strip_japanese_form_prefix(value)
+    return strip_inline_japanese_example(value)
+
+
+def zhwiktionary_definition_lines(lines: list[str]) -> list[str]:
+    glosses: list[str] = []
+    skip_example_translation = False
+    for line in lines:
+        line = strip_japanese_form_prefix(line)
+        line = strip_zhwiktionary_headword_prefix(line)
+        line = strip_zhwiktionary_pos_prefix(line)
+        line = strip_numbered_gloss_prefix(line)
+        if not line:
+            continue
+        if is_japanese_example_line(line):
+            skip_example_translation = True
+            continue
+        if skip_example_translation and is_likely_example_translation(line):
+            skip_example_translation = False
+            continue
+        skip_example_translation = False
+        line = strip_inline_japanese_example(line)
+        if line:
+            glosses.append(line)
+    return unique_strings(glosses)
+
+
+def strip_zhwiktionary_headword_prefix(value: str) -> str:
+    return re.sub(
+        r"^.+?(?:【[ぁ-ゖァ-ヺー・/／;；\s]+】)+\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_zhwiktionary_pos_prefix(value: str) -> str:
+    return re.sub(
+        r"^(?:名(?:[?？·・](?:副|形动|他サ|自サ))?|动|他动|自动|形动|形|副|连体|词组|惯用|接头|接尾|感|代|助动|助词|格助|终助|副助)(?:\s+|$)",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_numbered_gloss_prefix(value: str) -> str:
+    return re.sub(r"^\d+[.．、]\s*", "", value, count=1).strip()
+
+
+def strip_inline_japanese_example(value: str) -> str:
+    parts = re.split(r"(?<=[。！？!?])\s+", value)
+    if len(parts) <= 1:
+        return value
+    kept: list[str] = []
+    for index, part in enumerate(parts):
+        if index > 0 and starts_with_japanese_example(part):
+            break
+        kept.append(part)
+    return " ".join(kept).strip()
 
 
 def strip_japanese_form_prefix(value: str) -> str:
@@ -340,6 +407,23 @@ def strip_japanese_form_prefix(value: str) -> str:
 
 def contains_kana(value: str) -> bool:
     return bool(re.search(r"[ぁ-ゖァ-ヺ]", value))
+
+
+def is_japanese_example_line(value: str) -> bool:
+    if not contains_kana(value):
+        return False
+    if re.search(r"(的|义|语|词|谦|称|表示|用于|源于|简称|读作)", value):
+        return False
+    return True
+
+
+def starts_with_japanese_example(value: str) -> bool:
+    first_chunk = re.split(r"\s+", value.strip(), maxsplit=1)[0]
+    return is_japanese_example_line(first_chunk)
+
+
+def is_likely_example_translation(value: str) -> bool:
+    return not contains_kana(value)
 
 
 def simplify_zh_gloss(value: str) -> str:

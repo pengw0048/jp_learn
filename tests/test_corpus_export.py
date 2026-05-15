@@ -34,6 +34,7 @@ from jpcorpus.zh_dict import (
     ChineseGlossary,
     build_zhwiktionary_ja_dict,
     clean_gloss,
+    clean_zhwiktionary_gloss,
     extract_gloss_readings,
 )
 
@@ -757,6 +758,29 @@ def test_clean_chinese_gloss_removes_leading_reading():
     assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
     assert clean_gloss("(いま1) 现在") == "现在"
     assert clean_gloss("（いい/よい）①【イ形】好的") == "①【イ形】好的"
+
+
+def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
+    assert (
+        clean_zhwiktionary_gloss("反省。\nこれまでの行いを反省する\n反省以前的所作所为。")
+        == "反省。"
+    )
+    assert (
+        clean_zhwiktionary_gloss("上の空【うわのそら】\n名·形动 心不在焉。\n人の話を上の空で聞く\n心不在焉地听人说话。")
+        == "心不在焉。"
+    )
+    assert (
+        clean_zhwiktionary_gloss(
+            "一時【いちじ】【いっとき】【ひととき】\n"
+            "名?副\n"
+            "1. 当时。\n"
+            "一時はだめかと思った\n"
+            "当时我以为不行了。\n"
+            "2. 暂时，一时。"
+        )
+        == "当时。；暂时，一时。"
+    )
+    assert clean_zhwiktionary_gloss("比喻：用作抽象意义") == "比喻：用作抽象意义"
 
 
 def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):
