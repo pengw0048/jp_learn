@@ -15,6 +15,8 @@ window.JPCORPUS_TTS = (() => {
     } = storage;
     let activeAudio = null;
     let activeAudioUrl = "";
+    let activePlayback = null;
+    let speechRunId = 0;
 
     function bindTtsSettings() {
       if (!refs.ttsProviderButtons?.length) {
@@ -219,35 +221,71 @@ window.JPCORPUS_TTS = (() => {
     }
 
     async function speakText(value) {
-      const text = normalizeSpeechText(value);
-      if (!text) {
-        return;
-      }
-      if (app.tts.provider === "voicevox") {
-        const ok = await speakVoicevox(text);
-        if (ok) {
-          return;
-        }
-      }
-      speakBrowser(text);
+      return playSpeech(value);
     }
 
-    async function speakVoicevox(text) {
+    async function playSpeech(value, options = {}) {
+      const text = normalizeSpeechText(value);
+      if (!text) {
+        return false;
+      }
+      const runId = speechRunId + 1;
+      speechRunId = runId;
+      const runOptions = {
+        ...options,
+        isCancelled: () => runId !== speechRunId || Boolean(options.isCancelled?.()),
+      };
+      if (app.tts.provider === "voicevox") {
+        const ok = await speakVoicevox(text, runOptions);
+        if (ok) {
+          return true;
+        }
+        if (runOptions.isCancelled()) {
+          return false;
+        }
+      }
+      return speakBrowser(text, runOptions);
+    }
+
+    async function speakVoicevox(text, options = {}) {
       try {
-        stopActiveAudio();
+        stopCurrentPlayback();
         const blob = await api.voicevoxSynthesize({
           text,
           speaker: app.tts.voicevoxSpeaker,
           rate: app.tts.rate,
         });
+        if (options.isCancelled?.()) {
+          return false;
+        }
         activeAudioUrl = URL.createObjectURL(blob);
         activeAudio = new Audio(activeAudioUrl);
-        activeAudio.addEventListener("ended", stopActiveAudio, { once: true });
-        activeAudio.addEventListener("error", stopActiveAudio, { once: true });
-        await activeAudio.play();
-        app.tts.error = "";
-        renderTtsSettings();
-        return true;
+        return await new Promise((resolve) => {
+          const playback = beginPlayback(options, resolve);
+          activeAudio.addEventListener("ended", () => {
+            stopActiveAudio();
+            finishPlayback(playback, true);
+          }, { once: true });
+          activeAudio.addEventListener("error", () => {
+            stopActiveAudio();
+            finishPlayback(playback, false);
+          }, { once: true });
+          activeAudio.play()
+            .then(() => {
+              app.tts.error = "";
+              renderTtsSettings();
+              options.onStart?.();
+              if (!options.awaitEnd) {
+                resolve(true);
+              }
+            })
+            .catch((error) => {
+              stopActiveAudio();
+              app.tts.error = error.message || String(error);
+              renderTtsSettings();
+              finishPlayback(playback, false);
+            });
+        });
       } catch (error) {
         stopActiveAudio();
         app.tts.error = error.message || String(error);
@@ -281,13 +319,16 @@ window.JPCORPUS_TTS = (() => {
       delete button.dataset.originalAriaLabel;
     }
 
-    function speakBrowser(text) {
+    function speakBrowser(text, options = {}) {
       if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
         app.tts.error = t("ttsBrowserUnavailable");
         renderTtsSettings();
-        return;
+        return false;
       }
-      window.speechSynthesis.cancel();
+      if (options.isCancelled?.()) {
+        return false;
+      }
+      stopCurrentPlayback();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "ja-JP";
       utterance.rate = app.tts.rate;
@@ -296,7 +337,61 @@ window.JPCORPUS_TTS = (() => {
       if (voice) {
         utterance.voice = voice;
       }
-      window.speechSynthesis.speak(utterance);
+      return new Promise((resolve) => {
+        const playback = beginPlayback(options, resolve);
+        utterance.onstart = () => {
+          options.onStart?.();
+          if (!options.awaitEnd) {
+            resolve(true);
+          }
+        };
+        utterance.onend = () => finishPlayback(playback, true);
+        utterance.onerror = () => {
+          app.tts.error = t("ttsBrowserUnavailable");
+          renderTtsSettings();
+          finishPlayback(playback, false);
+        };
+        window.speechSynthesis.speak(utterance);
+        if (!options.awaitEnd) {
+          resolve(true);
+        }
+      });
+    }
+
+    function beginPlayback(options, resolve) {
+      const playback = {
+        done: false,
+        onEnd: typeof options.onEnd === "function" ? options.onEnd : null,
+        resolve,
+      };
+      activePlayback = playback;
+      return playback;
+    }
+
+    function finishPlayback(playback, ok) {
+      if (!playback || playback.done) {
+        return;
+      }
+      playback.done = true;
+      if (activePlayback === playback) {
+        activePlayback = null;
+      }
+      playback.onEnd?.();
+      playback.resolve?.(ok);
+    }
+
+    function stopSpeech() {
+      speechRunId += 1;
+      stopCurrentPlayback();
+    }
+
+    function stopCurrentPlayback() {
+      const playback = activePlayback;
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      stopActiveAudio();
+      finishPlayback(playback, false);
     }
 
     function selectedBrowserVoice(voices) {
@@ -366,7 +461,9 @@ window.JPCORPUS_TTS = (() => {
       bindTtsSettings,
       renderSpeakButton,
       renderTtsSettings,
+      speakText: playSpeech,
       speechTextForWord,
+      stopSpeech,
     };
   }
 

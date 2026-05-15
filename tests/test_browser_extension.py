@@ -32,3 +32,11 @@ def test_popup_keeps_success_feedback_after_selection_import() -> None:
     assert 'imported: "已导入 {title}。"' in popup
     assert "refs.status.textContent = importResultMessage(response.result);" in popup
     assert 'refs.status.textContent = "";' not in popup
+
+
+def test_extension_reader_panel_can_read_current_sentence() -> None:
+    content = (ROOT / "browser_extension" / "content.js").read_text(encoding="utf-8")
+
+    assert 'readSentence: "朗读"' in content
+    assert "jpcorpus-reader-speech-button" in content
+    assert "jpcorpus-reader-speaking" in content

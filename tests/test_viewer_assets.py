@@ -117,6 +117,17 @@ def test_llm_config_labels_are_user_facing_and_localized():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
+def test_reader_mode_has_read_aloud_strings_and_controls():
+    i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
+    app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
+
+    assert 'readerReadAloud: "朗读"' in i18n
+    assert 'readerStopReading: "停止"' in i18n
+    assert "reader-speech-button" in app
+    assert "reader-line-speaking" in css
+
+
 def test_config_status_labels_hide_environment_variable_names():
     node = shutil.which("node")
     if not node:

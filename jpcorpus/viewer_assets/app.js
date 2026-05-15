@@ -89,6 +89,11 @@ const app = {
     positions: readReaderPositions(),
     positionKey: null,
     positionSaveTimer: null,
+    tts: {
+      playing: false,
+      stopRequested: false,
+      lineKey: null,
+    },
   },
   listLimit: WORD_LIST_PAGE_SIZE,
   exampleColumns: readExampleColumns(),
@@ -356,12 +361,15 @@ const {
   todayKey,
   clearReaderSelection,
   persistReaderPositions,
+  stopReaderSpeech,
 });
 const {
   bindTtsSettings,
   renderSpeakButton,
   renderTtsSettings,
+  speakText,
   speechTextForWord,
+  stopSpeech,
 } = window.JPCORPUS_TTS.createTtsHelpers({
   api,
   app,
@@ -1039,8 +1047,13 @@ function renderReadingPane() {
   app.reader.positionKey = positionKey;
   scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
   scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller), { passive: true });
+  const summaryNode = renderReaderModeSummary(selected, selectedUnit);
+  const titleNode = summaryNode.querySelector(".reader-mode-title");
+  if (titleNode) {
+    titleNode.append(renderReaderSpeechButton(detailsReady));
+  }
   scroller.append(...[
-    renderReaderModeSummary(selected, selectedUnit),
+    summaryNode,
     renderReaderMarkedWordsPanel(),
     detailsReady
       ? renderSourceReader(selected, {
@@ -1059,6 +1072,7 @@ function renderReadingPane() {
   }
   app.reader.preserveScrollOnRender = false;
   updateReaderActiveTokens();
+  updateReaderSpeechUi();
 }
 
 function syncSelectedWordToReaderSource(readingTarget, wordSet) {
@@ -1078,6 +1092,110 @@ function clearReaderSelection() {
   app.reader.selection = null;
   app.reader.explanation = null;
   app.reader.question = null;
+}
+
+function renderReaderSpeechButton(enabled) {
+  const button = el(
+    "button",
+    `reader-speech-button${app.reader.tts.playing ? " active" : ""}`,
+    app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud"),
+  );
+  button.type = "button";
+  button.disabled = !enabled && !app.reader.tts.playing;
+  button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (app.reader.tts.playing) {
+      stopReaderSpeech();
+    } else {
+      startReaderSpeech();
+    }
+  });
+  return button;
+}
+
+async function startReaderSpeech() {
+  if (app.reader.tts.playing) {
+    return;
+  }
+  const lines = currentReaderSpeechLines();
+  if (lines.length === 0) {
+    return;
+  }
+  app.reader.tts.playing = true;
+  app.reader.tts.stopRequested = false;
+  updateReaderSpeechUi();
+  try {
+    for (const line of lines) {
+      if (app.reader.tts.stopRequested) {
+        break;
+      }
+      const ok = await speakText(line.text, {
+        awaitEnd: true,
+        isCancelled: () => app.reader.tts.stopRequested,
+        onStart: () => setReaderSpeakingLine(line.key),
+        onEnd: () => {
+          if (app.reader.tts.lineKey === line.key) {
+            setReaderSpeakingLine(null);
+          }
+        },
+      });
+      if (!ok) {
+        break;
+      }
+    }
+  } finally {
+    app.reader.tts.playing = false;
+    app.reader.tts.stopRequested = false;
+    setReaderSpeakingLine(null);
+  }
+}
+
+function stopReaderSpeech() {
+  if (!app.reader.tts.playing && !app.reader.tts.lineKey) {
+    return;
+  }
+  app.reader.tts.stopRequested = true;
+  stopSpeech();
+  app.reader.tts.playing = false;
+  setReaderSpeakingLine(null);
+}
+
+function currentReaderSpeechLines() {
+  return [...refs.wordList.querySelectorAll(".reader-mode-scroll .reader-line")]
+    .map((row) => ({
+      key: row.dataset.readerLineKey || "",
+      text: row.querySelector(".reader-line-text")?.textContent || "",
+    }))
+    .map((line) => ({
+      ...line,
+      text: line.text.replace(/\s+/g, " ").trim(),
+    }))
+    .filter((line) => line.key && line.text);
+}
+
+function setReaderSpeakingLine(lineKey) {
+  app.reader.tts.lineKey = lineKey || null;
+  updateReaderSpeechUi();
+  if (lineKey) {
+    const row = refs.wordList.querySelector(`.reader-line[data-reader-line-key="${lineKey}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function updateReaderSpeechUi() {
+  refs.wordList.querySelectorAll(".reader-line-speaking").forEach((row) => {
+    row.classList.remove("reader-line-speaking");
+  });
+  if (app.reader.tts.lineKey) {
+    const row = refs.wordList.querySelector(`.reader-line[data-reader-line-key="${app.reader.tts.lineKey}"]`);
+    row?.classList.add("reader-line-speaking");
+  }
+  refs.wordList.querySelectorAll(".reader-speech-button").forEach((button) => {
+    button.classList.toggle("active", app.reader.tts.playing);
+    button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
+    button.textContent = app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud");
+  });
 }
 
 function clearReaderWordSelectionFromBlank(event) {
@@ -1374,6 +1492,9 @@ function setStudyMode(mode) {
     return;
   }
   const leavingReadMode = app.mode === "read" && mode !== "read";
+  if (leavingReadMode) {
+    stopReaderSpeech();
+  }
   app.mode = mode;
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.study.showAnswer = false;

@@ -1806,6 +1806,30 @@ mark {
   font-size: 12px;
 }
 
+.reader-speech-button {
+  min-height: 30px;
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.reader-speech-button:hover:not(:disabled),
+.reader-speech-button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.reader-speech-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .source-inventory {
   display: grid;
   gap: 8px;
@@ -2080,6 +2104,12 @@ mark {
   border-radius: 8px;
   background: #fff8df;
   box-shadow: 0 0 0 8px #fff8df;
+}
+
+.reader-line-speaking {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent), white 91%);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent), white 91%);
 }
 
 .reader-line-time {

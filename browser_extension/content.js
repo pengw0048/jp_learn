@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.12";
+  const SCRIPT_VERSION = "0.1.13";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -28,6 +28,7 @@
       ignore: "忽略",
       ignored: "已忽略",
       clearStatus: "取消标记",
+      readSentence: "朗读",
       pickerInitial: "点击导入高亮文本。Esc 取消。",
       pickerLabel: "点击导入 {count} 字 · Esc 取消",
       noReadableArticle: "没有在这个页面找到可读正文。",
@@ -53,6 +54,7 @@
       ignore: "Ignore",
       ignored: "Ignored",
       clearStatus: "Clear",
+      readSentence: "Read",
       pickerInitial: "Click to import highlighted text. Esc cancel.",
       pickerLabel: "Click to import {count} chars. · Esc cancel",
       noReadableArticle: "No readable article text found on this page.",
@@ -62,6 +64,8 @@
 
   let picker = null;
   let reader = null;
+  let activeReaderUtterance = null;
+  let activeReaderHighlightFallback = null;
   const READER_TOKEN_STATUS_CLASSES = [
     "jpcorpus-reader-token-learning",
     "jpcorpus-reader-token-uncertain",
@@ -183,6 +187,7 @@
       return;
     }
     document.removeEventListener("click", onReaderDocumentClick, true);
+    stopReaderSpeech();
     removeReaderPanel();
     reader.replacements.forEach(({ wrapper, text }) => {
       if (wrapper.parentNode) {
@@ -361,7 +366,16 @@
       event.stopPropagation();
       clearReaderSelection();
     });
-    title.append(word, close);
+    const read = document.createElement("button");
+    read.type = "button";
+    read.className = "jpcorpus-reader-speech-button";
+    read.textContent = tr("readSentence");
+    read.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      speakReaderSentence(anchor, read);
+    });
+    title.append(word, read, close);
 
     const meta = document.createElement("div");
     meta.className = "jpcorpus-reader-panel-meta";
@@ -508,10 +522,154 @@
   }
 
   function removeReaderPanel() {
+    stopReaderSpeech();
     reader?.panel?.remove();
     if (reader) {
       reader.panel = null;
     }
+  }
+
+  function speakReaderSentence(anchor, button) {
+    const sentence = readerSentenceForToken(anchor);
+    const text = sentence.text || anchor.textContent || "";
+    if (!text.trim() || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+      return;
+    }
+    stopReaderSpeech();
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    showReaderSpeechHighlight(sentence.range, sentence.fallbackElement);
+    const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").trim());
+    utterance.lang = "ja-JP";
+    const voice = preferredJapaneseVoice(window.speechSynthesis.getVoices());
+    if (voice) {
+      utterance.voice = voice;
+    }
+    const finish = () => {
+      if (activeReaderUtterance !== utterance) {
+        return;
+      }
+      activeReaderUtterance = null;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      clearReaderSpeechHighlight();
+    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    activeReaderUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopReaderSpeech() {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    activeReaderUtterance = null;
+    clearReaderSpeechHighlight();
+    document.querySelectorAll(".jpcorpus-reader-speech-button[aria-busy='true']").forEach((button) => {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    });
+  }
+
+  function readerSentenceForToken(token) {
+    const fallbackElement = token.closest("p, li, dd, dt, div, section, article") || token;
+    const root = token.closest(".jpcorpus-reader-wrapper") || token.parentNode || token;
+    const fullText = root.textContent || token.textContent || "";
+    const tokenOffset = textOffsetWithin(root, token);
+    const bounds = sentenceBounds(fullText, tokenOffset);
+    const range = rangeForTextOffsets(root, bounds.start, bounds.end);
+    return {
+      text: fullText.slice(bounds.start, bounds.end).trim() || token.textContent || "",
+      range,
+      fallbackElement,
+    };
+  }
+
+  function textOffsetWithin(root, target) {
+    let offset = 0;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (target.contains(node)) {
+        return offset;
+      }
+      offset += (node.nodeValue || "").length;
+    }
+    return 0;
+  }
+
+  function sentenceBounds(text, offset) {
+    const punctuation = /[。！？!?]/u;
+    let start = 0;
+    for (let index = Math.max(0, offset - 1); index >= 0; index -= 1) {
+      if (punctuation.test(text[index]) || text[index] === "\n") {
+        start = index + 1;
+        break;
+      }
+    }
+    let end = text.length;
+    for (let index = Math.max(0, offset); index < text.length; index += 1) {
+      if (punctuation.test(text[index]) || text[index] === "\n") {
+        end = index + 1;
+        break;
+      }
+    }
+    while (start < end && /\s/u.test(text[start])) {
+      start += 1;
+    }
+    while (end > start && /\s/u.test(text[end - 1])) {
+      end -= 1;
+    }
+    return { start, end };
+  }
+
+  function rangeForTextOffsets(root, start, end) {
+    const range = document.createRange();
+    let offset = 0;
+    let started = false;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const length = (node.nodeValue || "").length;
+      const nextOffset = offset + length;
+      if (!started && start <= nextOffset) {
+        range.setStart(node, Math.max(0, start - offset));
+        started = true;
+      }
+      if (started && end <= nextOffset) {
+        range.setEnd(node, Math.max(0, end - offset));
+        return range;
+      }
+      offset = nextOffset;
+    }
+    range.selectNodeContents(root);
+    return range;
+  }
+
+  function showReaderSpeechHighlight(range, fallbackElement) {
+    clearReaderSpeechHighlight();
+    if (range && window.CSS?.highlights && typeof Highlight !== "undefined") {
+      CSS.highlights.set("jpcorpus-reader-speaking", new Highlight(range));
+      return;
+    }
+    activeReaderHighlightFallback = fallbackElement;
+    activeReaderHighlightFallback?.classList.add("jpcorpus-reader-speaking-block");
+  }
+
+  function clearReaderSpeechHighlight() {
+    if (window.CSS?.highlights) {
+      CSS.highlights.delete("jpcorpus-reader-speaking");
+    }
+    activeReaderHighlightFallback?.classList.remove("jpcorpus-reader-speaking-block");
+    activeReaderHighlightFallback = null;
+  }
+
+  function preferredJapaneseVoice(voices) {
+    const list = Array.isArray(voices) ? voices : [];
+    return list.find((voice) => /^ja\b/i.test(voice.lang || "") && /google/i.test(voice.name || ""))
+      || list.find((voice) => /^ja\b/i.test(voice.lang || ""))
+      || null;
   }
 
   function ensureReaderStyles() {
@@ -580,6 +738,16 @@
         color: #657178 !important;
         font: 700 12px/1 ${CJK_FONT_CSS} !important;
         cursor: pointer !important;
+      }
+      .jpcorpus-reader-panel-title .jpcorpus-reader-speech-button {
+        margin-left: auto !important;
+      }
+      ::highlight(jpcorpus-reader-speaking) {
+        background: rgba(20, 125, 115, 0.14);
+      }
+      .jpcorpus-reader-speaking-block {
+        background: rgba(20, 125, 115, 0.10) !important;
+        border-radius: 6px !important;
       }
       .jpcorpus-reader-panel-meta {
         display: flex !important;

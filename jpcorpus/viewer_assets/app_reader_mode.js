@@ -26,6 +26,7 @@ window.JPCORPUS_READER_MODE = (() => {
     todayKey,
     clearReaderSelection,
     persistReaderPositions,
+    stopReaderSpeech,
   }) {
     const { STORAGE_READER_WORD_LIST } = storage;
 
@@ -99,6 +100,7 @@ window.JPCORPUS_READER_MODE = (() => {
         button.type = "button";
         button.classList.toggle("active", app.reader.sourceType === value);
         button.addEventListener("click", () => {
+          stopReaderSpeech();
           app.reader.sourceType = value;
           app.reader.groupKey = null;
           app.reader.documentKey = null;
@@ -125,6 +127,7 @@ window.JPCORPUS_READER_MODE = (() => {
         select.append(option);
       });
       select.addEventListener("change", () => {
+        stopReaderSpeech();
         app.reader.groupKey = select.value;
         app.reader.documentKey = null;
         clearReaderSelection();
@@ -152,6 +155,7 @@ window.JPCORPUS_READER_MODE = (() => {
         select.append(option);
       });
       select.addEventListener("change", () => {
+        stopReaderSpeech();
         app.reader.documentKey = select.value;
         clearReaderSelection();
         render();
@@ -179,6 +183,7 @@ window.JPCORPUS_READER_MODE = (() => {
         button.type = "button";
         button.classList.toggle("active", app.reader.wordList === value);
         button.addEventListener("click", () => {
+          stopReaderSpeech();
           app.reader.wordList = value;
           localStorage.setItem(STORAGE_READER_WORD_LIST, value);
           app.reader.preserveScrollOnRender = true;
