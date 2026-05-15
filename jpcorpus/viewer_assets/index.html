@@ -128,19 +128,19 @@
                 <input id="config-jimaku-api-key" type="password" autocomplete="off" />
               </label>
               <label>
-                <span data-i18n="maintenanceProvider">Provider</span>
+                <span data-i18n="maintenanceProvider">LLM 接口类型</span>
                 <select id="config-llm-provider">
-                  <option value="openai-compatible">OpenAI compatible</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="apple">Apple</option>
+                  <option value="openai-compatible" data-i18n="llmProviderOpenAiCompatible">OpenAI 兼容接口</option>
+                  <option value="anthropic" data-i18n="llmProviderAnthropic">Anthropic</option>
+                  <option value="apple" data-i18n="llmProviderApple">Apple 本机模型</option>
                 </select>
               </label>
               <label>
-                <span data-i18n="configLlmBaseUrl">LLM Base URL</span>
+                <span data-i18n="configLlmBaseUrl">LLM 接口地址</span>
                 <input id="config-llm-base-url" type="text" autocomplete="off" />
               </label>
               <label>
-                <span data-i18n="configLlmModel">LLM Model</span>
+                <span data-i18n="configLlmModel">LLM 模型</span>
                 <input id="config-llm-model" type="text" autocomplete="off" />
               </label>
               <label>

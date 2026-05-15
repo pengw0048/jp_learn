@@ -89,6 +89,30 @@ def test_i18n_uses_ui_refresh_language_for_corpus_updates():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
+def test_llm_config_labels_are_user_facing_and_localized():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_i18n.js")!r});
+
+        const text = window.JPCORPUS_TEXT;
+        assert.equal(text.zh.maintenanceProvider, "LLM 接口类型");
+        assert.equal(text.zh.configLlmBaseUrl, "LLM 接口地址");
+        assert.equal(text.zh.llmProviderOpenAiCompatible, "OpenAI 兼容接口");
+        assert.equal(text.zh.llmProviderApple, "Apple 本机模型");
+        assert.equal(text.en.maintenanceProvider, "LLM connection");
+        assert.equal(text.en.llmProviderOpenAiCompatible, "OpenAI-compatible endpoint");
+        assert.equal(text.en.llmProviderApple, "Apple local model");
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
     node = shutil.which("node")
     if not node:
