@@ -83,7 +83,7 @@ class AnimeOfflineIndex:
     def load(cls, path: Path) -> "AnimeOfflineIndex":
         if not path.exists():
             raise FileNotFoundError(
-                f"Anime Offline Database not found: {path}. Use Refresh all in the viewer first."
+                f"Anime Offline Database not found: {path}. Use Full refresh in the viewer first."
             )
         if path.suffix == ".jsonl":
             records = []

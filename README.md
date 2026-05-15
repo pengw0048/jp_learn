@@ -32,6 +32,13 @@ uv run jpcorpus
 
 然后在网页里的“维护”面板完成配置和刷新。
 
+如果要开发或跑测试，请安装 dev 依赖：
+
+```bash
+uv sync --extra dev
+uv run pytest
+```
+
 ### 配置
 
 你可以在网页 UI 里填写配置，也可以手动编辑 `.env`。
@@ -158,6 +165,13 @@ uv run jpcorpus
 ```
 
 Then use the Maintenance panel in the viewer for configuration and refreshes.
+
+For development and tests, install the dev extra:
+
+```bash
+uv sync --extra dev
+uv run pytest
+```
 
 ### Configuration
 
