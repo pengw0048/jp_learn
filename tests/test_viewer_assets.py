@@ -39,6 +39,7 @@ def test_viewer_index_references_existing_scripts_in_loader_order():
     assert len(sources) == len(set(sources))
     assert "/app_storage.js" in sources
     assert "/app_i18n.js" in sources
+    assert "/app_config.js" in sources
     assert "/app_dom.js" in sources
     assert "/app_api.js" in sources
     assert "/app_detail.js" in sources
@@ -50,6 +51,7 @@ def test_viewer_index_references_existing_scripts_in_loader_order():
         assert script_path.is_file()
         if source != "/app.js":
             assert sources.index(source) < app_index
+    assert sources.index("/app_i18n.js") < sources.index("/app_config.js") < app_index
 
 
 def test_viewer_javascript_files_parse_with_node():
@@ -108,6 +110,53 @@ def test_llm_config_labels_are_user_facing_and_localized():
         assert.equal(text.en.maintenanceProvider, "LLM connection");
         assert.equal(text.en.llmProviderOpenAiCompatible, "OpenAI-compatible endpoint");
         assert.equal(text.en.llmProviderApple, "Apple local model");
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_config_status_labels_hide_environment_variable_names():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_i18n.js")!r});
+        require({str(VIEWER_ASSET_DIR / "app_config.js")!r});
+
+        function translate(lang, key, values = {{}}) {{
+          let value = window.JPCORPUS_TEXT[lang][key] || key;
+          Object.entries(values).forEach(([name, replacement]) => {{
+            value = value.replace(`{{${{name}}}}`, replacement);
+          }});
+          return value;
+        }}
+
+        const service = {{
+          id: "llm",
+          label: "AI explanation",
+          missing: ["JPCORPUS_LLM_MODEL", "JPCORPUS_LLM_API_KEY"],
+        }};
+        const zhLabels = window.JPCORPUS_CONFIG.configMissingLabels(
+          service,
+          (key, values) => translate("zh", key, values),
+        );
+        const enLabels = window.JPCORPUS_CONFIG.configMissingLabels(
+          service,
+          (key, values) => translate("en", key, values),
+        );
+
+        assert.deepEqual(zhLabels, ["LLM 模型", "LLM API Key"]);
+        assert.deepEqual(enLabels, ["LLM model", "LLM API key"]);
+        assert.equal(
+          window.JPCORPUS_CONFIG.configServiceLabel(service, (key) => translate("zh", key)),
+          "AI 讲解",
+        );
+        assert.equal(zhLabels.join(", ").includes("JPCORPUS_"), false);
+        assert.equal(enLabels.join(", ").includes("JPCORPUS_"), false);
         """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)

@@ -37,6 +37,10 @@ const {
 const WORD_LIST_PAGE_SIZE = 600;
 
 const text = window.JPCORPUS_TEXT;
+const {
+  configMissingLabels,
+  configServiceLabel,
+} = window.JPCORPUS_CONFIG;
 
 
 const stateLabels = {
@@ -706,14 +710,15 @@ function renderConfigStatus() {
   refs.configStatusList.replaceChildren(
     ...services.map((service) => {
       const item = el("div", service.configured ? "config-status ready" : "config-status missing");
+      const missing = configMissingLabels(service, t).join(", ");
       item.append(
-        strong(service.label || service.id),
+        strong(configServiceLabel(service, t)),
         el(
           "span",
           "",
           service.configured
             ? t("configReady")
-            : t("configMissing", { keys: (service.missing || []).join(", ") }),
+            : t("configMissing", { keys: missing }),
         ),
       );
       return item;
