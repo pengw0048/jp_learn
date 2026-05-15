@@ -1,97 +1,253 @@
-# jpcorpus
+# jpcorpus / 个人日语语料
 
-`jpcorpus` is the v0.1 local app from the product spec: it connects a Bangumi watched list, maps titles to external anime IDs, downloads Japanese subtitles from Jimaku when available, imports local lyrics/books, builds a structured personal JLPT corpus, and opens a small study viewer.
+## 中文
 
-The MVP intentionally stays local-first and file-backed. It does not include hosted accounts, vector search, video jump links, screenshots, or chat tutor flows.
+`jpcorpus` 是一个本地优先的个人日语学习工具。它把你看过的动画、听过的歌、导入的小说和网页文章整理成一个可浏览、可阅读、可复习的日语语料库。
 
-## Setup
+它目前主要做这些事：
+
+- 从 Bangumi 同步动画和音乐收藏。
+- 从 Jimaku 下载可用的日语字幕。
+- 从 LRCLIB 拉取歌词。
+- 导入 `texts/` 里的 `.txt` 和 `.epub`，也可以从网页或浏览器扩展导入文章。
+- 用本地词典、JLPT 词表、JMdict、zhwiktionary fallback 等资源生成单词表、例句、阅读视图和词语知识。
+- 在网页阅读器或浏览器扩展里点词查词、标记学习状态，并按你的学习进度复习。
+
+所有主要数据都保存在本机文件和本机状态库里。这个项目不是托管服务，也不需要线上账号系统。
+
+### 快速开始
 
 ```bash
 uv sync
+uv run jpcorpus
 ```
 
-After installing, launch the app with `uv run jpcorpus`. The viewer opens at <http://127.0.0.1:8767/> by default. If `corpus.json` does not exist yet, the command creates a small starter file so the UI can open.
+打开后访问 <http://127.0.0.1:8767/>。如果还没有 `corpus.json`，应用会先创建一个很小的 starter corpus，让界面能正常打开。
 
-From the viewer, open Maintenance:
+日常使用通常只需要这一个命令：
 
-1. Fill Bangumi, Jimaku, and optional LLM settings in Configuration, then click Save config.
-2. Click Full refresh for the first full build. It updates word/dictionary resources, syncs Bangumi media, fetches subtitles/lyrics, imports local `.txt`/`.epub` files from `texts/`, and regenerates the viewer corpus.
-3. Later, run `uv run jpcorpus` again and use Refresh for new media/local text changes. LLM settings are only needed for on-demand AI explanations in the reader.
+```bash
+uv run jpcorpus
+```
 
-The normal working corpus is `corpus.json` plus its generated `corpus.index.json` sidecar. Extra input/output paths are for debugging or experiments.
+然后在网页里的“维护”面板完成配置和刷新。
 
-External service setup:
+### 配置
 
-- Bangumi application: <https://bgm.tv/dev/app>
-- Jimaku API key: <https://jimaku.cc/api/docs>
-
-You can configure credentials either in the viewer UI or by editing `.env` directly. The UI writes to the local `.env` only when the viewer is opened on `127.0.0.1`.
-
-Manual `.env` setup:
+你可以在网页 UI 里填写配置，也可以手动编辑 `.env`。
 
 ```bash
 cp .env.example .env
 $EDITOR .env
 ```
 
-Bangumi requires a useful non-default User-Agent for API clients. The default is `peng/jpcorpus-v0.1`, but setting your own is recommended.
-Shell environment variables take precedence over `.env`.
+常用配置：
 
-## First Run
+- Bangumi application: <https://bgm.tv/dev/app>
+- Jimaku API key: <https://jimaku.cc/api/docs>
+- `JPCORPUS_USER_AGENT`: Bangumi API 需要一个有意义的 User-Agent。默认值可以跑，但建议换成你自己的。
+- 可选 LLM: 用于阅读时的临时解释，可以配置 Anthropic、OpenAI-compatible endpoint，或 macOS Apple Foundation Models。
 
-Normal UI path:
+Shell 里的环境变量优先级高于 `.env`。网页 UI 只有在 `127.0.0.1` 打开时才会写入本地 `.env`。
+
+### 刷新数据
+
+维护面板里主要有两个按钮：
+
+- **刷新**：日常使用。同步新媒体、本地文本、网页导入、字幕、歌词，并重建阅读器需要的数据。
+- **完整刷新**：偶尔使用。除了日常刷新，还会重新拉词表、词典和动画数据库等基础资源。
+
+第一次配置完以后，点一次“完整刷新”。以后一般点“刷新”就够了。
+
+### 导入内容
+
+支持的来源：
+
+- **字幕**：从 Bangumi 收藏映射到外部动画条目，再通过 Jimaku 搜索和下载日语字幕。
+- **歌词**：从 Bangumi 音乐收藏和曲目信息搜索 LRCLIB，缓存命中和 miss。
+- **本地文本**：把日语 `.txt` 或 `.epub` 放进 `texts/`，然后点“刷新”。
+- **网页文章**：在维护面板粘贴文章，或使用 `browser_extension/` 里的 Chrome 扩展从网页导入。
+
+EPUB 会优先使用书内 metadata，文件名作为备用标题。
+
+### 学习和阅读
+
+主界面提供两种常用方式：
+
+- **浏览/学习单词**：按 JLPT、频次、五十音、状态等筛选单词；每个词可以加入学习、标记已认识、忽略或清除状态。
+- **阅读模式**：选择字幕、歌词、小说或网页文章，直接在上下文里点词查词。右侧会显示释义、词性、例句、学习状态和可选 AI 解释。
+
+学习进度用本地状态保存，不依赖远端账号。
+
+### 浏览器扩展
+
+`browser_extension/` 是可选的 unpacked Chrome extension。它可以：
+
+- 右键导入选中文字。
+- 右键导入网页主要正文。
+- 在当前网页直接高亮日语词，并显示浮动词典面板。
+- 从浮动面板把词加入学习、标记已认识、忽略或清除状态。
+
+安装方式：
+
+1. 打开 Chrome Extensions。
+2. 开启 Developer mode。
+3. 选择 Load unpacked。
+4. 选择本仓库里的 `browser_extension/` 文件夹。
+
+扩展默认连接 <http://127.0.0.1:8767/>。
+
+### 主要数据文件
+
+```text
+data/
+  anime-offline-database.json  # Anime Offline Database cache
+  jlpt-words.json              # local JLPT word list
+  jp-zh-dict.json              # Japanese-Chinese glossary
+  zhwiktionary-ja-dict.json    # zhwiktionary Japanese entries used as fallback
+  jimaku-cache/                # downloaded subtitles
+  lyrics-cache/                # downloaded lyrics
+texts/                         # local .txt/.epub inputs
+texts/web/                     # web imports
+corpus.json                    # full generated corpus
+corpus.index.json              # compact viewer index
+corpus.words/                  # per-word detail shards
+corpus.sources/                # per-source reader/detail shards
+browser_extension/             # optional Chrome extension
+~/.jpcorpus/state.db           # local tokens, sync state, caches, study state
+```
+
+`corpus.json` 和 sidecar 文件都是生成物；需要更新时从 UI 点“刷新”即可。
+
+### 说明
+
+JLPT 没有官方公开词表，所以项目里的 JLPT 等级只是学习参考，不是考试保证。
+
+中文释义以本地日中词典为主，必要时使用 zhwiktionary fallback。fallback 会尽量过滤“参见”“旧写”“简写说明”等不适合作为释义的条目，但词典数据仍然可能有噪声。
+
+---
+
+## English
+
+`jpcorpus` is a local-first personal Japanese learning app. It turns watched anime, songs, books, and web articles into a browsable corpus for vocabulary lookup, contextual examples, reading, and review.
+
+It currently:
+
+- Syncs anime and music collections from Bangumi.
+- Downloads Japanese subtitles from Jimaku when available.
+- Fetches lyrics from LRCLIB.
+- Imports local `.txt` and `.epub` files from `texts/`, plus web articles from the viewer or Chrome extension.
+- Builds word lists, examples, reader views, and lexical notes from local dictionaries, JLPT data, JMdict, and zhwiktionary fallback data.
+- Lets you click words in the viewer or extension, review vocabulary, and track local study progress.
+
+The app is local-first and file-backed. It is not a hosted service and does not require hosted user accounts.
+
+### Quick Start
+
+```bash
+uv sync
+uv run jpcorpus
+```
+
+Open <http://127.0.0.1:8767/>. If `corpus.json` does not exist yet, the app creates a tiny starter corpus so the UI can open.
+
+Day to day, this is the only command you normally need:
 
 ```bash
 uv run jpcorpus
 ```
 
-Then use the Maintenance panel. Day to day, this is still the only command you need.
+Then use the Maintenance panel in the viewer for configuration and refreshes.
 
-The app intentionally does not expose a command tree. Data sync, dictionary refresh, and corpus rebuild are launched from the viewer so a normal user does not need to learn separate commands or path flags.
+### Configuration
 
-The Maintenance panel has two normal buttons: Refresh and Full refresh. Refresh is the day-to-day action for new media, local text, web imports, subtitles, lyrics, and rebuilding the viewer data. Full refresh also refetches dictionaries, word lists, and the anime database, so it is only needed occasionally.
+You can configure credentials in the viewer UI or by editing `.env` manually.
 
-The Maintenance panel can update the MIT-licensed `elzup/jlpt-word-list` data, the Unlicense `lxl66566/Japanese-Chinese-thesaurus` glossary, and offline JMdict lexical resources. The JLPT does not publish an official vocabulary list, so treat level coverage as an approximation rather than an exam guarantee.
+```bash
+cp .env.example .env
+$EDITOR .env
+```
 
-The viewer currently supports Chinese and English UI labels. User-facing strings are centralized in `jpcorpus/viewer_assets/app_i18n.js` so future UI work can add more languages without chasing hard-coded labels.
+Common settings:
 
-The app writes word/example/context data as structured JSON in `corpus.json`, including `meaning_zh` and `meaning_zh_source` fields when Chinese dictionary data is available. It also writes a compact `corpus.index.json` sidecar plus `corpus.words/` and `corpus.sources/` detail shards, so the viewer can start from the index and load full word examples, lexical notes, and source lines on demand. The JSON includes JLPT words that did not appear in the synced media as zero-count entries with no examples, so the viewer can behave like a real word list rather than only a frequency view. Corpus JSON defaults to five examples per word and keeps enough nearby subtitle, lyric, or text blocks for context, while preserving line breaks inside multi-line subtitle cues.
+- Bangumi application: <https://bgm.tv/dev/app>
+- Jimaku API key: <https://jimaku.cc/api/docs>
+- `JPCORPUS_USER_AGENT`: Bangumi API clients should use a meaningful User-Agent. The default works, but setting your own is recommended.
+- Optional LLM provider: used for on-demand reading explanations. Supported options include Anthropic, OpenAI-compatible endpoints, and macOS Apple Foundation Models.
 
-Lyrics are optional local cache data, like subtitles. Refresh syncs Bangumi music collections, splits album subjects into track rows through Bangumi episodes, searches LRCLIB, and stores matched synced `.lrc` or plain `.txt` files under `data/lyrics-cache/`. It first builds a versioned LRCLIB album candidate cache with album and artist query fallbacks, then scores each track so covers and remixes can still match while obvious instrumental or non-Japanese results are skipped. LRCLIB misses are cached in the local state database too, so repeated refreshes skip BGM/OST misses by default. Subtitle and lyric examples stay separate in the corpus JSON through `source_type`.
+Shell environment variables take precedence over `.env`. The viewer writes to `.env` only when opened on `127.0.0.1`.
 
-Local text files are optional too. Put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh. The corpus importer will add them as `source_type: text`, using EPUB metadata when available and the file name as a fallback title.
+### Refreshing Data
 
-Web text can be imported from the viewer Maintenance panel by pasting a title, optional URL, and selected text. The app saves the text under `texts/web/` with a sidecar metadata file, then refreshes only the imported web-text slice of the corpus. Exact duplicate web text is detected by content hash, so importing the same page or selection again reuses the existing file and skips the refresh. Imported web texts can be deleted from the Sources panel; the viewer removes the saved `.txt` and `.meta.json` files and refreshes that same web-text slice instead of reprocessing subtitles, lyrics, and books.
+The Maintenance panel has two main actions:
 
-The optional unpacked Chrome extension in `browser_extension/` adds right-click selection import, right-click main-article import using Mozilla Readability with a generic fallback, a small page-area picker, and an in-page reading mode that asks the local viewer to annotate visible Japanese text with subtle highlights and a floating glossary panel. Words can be marked for review, marked known, ignored, or cleared from that floating panel. Extension imports show an in-page toast and a notification for both success and failure, so a stopped or stale local viewer is visible without opening the popup.
+- **Refresh**: the normal day-to-day action. It syncs new media, local text, web imports, subtitles, lyrics, and rebuilds viewer data.
+- **Full refresh**: occasional maintenance. It also refetches base resources such as word lists, dictionaries, and the anime database.
 
-Optional reader AI explanation uses Anthropic, OpenAI-compatible endpoints, or Apple Foundation Models configured through `.env` or the viewer Configuration form. The Apple provider compiles `jpcorpus/apple_fm_explain.swift` into `~/.jpcorpus/apple_fm_explain` on first use, then keeps that worker process alive and sends JSONL requests over stdin/stdout for reader explanation requests.
+After first-time setup, run one Full refresh. Later, Refresh is usually enough.
 
-## Data Files
+### Import Sources
+
+Supported sources:
+
+- **Subtitles**: Bangumi collection entries are mapped to anime IDs, then Jimaku is searched for Japanese subtitles.
+- **Lyrics**: Bangumi music collections and track metadata are matched against LRCLIB; hits and misses are cached locally.
+- **Local text**: put Japanese `.txt` or `.epub` files in `texts/`, then click Refresh.
+- **Web articles**: paste text in the Maintenance panel or use the Chrome extension in `browser_extension/`.
+
+EPUB imports prefer book metadata and fall back to the file name.
+
+### Study and Reading
+
+The viewer has two core workflows:
+
+- **Browse/study vocabulary**: filter by JLPT level, frequency, gojuon order, source, and study state. Words can be added to review, marked known, ignored, or cleared.
+- **Reader mode**: choose a subtitle, lyric, book, or web article and click words in context. The side panel shows meanings, parts of speech, examples, study state, and optional AI explanations.
+
+Study progress is stored locally.
+
+### Browser Extension
+
+`browser_extension/` is an optional unpacked Chrome extension. It can:
+
+- Import selected text from the right-click menu.
+- Import the main article text from the right-click menu.
+- Highlight Japanese words directly on the current page.
+- Show a floating glossary panel where words can be added to review, marked known, ignored, or cleared.
+
+Install it with:
+
+1. Open Chrome Extensions.
+2. Enable Developer mode.
+3. Choose Load unpacked.
+4. Select this repository's `browser_extension/` directory.
+
+The extension connects to <http://127.0.0.1:8767/> by default.
+
+### Main Data Files
 
 ```text
 data/
-  anime-offline-database.json  # cached Anime Offline Database release asset
-  jlpt-words.json              # local JLPT vocabulary list
-  jimaku-cache/                # downloaded .srt/.ass files
-  lyrics-cache/                # downloaded .lrc/.txt lyric files
-texts/                         # optional local Japanese .txt/.epub books/articles
-texts/web/                     # web selections imported by the viewer or extension
+  anime-offline-database.json  # Anime Offline Database cache
+  jlpt-words.json              # local JLPT word list
+  jp-zh-dict.json              # Japanese-Chinese glossary
+  zhwiktionary-ja-dict.json    # zhwiktionary Japanese entries used as fallback
+  jimaku-cache/                # downloaded subtitles
+  lyrics-cache/                # downloaded lyrics
+texts/                         # local .txt/.epub inputs
+texts/web/                     # web imports
+corpus.json                    # full generated corpus
 corpus.index.json              # compact viewer index
 corpus.words/                  # per-word detail shards
 corpus.sources/                # per-source reader/detail shards
-browser_extension/             # optional unpacked Chrome extension for web import and page annotation
-~/.jpcorpus/state.db           # OAuth token, watched shows, music tracks, cached file index, versioned caches
+browser_extension/             # optional Chrome extension
+~/.jpcorpus/state.db           # local tokens, sync state, caches, study state
 ```
 
-`jpcorpus` accepts JLPT JSON as either a list of objects or a dictionary grouped by level. Each word object can use common keys such as `word`, `surface`, `reading`, `level`, `meaning`, or `translation`.
+`corpus.json` and its sidecars are generated files. Use Refresh in the UI to update them.
 
-## Notes on Mapping
+### Notes
 
-Jimaku's current API searches entries by AniList ID or fuzzy title query. The Anime Offline Database does not guarantee Bangumi IDs, so this implementation tries:
+JLPT does not publish an official vocabulary list, so JLPT levels here are study guidance rather than an exam guarantee.
 
-1. Direct Bangumi source URL match if present in the dataset.
-2. Exact normalized title + year match.
-3. Exact normalized title match without year.
-
-When no mapping is found, sync falls back to a Jimaku title search.
+Chinese meanings primarily come from a local Japanese-Chinese glossary, with zhwiktionary used as a fallback when useful. The fallback tries to filter out entries that are only redirects, old spellings, or abbreviation notes, but dictionary data can still contain noise.
