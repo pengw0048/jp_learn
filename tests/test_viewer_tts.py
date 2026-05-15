@@ -68,7 +68,7 @@ def test_synthesize_voicevox_posts_query_then_synthesis(monkeypatch: pytest.Monk
     monkeypatch.setattr("jpcorpus.viewer_tts.urlopen", fake_urlopen)
 
     audio = synthesize_voicevox(
-        {"text": "  こんにちは\n世界  ", "speaker": "8"},
+        {"text": "  こんにちは\n世界  ", "speaker": "8", "rate": "1.25"},
         base_url="http://voicevox.test/",
         timeout=3.0,
     )
@@ -83,6 +83,7 @@ def test_synthesize_voicevox_posts_query_then_synthesis(monkeypatch: pytest.Monk
     assert calls[1]["method"] == "POST"
     assert parse_qs(urlparse(calls[1]["url"]).query) == {"speaker": ["8"]}
     assert calls[1]["headers"]["Content-type"] == "application/json"
+    assert json.loads(calls[1]["data"].decode("utf-8"))["speedScale"] == 1.25
     assert calls[0]["timeout"] == 3.0
     assert calls[1]["timeout"] == 3.0
 

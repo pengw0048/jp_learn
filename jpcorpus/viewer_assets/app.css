@@ -1515,6 +1515,47 @@ mark {
   margin-top: 10px;
 }
 
+.tts-settings {
+  display: grid;
+  gap: 10px;
+}
+
+.tts-provider-segmented {
+  justify-self: start;
+}
+
+.tts-provider-segmented button {
+  min-width: 96px;
+}
+
+.tts-rate-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.tts-rate-control input {
+  padding: 0;
+}
+
+.tts-rate-control output {
+  color: var(--text);
+  font-weight: 760;
+  text-align: right;
+}
+
+.tts-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tts-preview-row .maintenance-help {
+  margin-top: 0;
+}
+
 .config-status-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

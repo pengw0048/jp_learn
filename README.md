@@ -54,7 +54,7 @@ $EDITOR .env
 - Jimaku API key: <https://jimaku.cc/api/docs>
 - `JPCORPUS_USER_AGENT`: Bangumi API 需要一个有意义的 User-Agent。默认值可以跑，但建议换成你自己的。
 - 可选 LLM: 用于阅读时的临时解释，可以配置 Anthropic、OpenAI-compatible endpoint，或 macOS Apple Foundation Models。
-- 可选朗读：默认使用浏览器的日语语音；如果想用 VOICEVOX，先在本机启动 VOICEVOX engine，让它监听 `127.0.0.1:50021`，然后在维护面板切换朗读方式。音频按需生成，不会缓存到本地。
+- 可选朗读：默认使用浏览器的日语语音，可以在维护面板选择具体 voice、预览、调速度；如果想用 VOICEVOX，先在本机启动 VOICEVOX engine，让它监听 `127.0.0.1:50021`，然后切换到 VOICEVOX。音频按需生成，不会缓存到本地。
 
 Shell 里的环境变量优先级高于 `.env`。网页 UI 只有在 `127.0.0.1` 打开时才会写入本地 `.env`。
 
@@ -189,7 +189,7 @@ Common settings:
 - Jimaku API key: <https://jimaku.cc/api/docs>
 - `JPCORPUS_USER_AGENT`: Bangumi API clients should use a meaningful User-Agent. The default works, but setting your own is recommended.
 - Optional LLM provider: used for on-demand reading explanations. Supported options include Anthropic, OpenAI-compatible endpoints, and macOS Apple Foundation Models.
-- Optional read-aloud: browser Japanese speech is used by default. To use VOICEVOX, start a local VOICEVOX engine on `127.0.0.1:50021`, then switch the voice provider in Maintenance. Audio is generated on demand and is not cached locally.
+- Optional read-aloud: browser Japanese speech is used by default, with voice selection, preview, and speed controls in Maintenance. To use VOICEVOX, start a local VOICEVOX engine on `127.0.0.1:50021`, then switch the provider to VOICEVOX. Audio is generated on demand and is not cached locally.
 
 Shell environment variables take precedence over `.env`. The viewer writes to `.env` only when opened on `127.0.0.1`.
 

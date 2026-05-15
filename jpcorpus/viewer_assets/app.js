@@ -17,7 +17,9 @@ const {
   readReaderWordList,
   readReaderPositions,
   readTtsProvider,
+  readTtsBrowserVoice,
   readTtsVoicevoxSpeaker,
+  readTtsRate,
 } = window.JPCORPUS_STORAGE;
 const api = window.JPCORPUS_API;
 const {
@@ -117,7 +119,10 @@ const app = {
   },
   tts: {
     provider: readTtsProvider(),
+    browserVoice: readTtsBrowserVoice(),
     voicevoxSpeaker: readTtsVoicevoxSpeaker(),
+    rate: readTtsRate(),
+    browserVoices: [],
     voicevoxSpeakers: [],
     loading: false,
     error: "",
@@ -203,8 +208,14 @@ const refs = {
   configLlmBaseUrl: $("#config-llm-base-url"),
   configLlmModel: $("#config-llm-model"),
   configLlmApiKey: $("#config-llm-api-key"),
-  ttsProvider: $("#tts-provider"),
+  ttsProviderButtons: document.querySelectorAll("[data-tts-provider]"),
+  ttsBrowserVoiceField: $("#tts-browser-voice-field"),
+  ttsBrowserVoice: $("#tts-browser-voice"),
+  ttsVoicevoxSpeakerField: $("#tts-voicevox-speaker-field"),
   ttsVoicevoxSpeaker: $("#tts-voicevox-speaker"),
+  ttsRate: $("#tts-rate"),
+  ttsRateValue: $("#tts-rate-value"),
+  ttsPreview: $("#tts-preview"),
   ttsStatus: $("#tts-status"),
   importTextTitle: $("#import-text-title"),
   importTextUrl: $("#import-text-url"),

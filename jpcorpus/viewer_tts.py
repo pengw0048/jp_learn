@@ -41,6 +41,7 @@ def synthesize_voicevox(
 ) -> bytes:
     text = _tts_text(raw.get("text"))
     speaker = _speaker_id(raw.get("speaker"))
+    rate = _tts_rate(raw.get("rate"))
     if speaker is None:
         speaker = DEFAULT_VOICEVOX_SPEAKER
     base = base_url.rstrip("/")
@@ -49,6 +50,8 @@ def synthesize_voicevox(
         data=b"",
         timeout=timeout,
     )
+    if isinstance(query, dict):
+        query["speedScale"] = rate
     request = Request(
         f"{base}/synthesis?{urlencode({'speaker': speaker})}",
         data=json.dumps(query, ensure_ascii=False).encode("utf-8"),
@@ -80,3 +83,13 @@ def _speaker_id(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return speaker if speaker >= 0 else None
+
+
+def _tts_rate(value: Any) -> float:
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if not 0.5 <= rate <= 2.0:
+        return 1.0
+    return rate

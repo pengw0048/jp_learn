@@ -10,7 +10,9 @@ window.JPCORPUS_STORAGE = (() => {
   const STORAGE_READER_WORD_LIST = "jpcorpus.viewer.readerWordList.v1";
   const STORAGE_READER_POSITIONS = "jpcorpus.viewer.readerPositions.v1";
   const STORAGE_TTS_PROVIDER = "jpcorpus.viewer.ttsProvider.v1";
+  const STORAGE_TTS_BROWSER_VOICE = "jpcorpus.viewer.ttsBrowserVoice.v1";
   const STORAGE_TTS_VOICEVOX_SPEAKER = "jpcorpus.viewer.ttsVoicevoxSpeaker.v1";
+  const STORAGE_TTS_RATE = "jpcorpus.viewer.ttsRate.v1";
 
   const DAILY_STUDY_LIMIT = 30;
   const STUDY_REVIEW_DELAY_DAYS = 1;
@@ -146,9 +148,17 @@ window.JPCORPUS_STORAGE = (() => {
     return TTS_PROVIDER_VALUES.has(value) ? value : "browser";
   }
 
+  function readTtsBrowserVoice() {
+    return localStorage.getItem(STORAGE_TTS_BROWSER_VOICE) || "";
+  }
+
   function readTtsVoicevoxSpeaker() {
     const value = localStorage.getItem(STORAGE_TTS_VOICEVOX_SPEAKER) || "";
     return /^\d+$/.test(value) ? value : "";
+  }
+
+  function readTtsRate() {
+    return clampStorageNumber(Number(localStorage.getItem(STORAGE_TTS_RATE) || "0.9"), 0.6, 1.4);
   }
 
   return {
@@ -163,7 +173,9 @@ window.JPCORPUS_STORAGE = (() => {
     STORAGE_READER_WORD_LIST,
     STORAGE_READER_POSITIONS,
     STORAGE_TTS_PROVIDER,
+    STORAGE_TTS_BROWSER_VOICE,
     STORAGE_TTS_VOICEVOX_SPEAKER,
+    STORAGE_TTS_RATE,
     DAILY_STUDY_LIMIT,
     STUDY_REVIEW_DELAY_DAYS,
     STUDY_TARGET_COUNT,
@@ -184,7 +196,9 @@ window.JPCORPUS_STORAGE = (() => {
     readReaderWordList,
     readReaderPositions,
     readTtsProvider,
+    readTtsBrowserVoice,
     readTtsVoicevoxSpeaker,
+    readTtsRate,
     clampStudyCount,
   };
 })();
