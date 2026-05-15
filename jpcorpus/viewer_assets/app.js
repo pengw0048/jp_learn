@@ -40,6 +40,7 @@ const text = window.JPCORPUS_TEXT;
 const {
   configMissingLabels,
   configServiceLabel,
+  llmInputState,
 } = window.JPCORPUS_CONFIG;
 
 
@@ -675,6 +676,7 @@ function renderMaintenance() {
     return;
   }
   renderConfigStatus();
+  renderLlmConfigFields();
   const task = maintenanceTask();
   const job = app.maintenance.job;
   const visibleJob = visibleMaintenanceJob(job);
@@ -691,6 +693,14 @@ function renderMaintenance() {
   renderMaintenanceProgress(visibleJob);
   refs.maintenanceLog.textContent = visibleJob?.log?.join("\n") || "";
   renderCorpusSyncBanner();
+}
+
+function renderLlmConfigFields() {
+  const state = llmInputState(refs.configLlmProvider.value, t);
+  [refs.configLlmBaseUrl, refs.configLlmModel, refs.configLlmApiKey].forEach((input) => {
+    input.disabled = state.disabled;
+    input.placeholder = state.placeholder;
+  });
 }
 
 function renderConfigStatus() {

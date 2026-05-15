@@ -28,8 +28,22 @@ window.JPCORPUS_CONFIG = (() => {
     });
   }
 
+  function llmInputState(provider, t) {
+    if (provider === "apple") {
+      return {
+        disabled: true,
+        placeholder: t("configLlmAppleNoFields"),
+      };
+    }
+    return {
+      disabled: false,
+      placeholder: "",
+    };
+  }
+
   return {
     configMissingLabels,
     configServiceLabel,
+    llmInputState,
   };
 })();

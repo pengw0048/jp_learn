@@ -162,6 +162,38 @@ def test_config_status_labels_hide_environment_variable_names():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
+def test_apple_llm_provider_disables_unneeded_inputs():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_i18n.js")!r});
+        require({str(VIEWER_ASSET_DIR / "app_config.js")!r});
+
+        const zh = (key) => window.JPCORPUS_TEXT.zh[key] || key;
+        const en = (key) => window.JPCORPUS_TEXT.en[key] || key;
+
+        assert.deepEqual(window.JPCORPUS_CONFIG.llmInputState("apple", zh), {{
+          disabled: true,
+          placeholder: "Apple 本机模型不需要填写",
+        }});
+        assert.deepEqual(window.JPCORPUS_CONFIG.llmInputState("apple", en), {{
+          disabled: true,
+          placeholder: "Not needed for Apple local model",
+        }});
+        assert.deepEqual(window.JPCORPUS_CONFIG.llmInputState("openai-compatible", zh), {{
+          disabled: false,
+          placeholder: "",
+        }});
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
     node = shutil.which("node")
     if not node:
