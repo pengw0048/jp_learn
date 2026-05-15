@@ -66,6 +66,29 @@ def test_viewer_javascript_files_parse_with_node():
         )
 
 
+def test_i18n_uses_ui_refresh_language_for_corpus_updates():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_i18n.js")!r});
+
+        const text = window.JPCORPUS_TEXT;
+        assert.equal(text.zh.taskExportCorpus, "重新生成语料");
+        assert.equal(text.en.taskExportCorpus, "Regenerate corpus");
+        assert.equal(text.zh.loadErrorBody.includes("导出命令"), false);
+        assert.equal(text.en.loadErrorBody.includes("Export the corpus first"), false);
+        assert.equal(text.zh.maintenanceTaskFetchLexicalResources.includes("JMdict"), false);
+        assert.equal(text.en.maintenanceTaskFetchLexicalResources.includes("JMdict"), false);
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
     node = shutil.which("node")
     if not node:

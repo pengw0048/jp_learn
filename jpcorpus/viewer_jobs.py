@@ -222,7 +222,7 @@ class ViewerJobRunner:
                     "phase": "export",
                     "total": 1,
                     "completed": 0,
-                    "current_step": "Export corpus",
+                    "current_step": "Regenerate corpus",
                     "percent": 0.0,
                 },
             )
@@ -236,7 +236,7 @@ class ViewerJobRunner:
                     "phase": "export",
                     "total": 1,
                     "completed": 1,
-                    "current_step": "Export corpus",
+                    "current_step": "Regenerate corpus",
                     "percent": 100.0,
                 },
             )
@@ -304,7 +304,7 @@ class ViewerJobRunner:
 
         return self._run_callable(
             job,
-            "Export corpus",
+            "Regenerate corpus",
             tasks.export_corpus_json,
             output=output,
             state_db=self.state_db,
@@ -889,7 +889,7 @@ def composite_maintenance_steps(spec: dict[str, Any]) -> list[tuple[str, dict[st
         ("Sync Bangumi anime and subtitles", {"type": "sync_anime"}),
         ("Sync Bangumi music tracks", {"type": "sync_music"}),
         ("Fetch missing LRCLIB lyrics", lyric_spec),
-        ("Export refreshed corpus", {"type": "export_corpus"}),
+        ("Regenerate corpus", {"type": "export_corpus"}),
     ]
     if spec["type"] == "sync_media":
         return sync_steps

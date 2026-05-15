@@ -120,6 +120,7 @@ def test_composite_sync_media_finishes_with_corpus_export():
 
     steps = composite_maintenance_steps(spec)
 
+    assert steps[-1][0] == "Regenerate corpus"
     assert [step[1]["type"] for step in steps] == [
         "sync_anime",
         "sync_music",
