@@ -20,11 +20,14 @@ const MESSAGES = {
     cannotToggleReader: "无法切换网页阅读模式。",
     readingSelection: "正在读取当前选中内容...",
     noSelection: "没有选中文字可导入。",
+    alreadyImported: "已经导入过 {title}。",
+    imported: "已导入 {title}。",
     importFailed: "导入失败。",
     startingPicker: "正在启动点选模式...",
     cannotStartPicker: "无法启动点选模式。",
     pickerStarted: "移动鼠标高亮文本块，点击导入，或按 Esc 取消。",
     importSelectionUnavailable: "请先在网页上选中文字。",
+    webTextTitle: "网页文本",
   },
   en: {
     baseUrl: "Local viewer URL",
@@ -45,11 +48,14 @@ const MESSAGES = {
     cannotToggleReader: "Could not toggle reading mode.",
     readingSelection: "Reading current selection...",
     noSelection: "No selected text to import.",
+    alreadyImported: "Already imported {title}.",
+    imported: "Imported {title}.",
     importFailed: "Import failed.",
     startingPicker: "Starting area picker...",
     cannotStartPicker: "Could not start area picker.",
     pickerStarted: "Hover a text block, click to import, or press Esc.",
     importSelectionUnavailable: "Select text on the page first.",
+    webTextTitle: "web text",
   },
 };
 
@@ -161,12 +167,20 @@ async function importCurrentSelection() {
     if (!response?.ok) {
       throw new Error(response?.error || t("importFailed"));
     }
-    refs.status.textContent = "";
+    refs.status.textContent = importResultMessage(response.result);
   } catch (error) {
     refs.status.textContent = error.message || String(error);
   } finally {
     refreshSelectionButton();
   }
+}
+
+function importResultMessage(result) {
+  const imported = result?.imported || {};
+  const title = imported.title || t("webTextTitle");
+  return result?.duplicate || imported.duplicate
+    ? t("alreadyImported", { title })
+    : t("imported", { title });
 }
 
 async function startAreaPicker() {

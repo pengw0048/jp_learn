@@ -23,3 +23,12 @@ def test_browser_extension_scripts_parse(script_name: str) -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_popup_keeps_success_feedback_after_selection_import() -> None:
+    popup = (ROOT / "browser_extension" / "popup.js").read_text(encoding="utf-8")
+
+    assert 'alreadyImported: "已经导入过 {title}。"' in popup
+    assert 'imported: "已导入 {title}。"' in popup
+    assert "refs.status.textContent = importResultMessage(response.result);" in popup
+    assert 'refs.status.textContent = "";' not in popup
