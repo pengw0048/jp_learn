@@ -253,7 +253,7 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
           el: makeNode,
           t: (key) => ({{
             lexicalNotes: "词语知识",
-            lexicalPos: "语法",
+            lexicalPos: "词性",
             lexicalSenses: "词典义项",
           }}[key] || key),
           getLanguage: () => "zh",
@@ -305,7 +305,7 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
         const parsedMeaning = helpers.renderMeaningValue({{
           meaning_zh: "（いい/よい）①【イ形】好的",
         }}, "meaning-main").textContent;
-        assert.equal(parsedMeaning, "①イ形好的");
+        assert.equal(parsedMeaning, "好的");
 
         const enHelpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
           el: makeNode,

@@ -797,6 +797,26 @@ def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
     )
     assert clean_zhwiktionary_gloss("抬，举，放，上。，【挙げる】手を高い位置に移动させる。") == "抬，举，放，上。"
     assert clean_zhwiktionary_gloss("感ずる【かんずる】 自他サ 感じる") == ""
+    assert clean_zhwiktionary_gloss("スマートホン (sumātohon，“智慧型手机”) 的截断形式。") == "智慧型手机"
+    assert clean_zhwiktionary_gloss("小さい (chīsai，“小的”)的另一种写法") == "小的"
+    assert clean_zhwiktionary_gloss("苗字的另一种写法：姓氏") == "姓氏"
+    assert clean_zhwiktionary_gloss("恥的另一种写法") == "耻"
+    assert clean_zhwiktionary_gloss("名·他 サ 埋伏。") == "埋伏。"
+    assert clean_zhwiktionary_gloss("［名词．副词］自サ 一跃，纵身成为。") == "一跃，纵身成为。"
+    assert clean_zhwiktionary_gloss("见カフェオーレ。") == ""
+    assert clean_zhwiktionary_gloss("ストライキ (“罢工”)之简写") == "罢工"
+    assert clean_zhwiktionary_gloss("変態性欲 (hentai seiyoku)之简写") == ""
+    assert clean_zhwiktionary_gloss("【job】见ジョブ。") == ""
+    assert clean_zhwiktionary_gloss("街灯，路灯。==日语==") == "街灯，路灯。"
+    assert clean_zhwiktionary_gloss("〔访れる〕拜访，访问。") == "拜访，访问。"
+    assert clean_zhwiktionary_gloss("同ね (ne)。") == ""
+    assert clean_zhwiktionary_gloss("→ たま [玉・珠・球・弾]，玉，宝石，珍珠。") == "玉，宝石，珍珠。"
+    assert clean_zhwiktionary_gloss("【たま】 → たま [玉・珠・球・弾]") == ""
+    assert clean_zhwiktionary_gloss("【棒球】ソロホーマー的缩写（solo homer）") == ""
+    assert (
+        clean_zhwiktionary_gloss("好く【すく】\n他五\n== 日语 ==\n好く【多用其被动、否定形式】喜好，爱好。")
+        == "喜好，爱好。"
+    )
 
 
 def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):

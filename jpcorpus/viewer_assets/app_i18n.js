@@ -40,7 +40,7 @@ window.JPCORPUS_TEXT = {
     lexicalNotes: "词语知识",
     lexicalSpellings: "写法",
     lexicalReadings: "异读",
-    lexicalPos: "语法",
+    lexicalPos: "词性",
     lexicalSenses: "词典义项",
     lexicalExamples: "词典例句",
     scene: "场景",

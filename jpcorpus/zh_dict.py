@@ -497,11 +497,16 @@ def clean_zhwiktionary_gloss_part(value: str) -> str:
     value = normalize_gloss_source(value).strip(" 　；;")
     if not value or re.fullmatch(r"=+\s*日语\s*=+", value):
         return ""
+    value = re.sub(r"=+\s*日语\s*=+\s*", "", value)
     value = strip_japanese_form_prefix(value)
     value = strip_zhwiktionary_headword_prefix(value)
+    value = strip_parenthetical_headword_prefix(value)
     value = strip_zhwiktionary_headword_usage_prefix(value)
     value = strip_leading_japanese_usage_bracket(value)
+    value = strip_latin_usage_bracket(value)
+    value = strip_zhwiktionary_semantic_prefix(value)
     value = strip_zhwiktionary_pos_prefix(value)
+    value = normalize_zhwiktionary_meta_gloss(value)
     value = strip_trailing_japanese_variant_note(value)
     value = strip_inline_japanese_example(value)
     value = value.strip(" 　，,；;")
@@ -544,12 +549,65 @@ def strip_zhwiktionary_headword_prefix(value: str) -> str:
 
 
 def strip_zhwiktionary_pos_prefix(value: str) -> str:
-    return re.sub(
-        r"^(?:名(?:[?？·・](?:副|形动|他サ|自サ))?|动|他动|自动|自他サ|他サ|自サ|他五|自五|他下一|自下一|补动五|形动|形|副|连体|词组|惯用|接头|接尾|感|代|助动|助词|格助|终助|副助)(?:\s+|$)",
+    value = re.sub(
+        r"^［[^］]*(?:名词|副词|动词|形容词)[^］]*］\s*",
         "",
         value,
         count=1,
     ).strip()
+    pos_token = (
+        r"(?:名|副|形动|形|动|他动|自动|自他|他|自|サ|五|下一|补动|连体|词组|惯用|接头|接尾|"
+        r"感|代|助动|助词|格助|终助|副助)"
+    )
+    if re.fullmatch(rf"{pos_token}(?:[?？·・•.\s]*(?:{pos_token}))*", value):
+        return ""
+    return re.sub(
+        rf"^(?:{pos_token}(?:[?？·・•.\s]*(?:{pos_token}))*)(?:\s+|$)",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_parenthetical_headword_prefix(value: str) -> str:
+    return re.sub(
+        r"^[一-龯々ぁ-ゖァ-ヺー・]+[（(][ぁ-ゖァ-ヺー・/／;；\s]+[）)](?:\s*[（(][^)）]+[）)])?\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def normalize_zhwiktionary_meta_gloss(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    if match := re.match(r"^→[^，,；;]+[，,]\s*(.+)$", value):
+        return match.group(1).strip()
+    if match := re.search(r"[（(][^()（）]*[“\"]([^”\"]+)[”\"][^()（）]*[）)]", value):
+        return match.group(1).strip()
+    if match := re.match(r"^(.+?)的(?:另一种写法|旧字体形式|異體字|异体字|简写|简称|缩写|截断形式)[。.]?$", value):
+        return clean_meta_gloss_target(match.group(1))
+    if match := re.match(r"^.+?的(?:另一种写法|旧字体形式|異體字|异体字)[:：]\s*(.+)$", value):
+        return match.group(1).strip()
+    if re.match(r"^同[ぁ-ゖァ-ヺー・]+(?:\s*[（(][^)）]+[)）])?[。.]?$", value):
+        return ""
+    if (contains_kana(value) or contains_latin(value)) and re.search(
+        r"(?:之|的)?(?:另一种写法|旧字体形式|简写|简称|缩写|截断形式|同义词)(?:[（(][^)）]+[)）])?[。.]?$",
+        value,
+    ):
+        return ""
+    if re.search(r"(?:后|後)接.+[:：]$", value):
+        return ""
+    if re.match(r"^(?:见|参见|另见|→)\s*[一-龯々ぁ-ゖァ-ヺー・\[\]・･（）()\s]+[。.]?$", value):
+        return ""
+    return value
+
+
+def clean_meta_gloss_target(value: str) -> str:
+    value = strip_parenthetical_headword_prefix(value)
+    value = re.sub(r"[（(][^)）]*[)）]", "", value)
+    return value.strip(" 　，,；;。.")
 
 
 def strip_zhwiktionary_headword_usage_prefix(value: str) -> str:
@@ -564,6 +622,24 @@ def strip_zhwiktionary_headword_usage_prefix(value: str) -> str:
 def strip_leading_japanese_usage_bracket(value: str) -> str:
     return re.sub(
         r"^【[^】]*(?:[一-龯々ぁ-ゖァ-ヺー「」～]|常用|多用|接)[^】]*】\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_latin_usage_bracket(value: str) -> str:
+    return re.sub(
+        r"^【[A-Za-z0-9 ._-]+】\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_zhwiktionary_semantic_prefix(value: str) -> str:
+    return re.sub(
+        r"^〔[^〕]+〕\s*",
         "",
         value,
         count=1,
@@ -604,10 +680,14 @@ def contains_kana(value: str) -> bool:
     return bool(re.search(r"[ぁ-ゖァ-ヺ]", value))
 
 
+def contains_latin(value: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", value))
+
+
 def is_japanese_example_line(value: str) -> bool:
     if not contains_kana(value):
         return False
-    if re.search(r"(的|义|语|词|谦|称|表示|用于|源于|简称|读作)", value):
+    if re.search(r"(的|义|语|词|谦|称|表示|用于|源于|简称|缩写|读作|形式|被动|否定|敬语|多用|常用)", value):
         return False
     return True
 
@@ -634,7 +714,7 @@ def is_useless_zhwiktionary_gloss_part(value: str) -> bool:
 
 
 def simplify_zh_gloss(value: str) -> str:
-    return opencc_t2s().convert(value)
+    return opencc_t2s().convert(value).replace("芸术", "艺术")
 
 
 @lru_cache(maxsize=1)

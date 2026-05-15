@@ -49,6 +49,10 @@ window.JPCORPUS_LEXICAL = (() => {
       if (!meaning.raw) {
         return wrap;
       }
+      if (language() === "zh") {
+        wrap.append(el("span", "meaning-text", meaning.text || meaning.raw));
+        return wrap;
+      }
       if (meaning.accent) {
         wrap.append(el("span", "meaning-chip meaning-accent", meaning.accent));
       }
