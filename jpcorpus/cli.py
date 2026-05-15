@@ -14,6 +14,10 @@ load_dotenv()
 DEFAULT_VIEWER_CORPUS = Path("corpus.json")
 DEFAULT_VIEWER_HOST = "127.0.0.1"
 DEFAULT_VIEWER_PORT = 8767
+FIRST_RUN_HINT = (
+    "Next: open Maintenance, fill the required keys, then run Full refresh. "
+    "After that, use Refresh for normal updates."
+)
 HELP_TEXT = """Usage: jpcorpus [OPTIONS]
 
 Open the local jpcorpus app.
@@ -41,9 +45,9 @@ def main(argv: list[str] | None = None) -> None:
     )
 
 
-def ensure_viewer_corpus(corpus: Path) -> None:
+def ensure_viewer_corpus(corpus: Path) -> bool:
     if corpus.exists():
-        return
+        return False
     if corpus.name != "corpus.json":
         raise FileNotFoundError(f"Corpus JSON does not exist: {corpus}")
     payload = {
@@ -64,10 +68,40 @@ def ensure_viewer_corpus(corpus: Path) -> None:
     ensure_parent(corpus)
     corpus.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     echo(f"Created starter corpus: {corpus}")
+    return True
+
+
+def is_empty_viewer_corpus(corpus: Path) -> bool:
+    try:
+        payload = json.loads(corpus.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    words = payload.get("words")
+    sources = payload.get("sources")
+    summary = payload.get("summary") or {}
+    return (
+        isinstance(words, list)
+        and isinstance(sources, list)
+        and not words
+        and not sources
+        and not any(
+            summary.get(key, 0)
+            for key in (
+                "show_count",
+                "subtitle_file_count",
+                "lyric_file_count",
+                "text_file_count",
+                "total_tokens",
+                "unique_tokens",
+            )
+        )
+    )
 
 
 def launch_viewer(corpus: Path, *, host: str, port: int, open_browser: bool) -> None:
-    ensure_viewer_corpus(corpus)
+    created = ensure_viewer_corpus(corpus)
+    if created or is_empty_viewer_corpus(corpus):
+        echo(FIRST_RUN_HINT)
     serve_viewer(corpus, host=host, port=port, open_browser=open_browser, echo=echo)
 
 
