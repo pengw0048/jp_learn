@@ -28,6 +28,7 @@ INDEX_WORD_KEYS = {
     "level_number",
     "meaning",
     "meaning_zh",
+    "meaning_zh_source",
     "count",
     "subtitle_count",
     "lyrics_count",
@@ -474,13 +475,14 @@ def _word_to_dict(
         )
     notes = _apply_zh_pos_fallback(word, zh_glossary, notes=notes)
     meaning = word.entry.meaning or _meaning_from_lexical_notes(notes)
+    meaning_zh, meaning_zh_source = _meaning_zh_lookup(word, zh_glossary, notes=notes)
     payload = {
         "word": word.entry.surface,
         "reading": word.display_reading,
         "level": f"N{word.entry.level}" if word.entry.level > 0 else None,
         "level_number": word.entry.level if word.entry.level > 0 else None,
         "meaning": meaning,
-        "meaning_zh": _meaning_zh(word, zh_glossary, notes=notes),
+        "meaning_zh": meaning_zh,
         "count": word.count,
         "source_type_counts": dict(word.source_type_counts),
         "subtitle_count": word.source_type_counts.get("subtitle", 0),
@@ -495,6 +497,8 @@ def _word_to_dict(
             for example in _select_examples(word.examples, limit=examples_per_word)
         ],
     }
+    if meaning_zh_source:
+        payload["meaning_zh_source"] = meaning_zh_source
     if notes:
         payload["lexical_notes"] = notes
     return payload
@@ -664,14 +668,25 @@ def _meaning_zh(
     *,
     notes: dict[str, object] | None = None,
 ) -> str | None:
+    return _meaning_zh_lookup(word, zh_glossary, notes=notes)[0]
+
+
+def _meaning_zh_lookup(
+    word: WordStats,
+    zh_glossary: ChineseGlossary | None,
+    *,
+    notes: dict[str, object] | None = None,
+) -> tuple[str | None, str | None]:
     if zh_glossary:
-        meaning = zh_glossary.lookup(
+        result = zh_glossary.lookup_with_source(
             *_zh_lookup_keys(word, notes=notes),
             reading=_zh_lookup_reading(word, notes=notes),
         )
-        if meaning:
-            return meaning
-    return word.entry.meaning_zh
+        if result:
+            return result
+    if word.entry.meaning_zh:
+        return word.entry.meaning_zh, "word_entry"
+    return None, None
 
 
 def _zh_lookup_keys(word: WordStats, *, notes: dict[str, object] | None) -> list[str]:

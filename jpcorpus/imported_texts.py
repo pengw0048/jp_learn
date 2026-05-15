@@ -564,7 +564,15 @@ def merge_imported_word(target: dict[str, Any], source: dict[str, Any]) -> None:
     sync_word_source_count_fields(target)
     merge_word_sources(target, as_dict_list(source.get("sources")))
     merge_word_examples(target, as_dict_list(source.get("examples")))
-    for key in ("reading", "level", "level_number", "meaning", "meaning_zh", "lexical_notes"):
+    for key in (
+        "reading",
+        "level",
+        "level_number",
+        "meaning",
+        "meaning_zh",
+        "meaning_zh_source",
+        "lexical_notes",
+    ):
         if not target.get(key) and source.get(key):
             target[key] = source[key]
 

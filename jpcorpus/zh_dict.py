@@ -48,6 +48,45 @@ ZHWIKTIONARY_POS_LABELS = {
     "前缀": "接头词",
     "接頭辞": "接头词",
 }
+ZH_DICT_POS_LABELS = {
+    "名": "名词",
+    "名词": "名词",
+    "名詞": "名词",
+    "专": "专有名词",
+    "专有词": "专有名词",
+    "代词": "代词",
+    "动1": "动词",
+    "动2": "动词",
+    "动3": "动词",
+    "動詞": "动词",
+    "他动": "他动",
+    "他动1": "他动",
+    "他动2": "他动",
+    "他动3": "他动",
+    "自动": "自动",
+    "自动1": "自动",
+    "自动2": "自动",
+    "自动3": "自动",
+    "形1": "い形容词",
+    "イ形": "い形容词",
+    "形2": "な形容词",
+    "ナ形": "な形容词",
+    "形容词": "形容词",
+    "形容动词": "な形容词",
+    "自サ": "自动",
+    "他サ": "他动",
+    "自他サ": "自他动",
+    "自动3": "自动",
+    "他动3": "他动",
+    "自他动3": "自他动",
+    "副": "副词",
+    "副词": "副词",
+    "接续词": "接续词",
+    "连接词": "接续词",
+    "感叹词": "感叹词",
+    "惯用语": "惯用语",
+    "熟语": "惯用语",
+}
 CHINESE_GLOSS_OVERRIDES = {
     "ありがとう": "谢谢",
     "有難う": "谢谢",
@@ -56,6 +95,9 @@ CHINESE_GLOSS_OVERRIDES = {
     "お早う": "早上好",
     "こんにちは": "你好；午安",
     "こんばんは": "晚上好",
+    "ごめん": "对不起；不好意思",
+    "ご免": "对不起；不好意思",
+    "御免": "对不起；不好意思",
     "ごめんなさい": "对不起；不好意思",
     "すみません": "不好意思；对不起；劳驾",
     "さようなら": "再见",
@@ -74,6 +116,8 @@ class ChineseGlossary:
     fallback_entries: dict[str, str] = field(default_factory=dict)
     fallback_readings: dict[str, tuple[str, ...]] = field(default_factory=dict)
     fallback_parts_of_speech: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    source_by_key: dict[str, str] = field(default_factory=dict)
+    fallback_source_by_key: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path = DEFAULT_ZH_DICT) -> "ChineseGlossary":
@@ -86,6 +130,8 @@ class ChineseGlossary:
         fallback_entries: dict[str, str] = {}
         fallback_readings: dict[str, tuple[str, ...]] = {}
         fallback_parts_of_speech: dict[str, tuple[str, ...]] = {}
+        source_by_key: dict[str, str] = {}
+        fallback_source_by_key: dict[str, str] = {}
         for index, glossary_path in enumerate(paths):
             is_fallback = index > 0
             loaded_entries, loaded_readings, loaded_parts_of_speech = load_glossary_payload(glossary_path)
@@ -94,6 +140,7 @@ class ChineseGlossary:
                 entry_readings = loaded_readings.get(key)
                 if is_fallback:
                     fallback_entries[key] = gloss
+                    fallback_source_by_key[key] = "zhwiktionary_fallback"
                     if entry_readings:
                         fallback_readings[key] = entry_readings
                     else:
@@ -107,6 +154,7 @@ class ChineseGlossary:
                         parts_of_speech[key] = entry_parts_of_speech
                     continue
                 entries[key] = gloss
+                source_by_key[key] = "zhwiktionary_fallback" if is_fallback else "zh_dict"
                 if entry_readings:
                     readings[key] = entry_readings
                 else:
@@ -117,6 +165,7 @@ class ChineseGlossary:
                     parts_of_speech.pop(key, None)
         entries.update(CHINESE_GLOSS_OVERRIDES)
         for key in CHINESE_GLOSS_OVERRIDES:
+            source_by_key[key] = "override"
             readings.pop(key, None)
         return cls(
             entries,
@@ -125,18 +174,38 @@ class ChineseGlossary:
             fallback_entries,
             fallback_readings,
             fallback_parts_of_speech,
+            source_by_key,
+            fallback_source_by_key,
         )
 
     def lookup(self, *keys: str | None, reading: str | None = None) -> str | None:
+        result = self.lookup_with_source(*keys, reading=reading)
+        return result[0] if result else None
+
+    def lookup_with_source(self, *keys: str | None, reading: str | None = None) -> tuple[str, str] | None:
         for key in keys:
             if not key:
                 continue
-            gloss = lookup_gloss_entry(self.entries, self.readings, key, reading=reading)
-            if gloss:
-                return gloss
-            gloss = lookup_gloss_entry(self.fallback_entries, self.fallback_readings, key, reading=reading)
-            if gloss:
-                return gloss
+            result = lookup_gloss_entry(
+                self.entries,
+                self.readings,
+                self.source_by_key,
+                key,
+                reading=reading,
+                default_source="zh_dict",
+            )
+            if result:
+                return result
+            result = lookup_gloss_entry(
+                self.fallback_entries,
+                self.fallback_readings,
+                self.fallback_source_by_key,
+                key,
+                reading=reading,
+                default_source="zhwiktionary_fallback",
+            )
+            if result:
+                return result
         return None
 
     def lookup_parts_of_speech(self, *keys: str | None, reading: str | None = None) -> tuple[str, ...]:
@@ -160,16 +229,18 @@ class ChineseGlossary:
 def lookup_gloss_entry(
     entries: dict[str, str],
     readings: dict[str, tuple[str, ...]],
+    sources: dict[str, str],
     key: str,
     *,
     reading: str | None,
-) -> str | None:
+    default_source: str,
+) -> tuple[str, str] | None:
     gloss = entries.get(key)
     if not gloss:
         return None
     if not entry_reading_matches(readings, key, reading=reading):
         return None
-    return gloss
+    return gloss, sources.get(key, default_source)
 
 
 def lookup_tuple_entry(
@@ -219,7 +290,7 @@ def load_glossary_payload(
         else:
             value_text = str(value)
             entry_readings = extract_gloss_readings(value_text)
-            entry_parts_of_speech = ()
+            entry_parts_of_speech = extract_gloss_parts_of_speech(value_text)
         entries[key_text] = clean_gloss(value_text)
         if entry_readings:
             readings[key_text] = entry_readings
@@ -318,11 +389,13 @@ def zhwiktionary_sense_glosses(item: dict[str, Any]) -> list[str]:
     for sense in item.get("senses") or []:
         if not isinstance(sense, dict) or "no-gloss" in (sense.get("tags") or []):
             continue
-        glosses = [
-            clean_zhwiktionary_gloss(str(value))
-            for value in sense.get("glosses") or []
-            if str(value).strip()
-        ]
+        glosses: list[str] = []
+        for value in sense.get("glosses") or []:
+            if not str(value).strip():
+                continue
+            cleaned = clean_zhwiktionary_gloss(str(value))
+            if cleaned:
+                glosses.append(cleaned)
         if not glosses:
             continue
         tags = set(str(tag) for tag in (sense.get("tags") or []))
@@ -407,8 +480,32 @@ def clean_zhwiktionary_gloss(value: str) -> str:
         if line_glosses:
             return "；".join(line_glosses)
     value = simplify_zh_gloss(normalize_gloss_source(value))
+    return clean_zhwiktionary_inline_gloss(value)
+
+
+def clean_zhwiktionary_inline_gloss(value: str) -> str:
+    return "；".join(
+        unique_strings(
+            cleaned
+            for part in re.split(r"[;；]", value)
+            if (cleaned := clean_zhwiktionary_gloss_part(part))
+        )
+    )
+
+
+def clean_zhwiktionary_gloss_part(value: str) -> str:
+    value = normalize_gloss_source(value).strip(" 　；;")
+    if not value or re.fullmatch(r"=+\s*日语\s*=+", value):
+        return ""
     value = strip_japanese_form_prefix(value)
-    return strip_inline_japanese_example(value)
+    value = strip_zhwiktionary_headword_prefix(value)
+    value = strip_zhwiktionary_headword_usage_prefix(value)
+    value = strip_leading_japanese_usage_bracket(value)
+    value = strip_zhwiktionary_pos_prefix(value)
+    value = strip_trailing_japanese_variant_note(value)
+    value = strip_inline_japanese_example(value)
+    value = value.strip(" 　，,；;")
+    return "" if is_useless_zhwiktionary_gloss_part(value) else value
 
 
 def zhwiktionary_definition_lines(lines: list[str]) -> list[str]:
@@ -423,6 +520,9 @@ def zhwiktionary_definition_lines(lines: list[str]) -> list[str]:
             continue
         if is_japanese_example_line(line):
             skip_example_translation = True
+            continue
+        line = clean_zhwiktionary_gloss_part(line)
+        if not line:
             continue
         if skip_example_translation and is_likely_example_translation(line):
             skip_example_translation = False
@@ -445,7 +545,25 @@ def strip_zhwiktionary_headword_prefix(value: str) -> str:
 
 def strip_zhwiktionary_pos_prefix(value: str) -> str:
     return re.sub(
-        r"^(?:名(?:[?？·・](?:副|形动|他サ|自サ))?|动|他动|自动|形动|形|副|连体|词组|惯用|接头|接尾|感|代|助动|助词|格助|终助|副助)(?:\s+|$)",
+        r"^(?:名(?:[?？·・](?:副|形动|他サ|自サ))?|动|他动|自动|自他サ|他サ|自サ|他五|自五|他下一|自下一|补动五|形动|形|副|连体|词组|惯用|接头|接尾|感|代|助动|助词|格助|终助|副助)(?:\s+|$)",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_zhwiktionary_headword_usage_prefix(value: str) -> str:
+    return re.sub(
+        r"^[一-龯々ぁ-ゖァ-ヺー・]+【[^】]*(?:[ぁ-ゖァ-ヺー「」～]|常用|多用|接)[^】]*】\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_leading_japanese_usage_bracket(value: str) -> str:
+    return re.sub(
+        r"^【[^】]*(?:[一-龯々ぁ-ゖァ-ヺー「」～]|常用|多用|接)[^】]*】\s*",
         "",
         value,
         count=1,
@@ -454,6 +572,10 @@ def strip_zhwiktionary_pos_prefix(value: str) -> str:
 
 def strip_numbered_gloss_prefix(value: str) -> str:
     return re.sub(r"^\d+[.．、]\s*", "", value, count=1).strip()
+
+
+def strip_trailing_japanese_variant_note(value: str) -> str:
+    return re.sub(r"[，,、]\s*【[^】]+】.*$", "", value, count=1).strip()
 
 
 def strip_inline_japanese_example(value: str) -> str:
@@ -499,6 +621,18 @@ def is_likely_example_translation(value: str) -> bool:
     return not contains_kana(value)
 
 
+def is_useless_zhwiktionary_gloss_part(value: str) -> bool:
+    if not value:
+        return True
+    if value in {"自サ", "他サ", "自他サ", "他五", "自五", "他下一", "自下一", "补动五"}:
+        return True
+    if contains_kana(value) and re.fullmatch(r"[一-龯々ぁ-ゖァ-ヺー・]+", value):
+        return True
+    if contains_kana(value) and re.search(r"[をにでがはへとて][一-龯々ぁ-ゖァ-ヺー]", value):
+        return True
+    return bool(re.fullmatch(r"=+.*=+", value))
+
+
 def simplify_zh_gloss(value: str) -> str:
     return opencc_t2s().convert(value)
 
@@ -514,6 +648,11 @@ def extract_gloss_readings(value: str) -> tuple[str, ...]:
     if not match:
         return ()
     return split_readings(match.group(1))
+
+
+def extract_gloss_parts_of_speech(value: str) -> tuple[str, ...]:
+    _, parts_of_speech = split_clean_gloss(value)
+    return parts_of_speech
 
 
 def readings_match(reading: str, expected_readings: tuple[str, ...]) -> bool:
@@ -549,6 +688,55 @@ def katakana_to_hiragana(value: str) -> str:
 
 
 def clean_gloss(value: str) -> str:
+    cleaned, _ = split_clean_gloss(value)
+    return cleaned
+
+
+def split_clean_gloss(value: str) -> tuple[str, tuple[str, ...]]:
     value = normalize_gloss_source(value)
-    value = re.sub(r"^[（(][ぁ-んァ-ンー・\s0-9０-９⓪①②③④⑤⑥⑦⑧⑨/／;；]+[）)]\s*", "", value)
-    return value
+    value = strip_leading_gloss_parenthetical(value)
+    labels: list[str] = []
+    value = strip_leading_gloss_numbers(value)
+    while True:
+        match = re.match(r"^【([^】]+)】\s*", value)
+        if not match:
+            break
+        labels.extend(normalize_zh_dict_pos_label(match.group(1)))
+        value = value[match.end():].lstrip()
+        value = strip_leading_gloss_numbers(value)
+    value, text_labels = strip_text_pos_prefix(value)
+    labels.extend(text_labels)
+    return value.strip(), tuple(unique_strings(labels))
+
+
+def strip_leading_gloss_numbers(value: str) -> str:
+    return re.sub(r"^(?:[0-9０-９]+[.．、]?|[⓪①②③④⑤⑥⑦⑧⑨])\s*", "", value, count=1).strip()
+
+
+def strip_leading_gloss_parenthetical(value: str) -> str:
+    return re.sub(r"^[（(][^）)]{1,40}[）)]\s*", "", value, count=1).strip()
+
+
+def strip_text_pos_prefix(value: str) -> tuple[str, list[str]]:
+    for raw in sorted(ZH_DICT_POS_LABELS, key=len, reverse=True):
+        match = re.match(rf"^{re.escape(raw)}(?:\s+|　+)", value)
+        if not match:
+            continue
+        return value[match.end():].strip(), normalize_zh_dict_pos_label(raw)
+    return value, []
+
+
+def normalize_zh_dict_pos_label(value: str) -> list[str]:
+    raw = re.sub(r"\s+", "", str(value or ""))
+    raw = raw.strip("[]【】")
+    if not raw:
+        return []
+    label = ZH_DICT_POS_LABELS.get(raw)
+    if label:
+        return [label]
+    labels: list[str] = []
+    for item in re.split(r"[·・/／,，;；、]+", raw):
+        label = ZH_DICT_POS_LABELS.get(item)
+        if label:
+            labels.append(label)
+    return unique_strings(labels)

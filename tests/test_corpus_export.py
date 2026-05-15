@@ -64,6 +64,7 @@ def test_export_corpus_json(tmp_path: Path):
     assert payload["sources"][0]["lines"][0]["matches"][0]["matched_text"] == "約束"
     assert payload["words"][0]["word"] == "約束"
     assert payload["words"][0]["meaning_zh"] == "约定，约会"
+    assert payload["words"][0]["meaning_zh_source"] == "zh_dict"
     assert payload["words"][0]["source_type_counts"] == {"subtitle": 1}
     assert payload["words"][0]["examples"][0]["sentence"] == "私は約束を見る。"
     assert payload["words"][0]["examples"][0]["source_type"] == "subtitle"
@@ -88,6 +89,7 @@ def test_export_corpus_json(tmp_path: Path):
     assert "lexical_notes" not in index_payload["words"][0]
     assert index_payload["words"][0]["example_count"] == 1
     assert "約束" in index_payload["words"][0]["search_terms"]
+    assert index_payload["words"][0]["meaning_zh_source"] == "zh_dict"
     assert index_payload["sources"][0]["source_key"]
     assert index_payload["sources"][0]["line_count"] == 1
     assert index_payload["sources"][0]["words"] == ["約束"]
@@ -757,9 +759,11 @@ def test_jlpt_common_greeting_overrides_are_beginner_level(tmp_path: Path):
 
 
 def test_clean_chinese_gloss_removes_leading_reading():
-    assert clean_gloss("（みる）①【他动2】看，观看") == "①【他动2】看，观看"
+    assert clean_gloss("（みる）①【他动2】看，观看") == "看，观看"
     assert clean_gloss("(いま1) 现在") == "现在"
-    assert clean_gloss("（いい/よい）①【イ形】好的") == "①【イ形】好的"
+    assert clean_gloss("（いい/よい）①【イ形】好的") == "好的"
+    assert clean_gloss("⓪【名·ナ形】真；真的；实在") == "真；真的；实在"
+    assert clean_gloss("（romantic）④【ナ形】浪漫的，幻想的") == "浪漫的，幻想的"
 
 
 def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
@@ -783,6 +787,16 @@ def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
         == "当时。；暂时，一时。"
     )
     assert clean_zhwiktionary_gloss("比喻：用作抽象意义") == "比喻：用作抽象意义"
+    assert (
+        clean_zhwiktionary_gloss("看，观看。；【観る】 观赏。；【看る】 照顾，照护。；【诊る】 诊断。")
+        == "看，观看。；观赏。；照顾，照护。；诊断。"
+    )
+    assert (
+        clean_zhwiktionary_gloss("允许，准许。；== 日语 ==；御免【常用 「～下さい」 的形式，作为客套话】对不起，劳驾。")
+        == "允许，准许。；对不起，劳驾。"
+    )
+    assert clean_zhwiktionary_gloss("抬，举，放，上。，【挙げる】手を高い位置に移动させる。") == "抬，举，放，上。"
+    assert clean_zhwiktionary_gloss("感ずる【かんずる】 自他サ 感じる") == ""
 
 
 def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):
@@ -792,7 +806,8 @@ def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):
     glossary = ChineseGlossary.load(path)
 
     assert extract_gloss_readings("（いい/よい）①【イ形】好的") == ("いい", "よい")
-    assert glossary.lookup("雨", reading="あめ") == "名词 雨"
+    assert glossary.lookup("雨", reading="あめ") == "雨"
+    assert glossary.lookup_parts_of_speech("雨", reading="あめ") == ("名词",)
     assert glossary.lookup("雨", reading="あま") is None
 
 
@@ -805,8 +820,20 @@ def test_chinese_glossary_matches_multi_reading_words(tmp_path: Path):
 
     glossary = ChineseGlossary.load(path)
 
-    assert glossary.lookup("良い", reading="よい; いい") == "①【イ形】好的"
-    assert glossary.lookup("反省", reading="はんせい") == "动3 反省，反思"
+    assert glossary.lookup("良い", reading="よい; いい") == "好的"
+    assert glossary.lookup_parts_of_speech("良い", reading="よい; いい") == ("い形容词",)
+    assert glossary.lookup("反省", reading="はんせい") == "反省，反思"
+    assert glossary.lookup_parts_of_speech("反省", reading="はんせい") == ("动词",)
+
+
+def test_chinese_glossary_extracts_compound_pos_prefixes(tmp_path: Path):
+    path = tmp_path / "dict.json"
+    path.write_text('{"本当": "⓪【名·ナ形】真；真的；实在"}', encoding="utf-8")
+
+    glossary = ChineseGlossary.load(path)
+
+    assert glossary.lookup("本当") == "真；真的；实在"
+    assert glossary.lookup_parts_of_speech("本当") == ("名词", "な形容词")
 
 
 def test_chinese_glossary_tries_fallback_after_primary_reading_mismatch():
@@ -819,6 +846,7 @@ def test_chinese_glossary_tries_fallback_after_primary_reading_mismatch():
     )
 
     assert glossary.lookup("音", reading="おと") == "sound"
+    assert glossary.lookup_with_source("音", reading="おと") == ("sound", "zhwiktionary_fallback")
 
 
 def test_zhwiktionary_japanese_glossary_is_loaded_as_fallback_source(
@@ -875,8 +903,10 @@ def test_zhwiktionary_japanese_glossary_is_loaded_as_fallback_source(
     glossary = ChineseGlossary.load(fallback)
 
     assert glossary.lookup("アイス") == "fallback"
+    assert glossary.lookup_with_source("アイス") == ("fallback", "zh_dict")
     assert glossary.lookup_parts_of_speech("アイス") == ("名词",)
     assert glossary.lookup("鳴き声") == "动物的叫声"
+    assert glossary.lookup_with_source("鳴き声") == ("动物的叫声", "zhwiktionary_fallback")
     assert glossary.lookup_parts_of_speech("鳴き声") == ("名词",)
     assert glossary.lookup("聞く") == "聆听，欣赏；打听，询问；答应，听从；嗅，闻"
     assert glossary.lookup("字") is None
@@ -899,6 +929,7 @@ def test_zhwiktionary_pos_fills_lexical_notes_when_jmdict_is_missing(tmp_path: P
     word = next(word for word in payload["words"] if word["word"] == "アイス")
 
     assert word["meaning_zh"] == "冰"
+    assert word["meaning_zh_source"] == "zh_dict"
     assert word["lexical_notes"]["parts_of_speech"] == ["名词"]
     assert "senses" not in word["lexical_notes"]
 
@@ -911,6 +942,8 @@ def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):
 
     assert glossary.lookup("おはよう") == "早上好"
     assert glossary.lookup("ありがとう") == "谢谢"
+    assert glossary.lookup("御免") == "对不起；不好意思"
+    assert glossary.lookup_with_source("御免") == ("对不起；不好意思", "override")
 
 
 def test_select_examples_prefers_quality_and_source_diversity():
