@@ -472,6 +472,7 @@ def _word_to_dict(
             word.display_reading,
             meaning_hint=word.entry.meaning,
         )
+    notes = _apply_zh_pos_fallback(word, zh_glossary, notes=notes)
     meaning = word.entry.meaning or _meaning_from_lexical_notes(notes)
     payload = {
         "word": word.entry.surface,
@@ -497,6 +498,27 @@ def _word_to_dict(
     if notes:
         payload["lexical_notes"] = notes
     return payload
+
+
+def _apply_zh_pos_fallback(
+    word: WordStats,
+    zh_glossary: ChineseGlossary | None,
+    *,
+    notes: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if not zh_glossary:
+        return notes
+    if isinstance(notes, dict) and notes.get("parts_of_speech"):
+        return notes
+    parts_of_speech = zh_glossary.lookup_parts_of_speech(
+        *_zh_lookup_keys(word, notes=notes),
+        reading=_zh_lookup_reading(word, notes=notes),
+    )
+    if not parts_of_speech:
+        return notes
+    next_notes = dict(notes or {})
+    next_notes["parts_of_speech"] = list(parts_of_speech[:4])
+    return next_notes
 
 
 def _meaning_from_lexical_notes(notes: dict[str, object] | None) -> str | None:

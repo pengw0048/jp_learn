@@ -813,13 +813,40 @@ def test_zhwiktionary_japanese_glossary_is_loaded_as_primary_source(tmp_path: Pa
     fallback.write_text('{"アイス": "fallback"}', encoding="utf-8")
 
     build_zhwiktionary_ja_dict(raw_path, output)
-    fallback_entries, fallback_readings = ChineseGlossary.load(fallback).entries, ChineseGlossary.load(fallback).readings
-    wiktionary_entries, wiktionary_readings = ChineseGlossary.load(output).entries, ChineseGlossary.load(output).readings
-    glossary = ChineseGlossary({**fallback_entries, **wiktionary_entries}, {**fallback_readings, **wiktionary_readings})
+    fallback_glossary = ChineseGlossary.load(fallback)
+    wiktionary_glossary = ChineseGlossary.load(output)
+    glossary = ChineseGlossary(
+        {**fallback_glossary.entries, **wiktionary_glossary.entries},
+        {**fallback_glossary.readings, **wiktionary_glossary.readings},
+        {**fallback_glossary.parts_of_speech, **wiktionary_glossary.parts_of_speech},
+    )
 
     assert glossary.lookup("アイス") == "冰；冰棒，冰淇淋"
+    assert glossary.lookup_parts_of_speech("アイス") == ("名词",)
     assert glossary.lookup("鳴き声") == "动物的叫声"
+    assert glossary.lookup_parts_of_speech("鳴き声") == ("名词",)
     assert glossary.lookup("字") is None
+
+
+def test_zhwiktionary_pos_fills_lexical_notes_when_jmdict_is_missing(tmp_path: Path):
+    jlpt_path = tmp_path / "jlpt.json"
+    jlpt_path.write_text(
+        '[{"word":"アイス","reading":"あいす","level":"N5","meaning":"ice"}]',
+        encoding="utf-8",
+    )
+    analysis = analyze_paths(paths=[], jlpt_words=load_jlpt_words(jlpt_path))
+    glossary = ChineseGlossary(
+        {"アイス": "冰"},
+        {"アイス": ("あいす",)},
+        {"アイス": ("名词",)},
+    )
+
+    payload = analysis_to_dict(analysis, zh_glossary=glossary, jmdict_path=None)
+    word = next(word for word in payload["words"] if word["word"] == "アイス")
+
+    assert word["meaning_zh"] == "冰"
+    assert word["lexical_notes"]["parts_of_speech"] == ["名词"]
+    assert "senses" not in word["lexical_notes"]
 
 
 def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):

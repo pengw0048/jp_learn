@@ -20,6 +20,34 @@ DEFAULT_ZH_DICT_URL = (
 )
 ZHWIKTIONARY_RAW_URL = "https://kaikki.org/zhwiktionary/raw-wiktextract-data.jsonl.gz"
 ZHWIKTIONARY_FORM_SKIP_TAGS = {"romanization", "past", "continuative", "archaic"}
+ZHWIKTIONARY_POS_LABELS = {
+    "noun": "名词",
+    "名詞": "名词",
+    "名词": "名词",
+    "proper-noun": "专有名词",
+    "verb": "动词",
+    "動詞": "动词",
+    "动词": "动词",
+    "adj": "形容词",
+    "adjective": "形容词",
+    "形容詞": "形容词",
+    "形容词": "形容词",
+    "adv": "副词",
+    "adverb": "副词",
+    "副詞": "副词",
+    "副词": "副词",
+    "intj": "感叹词",
+    "interjection": "感叹词",
+    "感嘆詞": "感叹词",
+    "感歎詞": "感叹词",
+    "叹词": "感叹词",
+    "suffix": "接尾词",
+    "后缀": "接尾词",
+    "接尾辞": "接尾词",
+    "prefix": "接头词",
+    "前缀": "接头词",
+    "接頭辞": "接头词",
+}
 CHINESE_GLOSS_OVERRIDES = {
     "ありがとう": "谢谢",
     "有難う": "谢谢",
@@ -42,6 +70,7 @@ CHINESE_GLOSS_OVERRIDES = {
 class ChineseGlossary:
     entries: dict[str, str]
     readings: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    parts_of_speech: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path = DEFAULT_ZH_DICT) -> "ChineseGlossary":
@@ -50,8 +79,9 @@ class ChineseGlossary:
             paths.append(DEFAULT_ZHWIKTIONARY_JA_DICT)
         entries: dict[str, str] = {}
         readings: dict[str, tuple[str, ...]] = {}
+        parts_of_speech: dict[str, tuple[str, ...]] = {}
         for glossary_path in paths:
-            loaded_entries, loaded_readings = load_glossary_payload(glossary_path)
+            loaded_entries, loaded_readings, loaded_parts_of_speech = load_glossary_payload(glossary_path)
             entries.update(loaded_entries)
             for key in loaded_entries:
                 entry_readings = loaded_readings.get(key)
@@ -59,10 +89,15 @@ class ChineseGlossary:
                     readings[key] = entry_readings
                 else:
                     readings.pop(key, None)
+                entry_parts_of_speech = loaded_parts_of_speech.get(key)
+                if entry_parts_of_speech:
+                    parts_of_speech[key] = entry_parts_of_speech
+                else:
+                    parts_of_speech.pop(key, None)
         entries.update(CHINESE_GLOSS_OVERRIDES)
         for key in CHINESE_GLOSS_OVERRIDES:
             readings.pop(key, None)
-        return cls(entries, readings)
+        return cls(entries, readings, parts_of_speech)
 
     def lookup(self, *keys: str | None, reading: str | None = None) -> str | None:
         for key in keys:
@@ -76,27 +111,48 @@ class ChineseGlossary:
                 return gloss
         return None
 
+    def lookup_parts_of_speech(self, *keys: str | None, reading: str | None = None) -> tuple[str, ...]:
+        for key in keys:
+            if not key:
+                continue
+            values = self.parts_of_speech.get(key)
+            if values:
+                expected_readings = self.readings.get(key)
+                if expected_readings and reading and not readings_match(reading, expected_readings):
+                    continue
+                return values
+        return ()
 
-def load_glossary_payload(path: Path) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
+
+def load_glossary_payload(
+    path: Path,
+) -> tuple[dict[str, str], dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]:
     if not path.exists():
-        return {}, {}
+        return {}, {}, {}
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"Chinese glossary must be a JSON object: {path}")
     entries: dict[str, str] = {}
     readings: dict[str, tuple[str, ...]] = {}
+    parts_of_speech: dict[str, tuple[str, ...]] = {}
     for key, value in payload.items():
         key_text = str(key)
         if isinstance(value, dict):
             value_text = str(value.get("gloss") or "")
             entry_readings = tuple(str(item) for item in value.get("readings") or [] if str(item))
+            entry_parts_of_speech = tuple(
+                str(item) for item in value.get("parts_of_speech") or [] if str(item)
+            )
         else:
             value_text = str(value)
             entry_readings = extract_gloss_readings(value_text)
+            entry_parts_of_speech = ()
         entries[key_text] = clean_gloss(value_text)
         if entry_readings:
             readings[key_text] = entry_readings
-    return entries, readings
+        if entry_parts_of_speech:
+            parts_of_speech[key_text] = entry_parts_of_speech
+    return entries, readings, parts_of_speech
 
 
 def download_zh_dict(
@@ -151,7 +207,11 @@ def build_zhwiktionary_ja_dict(raw_path: Path, output: Path = DEFAULT_ZHWIKTIONA
                 if current is None or int(entry["score"]) > int(current.get("score") or 0):
                     entries[key] = entry
     payload = {
-        key: {"gloss": value["gloss"], "readings": value.get("readings") or []}
+        key: {
+            "gloss": value["gloss"],
+            "readings": value.get("readings") or [],
+            "parts_of_speech": value.get("parts_of_speech") or [],
+        }
         for key, value in sorted(entries.items())
     }
     ensure_parent(output)
@@ -170,9 +230,11 @@ def zhwiktionary_ja_entry(item: dict[str, Any]) -> dict[str, Any] | None:
     if not sense_glosses:
         return None
     readings = zhwiktionary_readings(item)
+    parts_of_speech = zhwiktionary_parts_of_speech(item)
     return {
         "gloss": "；".join(sense_glosses[:5]),
         "readings": readings,
+        "parts_of_speech": parts_of_speech,
         "score": zhwiktionary_entry_score(item, readings),
     }
 
@@ -210,6 +272,14 @@ def zhwiktionary_readings(item: dict[str, Any]) -> list[str]:
         if is_kanaish(form_text) and not tags & ZHWIKTIONARY_FORM_SKIP_TAGS:
             values.append(katakana_to_hiragana(form_text))
     return unique_strings(values)
+
+
+def zhwiktionary_parts_of_speech(item: dict[str, Any]) -> list[str]:
+    return unique_strings(
+        label
+        for value in (item.get("pos"), item.get("pos_title"))
+        if (label := ZHWIKTIONARY_POS_LABELS.get(str(value or "")))
+    )
 
 
 def zhwiktionary_ja_keys(item: dict[str, Any]) -> list[str]:
