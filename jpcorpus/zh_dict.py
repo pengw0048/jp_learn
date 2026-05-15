@@ -71,6 +71,9 @@ class ChineseGlossary:
     entries: dict[str, str]
     readings: dict[str, tuple[str, ...]] = field(default_factory=dict)
     parts_of_speech: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    fallback_entries: dict[str, str] = field(default_factory=dict)
+    fallback_readings: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    fallback_parts_of_speech: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path = DEFAULT_ZH_DICT) -> "ChineseGlossary":
@@ -80,16 +83,34 @@ class ChineseGlossary:
         entries: dict[str, str] = {}
         readings: dict[str, tuple[str, ...]] = {}
         parts_of_speech: dict[str, tuple[str, ...]] = {}
-        for glossary_path in paths:
+        fallback_entries: dict[str, str] = {}
+        fallback_readings: dict[str, tuple[str, ...]] = {}
+        fallback_parts_of_speech: dict[str, tuple[str, ...]] = {}
+        for index, glossary_path in enumerate(paths):
+            is_fallback = index > 0
             loaded_entries, loaded_readings, loaded_parts_of_speech = load_glossary_payload(glossary_path)
-            entries.update(loaded_entries)
-            for key in loaded_entries:
+            for key, gloss in loaded_entries.items():
+                entry_parts_of_speech = loaded_parts_of_speech.get(key)
                 entry_readings = loaded_readings.get(key)
+                if is_fallback:
+                    fallback_entries[key] = gloss
+                    if entry_readings:
+                        fallback_readings[key] = entry_readings
+                    else:
+                        fallback_readings.pop(key, None)
+                    if entry_parts_of_speech:
+                        fallback_parts_of_speech[key] = entry_parts_of_speech
+                    else:
+                        fallback_parts_of_speech.pop(key, None)
+                if is_fallback and key in entries:
+                    if entry_parts_of_speech and key not in parts_of_speech:
+                        parts_of_speech[key] = entry_parts_of_speech
+                    continue
+                entries[key] = gloss
                 if entry_readings:
                     readings[key] = entry_readings
                 else:
                     readings.pop(key, None)
-                entry_parts_of_speech = loaded_parts_of_speech.get(key)
                 if entry_parts_of_speech:
                     parts_of_speech[key] = entry_parts_of_speech
                 else:
@@ -97,17 +118,24 @@ class ChineseGlossary:
         entries.update(CHINESE_GLOSS_OVERRIDES)
         for key in CHINESE_GLOSS_OVERRIDES:
             readings.pop(key, None)
-        return cls(entries, readings, parts_of_speech)
+        return cls(
+            entries,
+            readings,
+            parts_of_speech,
+            fallback_entries,
+            fallback_readings,
+            fallback_parts_of_speech,
+        )
 
     def lookup(self, *keys: str | None, reading: str | None = None) -> str | None:
         for key in keys:
             if not key:
                 continue
-            gloss = self.entries.get(key)
+            gloss = lookup_gloss_entry(self.entries, self.readings, key, reading=reading)
             if gloss:
-                expected_readings = self.readings.get(key)
-                if expected_readings and reading and not readings_match(reading, expected_readings):
-                    continue
+                return gloss
+            gloss = lookup_gloss_entry(self.fallback_entries, self.fallback_readings, key, reading=reading)
+            if gloss:
                 return gloss
         return None
 
@@ -115,13 +143,58 @@ class ChineseGlossary:
         for key in keys:
             if not key:
                 continue
-            values = self.parts_of_speech.get(key)
+            values = lookup_tuple_entry(self.parts_of_speech, self.readings, key, reading=reading)
             if values:
-                expected_readings = self.readings.get(key)
-                if expected_readings and reading and not readings_match(reading, expected_readings):
-                    continue
+                return values
+            values = lookup_tuple_entry(
+                self.fallback_parts_of_speech,
+                self.fallback_readings,
+                key,
+                reading=reading,
+            )
+            if values:
                 return values
         return ()
+
+
+def lookup_gloss_entry(
+    entries: dict[str, str],
+    readings: dict[str, tuple[str, ...]],
+    key: str,
+    *,
+    reading: str | None,
+) -> str | None:
+    gloss = entries.get(key)
+    if not gloss:
+        return None
+    if not entry_reading_matches(readings, key, reading=reading):
+        return None
+    return gloss
+
+
+def lookup_tuple_entry(
+    entries: dict[str, tuple[str, ...]],
+    readings: dict[str, tuple[str, ...]],
+    key: str,
+    *,
+    reading: str | None,
+) -> tuple[str, ...]:
+    values = entries.get(key)
+    if not values:
+        return ()
+    if not entry_reading_matches(readings, key, reading=reading):
+        return ()
+    return values
+
+
+def entry_reading_matches(
+    readings: dict[str, tuple[str, ...]],
+    key: str,
+    *,
+    reading: str | None,
+) -> bool:
+    expected_readings = readings.get(key)
+    return not expected_readings or not reading or readings_match(reading, expected_readings)
 
 
 def load_glossary_payload(
@@ -445,8 +518,18 @@ def extract_gloss_readings(value: str) -> tuple[str, ...]:
 
 def readings_match(reading: str, expected_readings: tuple[str, ...]) -> bool:
     normalized = set(split_readings(reading))
-    expected = {katakana_to_hiragana(value) for value in expected_readings}
+    expected = {
+        form
+        for value in expected_readings
+        for form in reading_match_forms(katakana_to_hiragana(value))
+    }
     return bool(normalized & expected)
+
+
+def reading_match_forms(value: str) -> tuple[str, ...]:
+    if value.endswith("する") and len(value) > 2:
+        return (value, value.removesuffix("する"))
+    return (value,)
 
 
 def split_readings(value: str) -> tuple[str, ...]:

@@ -3,6 +3,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from jpcorpus.analysis import (
     WordExample,
     WordStats,
@@ -796,14 +798,33 @@ def test_chinese_gloss_reading_prefixes_are_used_for_matching(tmp_path: Path):
 
 def test_chinese_glossary_matches_multi_reading_words(tmp_path: Path):
     path = tmp_path / "dict.json"
-    path.write_text('{"良い": "（いい/よい）①【イ形】好的"}', encoding="utf-8")
+    path.write_text(
+        '{"良い": "（いい/よい）①【イ形】好的", "反省": "（はんせいする）动3 反省，反思"}',
+        encoding="utf-8",
+    )
 
     glossary = ChineseGlossary.load(path)
 
     assert glossary.lookup("良い", reading="よい; いい") == "①【イ形】好的"
+    assert glossary.lookup("反省", reading="はんせい") == "动3 反省，反思"
 
 
-def test_zhwiktionary_japanese_glossary_is_loaded_as_primary_source(tmp_path: Path):
+def test_chinese_glossary_tries_fallback_after_primary_reading_mismatch():
+    glossary = ChineseGlossary(
+        {"音": "wrong reading"},
+        {"音": ("おん",)},
+        {},
+        {"音": "sound"},
+        {"音": ("おと",)},
+    )
+
+    assert glossary.lookup("音", reading="おと") == "sound"
+
+
+def test_zhwiktionary_japanese_glossary_is_loaded_as_fallback_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     raw_path = tmp_path / "zhwiktionary.jsonl.gz"
     output = tmp_path / "zhwiktionary-ja.json"
     fallback = tmp_path / "fallback.json"
@@ -849,15 +870,11 @@ def test_zhwiktionary_japanese_glossary_is_loaded_as_primary_source(tmp_path: Pa
     fallback.write_text('{"アイス": "fallback"}', encoding="utf-8")
 
     build_zhwiktionary_ja_dict(raw_path, output)
-    fallback_glossary = ChineseGlossary.load(fallback)
-    wiktionary_glossary = ChineseGlossary.load(output)
-    glossary = ChineseGlossary(
-        {**fallback_glossary.entries, **wiktionary_glossary.entries},
-        {**fallback_glossary.readings, **wiktionary_glossary.readings},
-        {**fallback_glossary.parts_of_speech, **wiktionary_glossary.parts_of_speech},
-    )
+    monkeypatch.setattr("jpcorpus.zh_dict.DEFAULT_ZH_DICT", fallback)
+    monkeypatch.setattr("jpcorpus.zh_dict.DEFAULT_ZHWIKTIONARY_JA_DICT", output)
+    glossary = ChineseGlossary.load(fallback)
 
-    assert glossary.lookup("アイス") == "冰；冰棒，冰淇淋"
+    assert glossary.lookup("アイス") == "fallback"
     assert glossary.lookup_parts_of_speech("アイス") == ("名词",)
     assert glossary.lookup("鳴き声") == "动物的叫声"
     assert glossary.lookup_parts_of_speech("鳴き声") == ("名词",)
