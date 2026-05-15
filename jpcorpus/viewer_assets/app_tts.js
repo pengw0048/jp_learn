@@ -36,7 +36,7 @@ window.JPCORPUS_TTS = (() => {
         localStorage.setItem(STORAGE_TTS_RATE, String(app.tts.rate));
         renderTtsRate();
       });
-      refs.ttsPreview?.addEventListener("click", () => speakText(t("ttsPreviewSample")));
+      refs.ttsPreview?.addEventListener("click", () => playFromButton(refs.ttsPreview, () => t("ttsPreviewSample")));
       if ("speechSynthesis" in window) {
         if (typeof window.speechSynthesis.addEventListener === "function") {
           window.speechSynthesis.addEventListener("voiceschanged", loadBrowserVoices);
@@ -62,7 +62,9 @@ window.JPCORPUS_TTS = (() => {
       renderVoicevoxSpeakers();
       renderTtsRate();
       refs.ttsStatus.textContent = ttsStatusText();
-      refs.ttsPreview.disabled = !canPreviewTts();
+      if (!refs.ttsPreview.classList.contains("tts-loading")) {
+        refs.ttsPreview.disabled = !canPreviewTts();
+      }
     }
 
     function renderBrowserVoices() {
@@ -194,10 +196,26 @@ window.JPCORPUS_TTS = (() => {
       button.setAttribute("aria-label", button.title);
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        const value = typeof textValue === "function" ? textValue() : textValue;
-        speakText(value);
+        playFromButton(button, textValue);
       });
       return button;
+    }
+
+    async function playFromButton(button, textValue) {
+      if (button.classList.contains("tts-loading")) {
+        return;
+      }
+      const value = typeof textValue === "function" ? textValue() : textValue;
+      const text = normalizeSpeechText(value);
+      if (!text) {
+        return;
+      }
+      setButtonLoading(button, true);
+      try {
+        await speakText(text);
+      } finally {
+        setButtonLoading(button, false);
+      }
     }
 
     async function speakText(value) {
@@ -236,6 +254,31 @@ window.JPCORPUS_TTS = (() => {
         renderTtsSettings();
         return false;
       }
+    }
+
+    function setButtonLoading(button, loading) {
+      button.classList.toggle("tts-loading", loading);
+      button.disabled = loading || (!button.classList.contains("tts-button") && !canPreviewTts());
+      button.setAttribute("aria-busy", loading ? "true" : "false");
+      if (loading) {
+        button.dataset.originalTitle = button.title || "";
+        button.dataset.originalAriaLabel = button.getAttribute("aria-label") || "";
+        button.title = t("ttsLoading");
+        button.setAttribute("aria-label", t("ttsLoading"));
+        return;
+      }
+      if (button.dataset.originalTitle) {
+        button.title = button.dataset.originalTitle;
+      } else {
+        button.removeAttribute("title");
+      }
+      if (button.dataset.originalAriaLabel) {
+        button.setAttribute("aria-label", button.dataset.originalAriaLabel);
+      } else {
+        button.removeAttribute("aria-label");
+      }
+      delete button.dataset.originalTitle;
+      delete button.dataset.originalAriaLabel;
     }
 
     function speakBrowser(text) {
@@ -313,7 +356,7 @@ window.JPCORPUS_TTS = (() => {
     function clampTtsRate(value) {
       const rate = Number(value);
       if (!Number.isFinite(rate)) {
-        return 0.9;
+        return 1;
       }
       const stepped = Math.round(rate / 0.05) * 0.05;
       return Number(Math.min(1.4, Math.max(0.6, stepped)).toFixed(2));

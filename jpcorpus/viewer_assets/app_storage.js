@@ -158,7 +158,7 @@ window.JPCORPUS_STORAGE = (() => {
   }
 
   function readTtsRate() {
-    return clampStorageNumber(Number(localStorage.getItem(STORAGE_TTS_RATE) || "0.9"), 0.6, 1.4);
+    return clampStorageNumber(Number(localStorage.getItem(STORAGE_TTS_RATE) || "1"), 0.6, 1.4);
   }
 
   return {

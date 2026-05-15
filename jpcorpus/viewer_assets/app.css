@@ -1295,6 +1295,33 @@ mark {
   color: var(--accent);
 }
 
+.tts-button.tts-loading,
+.secondary-button.tts-loading {
+  position: relative;
+  color: transparent;
+  pointer-events: none;
+}
+
+.tts-button.tts-loading::after,
+.secondary-button.tts-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 14px;
+  height: 14px;
+  margin: auto;
+  border: 2px solid color-mix(in srgb, var(--accent), transparent 72%);
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  animation: tts-spin 0.75s linear infinite;
+}
+
+@keyframes tts-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .detail-tts-button {
   align-self: center;
   margin-left: -2px;
