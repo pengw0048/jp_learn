@@ -806,6 +806,18 @@ def test_zhwiktionary_japanese_glossary_is_loaded_as_primary_source(tmp_path: Pa
             "pos_title": "名詞",
             "senses": [{"glosses": ["動物的叫聲"]}],
         },
+        {
+            "word": "聞く",
+            "lang_code": "ja",
+            "pos": "verb",
+            "pos_title": "動詞",
+            "senses": [
+                {"glosses": ["聞く，聴く： 聆聽，欣賞"]},
+                {"glosses": ["聞く，訊く： 打聽，詢問"]},
+                {"glosses": ["聞く： 答應，聽從"]},
+                {"glosses": ["聞く： 嗅，聞"]},
+            ],
+        },
     ]
     with gzip.open(raw_path, "wt", encoding="utf-8") as handle:
         for row in rows:
@@ -825,6 +837,7 @@ def test_zhwiktionary_japanese_glossary_is_loaded_as_primary_source(tmp_path: Pa
     assert glossary.lookup_parts_of_speech("アイス") == ("名词",)
     assert glossary.lookup("鳴き声") == "动物的叫声"
     assert glossary.lookup_parts_of_speech("鳴き声") == ("名词",)
+    assert glossary.lookup("聞く") == "聆听，欣赏；打听，询问；答应，听从；嗅，闻"
     assert glossary.lookup("字") is None
 
 

@@ -246,7 +246,7 @@ def zhwiktionary_sense_glosses(item: dict[str, Any]) -> list[str]:
         if not isinstance(sense, dict) or "no-gloss" in (sense.get("tags") or []):
             continue
         glosses = [
-            simplify_zh_gloss(normalize_gloss_source(str(value)))
+            clean_zhwiktionary_gloss(str(value))
             for value in sense.get("glosses") or []
             if str(value).strip()
         ]
@@ -321,6 +321,25 @@ def unique_strings(values: Iterable[str]) -> list[str]:
 def normalize_gloss_source(value: str) -> str:
     value = value.replace("\\n", " ")
     return re.sub(r"\s+", " ", value).strip()
+
+
+def clean_zhwiktionary_gloss(value: str) -> str:
+    value = simplify_zh_gloss(normalize_gloss_source(value))
+    return strip_japanese_form_prefix(value)
+
+
+def strip_japanese_form_prefix(value: str) -> str:
+    match = re.match(r"^([^:：]{1,60})[：:]\s*(.+)$", value)
+    if not match:
+        return value
+    prefix = match.group(1)
+    if not contains_kana(prefix):
+        return value
+    return match.group(2).strip()
+
+
+def contains_kana(value: str) -> bool:
+    return bool(re.search(r"[ぁ-ゖァ-ヺ]", value))
 
 
 def simplify_zh_gloss(value: str) -> str:
