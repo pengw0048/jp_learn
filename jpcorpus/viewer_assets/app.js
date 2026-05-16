@@ -368,9 +368,10 @@ const {
 });
 const {
   bindTtsSettings,
+  prepareSpeech,
   renderSpeakButton,
   renderTtsSettings,
-  speakText,
+  speakPreparedText,
   speechTextForWord,
   stopSpeech,
 } = window.JPCORPUS_TTS.createTtsHelpers({
@@ -1144,14 +1145,39 @@ async function startReaderSpeech(startKey = null) {
   app.reader.tts.stopRequested = false;
   app.reader.tts.lineKey = null;
   updateReaderSpeechUi();
+  let pendingPrefetch = null;
+  let pendingPrefetchKey = "";
+  const beginPrefetch = (line) => {
+    if (!line || app.tts.provider !== "voicevox") {
+      pendingPrefetch = null;
+      pendingPrefetchKey = "";
+      return;
+    }
+    if (pendingPrefetchKey === line.key) {
+      return;
+    }
+    pendingPrefetchKey = line.key;
+    pendingPrefetch = prefetchReaderSpeechLine(line, runId);
+  };
   try {
-    for (const line of lines) {
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
       if (!isReaderSpeechRunActive(runId)) {
         break;
       }
+      let prepared = null;
+      if (pendingPrefetch && pendingPrefetchKey === line.key) {
+        const result = await pendingPrefetch;
+        if (!isReaderSpeechRunActive(runId)) {
+          break;
+        }
+        prepared = result?.prepared || null;
+        pendingPrefetch = null;
+        pendingPrefetchKey = "";
+      }
       app.reader.tts.preparing = true;
       setReaderSpeakingLine(line.key);
-      const ok = await speakText(line.text, {
+      const ok = await speakPreparedText(prepared, line.text, {
         awaitEnd: true,
         isCancelled: () => !isReaderSpeechRunActive(runId),
         onStart: () => {
@@ -1160,6 +1186,7 @@ async function startReaderSpeech(startKey = null) {
           }
           app.reader.tts.preparing = false;
           setReaderSpeakingLine(line.key);
+          beginPrefetch(lines[index + 1]);
         },
         onEnd: () => {
           if (isReaderSpeechRunCurrent(runId) && app.reader.tts.lineKey === line.key) {
@@ -1180,6 +1207,20 @@ async function startReaderSpeech(startKey = null) {
     app.reader.tts.stopRequested = false;
     setReaderSpeakingLine(null);
   }
+}
+
+function prefetchReaderSpeechLine(line, runId) {
+  return prepareSpeech(line.text, {
+    isCancelled: () => !isReaderSpeechRunActive(runId),
+  })
+    .then((prepared) => ({
+      key: line.key,
+      prepared,
+    }))
+    .catch(() => ({
+      key: line.key,
+      prepared: null,
+    }));
 }
 
 function stopReaderSpeech() {

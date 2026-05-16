@@ -120,6 +120,7 @@ def test_llm_config_labels_are_user_facing_and_localized():
 def test_reader_mode_has_read_aloud_strings_and_controls():
     i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
     app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    tts = (VIEWER_ASSET_DIR / "app_tts.js").read_text(encoding="utf-8")
     css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
 
     assert 'readerReadAloud: "朗读"' in i18n
@@ -128,6 +129,9 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-speech-button" in app
     assert "reader-line-speech-button" in app
     assert "firstVisibleReaderLineKey" in app
+    assert "prefetchReaderSpeechLine" in app
+    assert "prepareSpeech" in tts
+    assert "speakPreparedText" in tts
     assert "reader-line-speaking" in css
 
 
