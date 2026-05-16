@@ -142,6 +142,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "singleLine: true" in reader
     assert "speechStartKey" in app
     assert "setReaderSpeechStartLine" in app
+    assert "setReaderSpeechStartLine(null)" in app
     assert 'document.querySelectorAll(".reader-speech-button")' in app
     assert "prefetchReaderSpeechLine" in app
     assert "markReaderSpeechStart" in app
@@ -482,11 +483,11 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
           reading: "やる",
           meaning_zh: "做",
           lexical_notes: {{
-            parts_of_speech: ["五段・る", "他动", "自动", "接尾词"],
+            parts_of_speech: ["Godan verb with 'ru' ending", "transitive verb", "intransitive verb", "接尾词", "unknown English grammar label"],
             senses: [
               {{
                 glosses: ["to do", "to undertake"],
-                parts_of_speech: ["五段・る", "他动"],
+                parts_of_speech: ["Godan verb with 'ru' ending", "transitive verb"],
                 tags: ["旧语"],
               }},
             ],
@@ -495,7 +496,11 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
         const text = section.textContent;
 
         assert.equal((text.match(/五段・る/g) || []).length, 1);
-        assert.equal((text.match(/他动/g) || []).length, 1);
+        assert.equal((text.match(/自他/g) || []).length, 1);
+        assert.equal(text.includes("transitive verb"), false);
+        assert.equal(text.includes("unknown English grammar label"), false);
+        assert.equal(text.includes("他动"), false);
+        assert.equal(text.includes("自动"), false);
         assert.equal(text.includes("to do"), false);
         assert.equal(text.includes("词典义项"), false);
         assert.equal(text.includes("旧语"), false);

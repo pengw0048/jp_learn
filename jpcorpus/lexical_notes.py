@@ -677,7 +677,21 @@ def compact_pos_labels(values: Iterable[str]) -> list[str]:
             for label in labels
             if label not in {"助动词", "辅助形容词"}
         ]
+    labels = compact_transitivity_labels(labels)
     return labels
+
+
+def compact_transitivity_labels(labels: list[str]) -> list[str]:
+    if "自动" not in labels or "他动" not in labels:
+        return labels
+    first_index = min(labels.index("自动"), labels.index("他动"))
+    compacted = [
+        label
+        for label in labels
+        if label not in {"自动", "他动"}
+    ]
+    compacted.insert(first_index, "自他")
+    return compacted
 
 
 def label_pos(value: str) -> str:

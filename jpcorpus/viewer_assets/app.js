@@ -1398,6 +1398,9 @@ function clearReaderWordSelectionFromBlank(event) {
   if (event.target instanceof Element && event.target.closest(".reader-token, summary, button, select, input, textarea, label, a")) {
     return;
   }
+  if (event.target instanceof Element && !event.target.closest(".reader-line")) {
+    setReaderSpeechStartLine(null);
+  }
   clearReaderWordSelection();
 }
 

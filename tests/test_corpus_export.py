@@ -27,7 +27,7 @@ from jpcorpus.corpus_export import (
     write_corpus_json,
 )
 from jpcorpus.jlpt import load_jlpt_words, parse_level, write_sample_jlpt
-from jpcorpus.lexical_notes import LexicalResourceIndex, label_pos
+from jpcorpus.lexical_notes import LexicalResourceIndex, compact_pos_labels, label_pos
 from jpcorpus.models import LyricFile, SubtitleFile, SubtitleLine, TextFile, WordEntry
 from jpcorpus.subtitle import clean_subtitle_text
 from jpcorpus.texts import discover_text_files, parse_text, text_file_from_path
@@ -424,6 +424,10 @@ def test_jmdict_pos_labels_cover_verbose_english_tags():
     assert label_pos("nouns which may take the genitive case particle 'no'") == "の名词"
     assert label_pos("adverb taking the 'to' particle") == "と副词"
     assert label_pos("suru verb - special class") == "サ变"
+
+
+def test_compact_pos_labels_merges_transitivity_pair():
+    assert compact_pos_labels(["五段・る", "他动", "自动", "接尾词"]) == ["五段・る", "自他", "接尾词"]
 
 
 def test_example_context_from_neighboring_subtitles(tmp_path: Path):

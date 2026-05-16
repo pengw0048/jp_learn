@@ -2,19 +2,58 @@ window.JPCORPUS_LEXICAL = (() => {
   const LEXICAL_POS_LABELS_ZH = {
     "noun or participle which takes the aux. verb suru": "する名词",
     "nouns which may take the genitive case particle 'no'": "の名词",
+    "noun (common) (futsuumeishi)": "名词",
+    "noun, used as a suffix": "名词・接尾",
+    "pronoun": "代词",
+    "adverb (fukushi)": "副词",
+    "adjective (keiyoushi)": "い形容词",
+    "adjectival nouns or quasi-adjectives (keiyodoshi)": "な形容词",
+    "adverbial noun (fukushitekimeishi)": "副词性名词",
     "adverb taking the 'to' particle": "と副词",
     "expressions (phrases, clauses, etc.)": "表达",
     "noun or verb acting prenominally": "连体用法",
+    "auxiliary verb": "助动词",
+    "auxiliary adjective": "辅助形容词",
+    "conjunction": "接续词",
+    "interjection (kandoushi)": "感叹词",
+    "counter": "助数词",
+    "particle": "助词",
+    "prefix": "接头词",
+    "suffix": "接尾词",
     "suru verb - special class": "サ变",
     "suru verb - included": "サ变",
     "numeric": "数词",
     "noun, used as a prefix": "名词・接头",
+    "Ichidan verb": "一段动词",
+    "Ichidan verb - kureru special class": "一段・くれる",
     "Ichidan verb - zuru verb (alternative form of -jiru verbs)": "一段・ずる",
+    "Godan verb - Iku/Yuku special class": "五段・行く",
     "'taru' adjective": "たる形容词",
     "pre-noun adjectival (rentaishi)": "连体词",
+    "Godan verb with 'u' ending": "五段・う",
+    "Godan verb with `u' ending": "五段・う",
     "Godan verb with 'ru' ending (irregular verb)": "五段・る特殊",
+    "Godan verb with 'ru' ending": "五段・る",
+    "Godan verb with `ru' ending": "五段・る",
+    "Godan verb with 'ku' ending": "五段・く",
+    "Godan verb with `ku' ending": "五段・く",
+    "Godan verb with 'gu' ending": "五段・ぐ",
+    "Godan verb with `gu' ending": "五段・ぐ",
+    "Godan verb with 'su' ending": "五段・す",
+    "Godan verb with `su' ending": "五段・す",
+    "Godan verb with 'tsu' ending": "五段・つ",
+    "Godan verb with `tsu' ending": "五段・つ",
+    "Godan verb with 'nu' ending": "五段・ぬ",
+    "Godan verb with `nu' ending": "五段・ぬ",
+    "Godan verb with 'bu' ending": "五段・ぶ",
+    "Godan verb with `bu' ending": "五段・ぶ",
+    "Godan verb with 'mu' ending": "五段・む",
+    "Godan verb with `mu' ending": "五段・む",
     "Godan verb - -aru special class": "五段・ある",
     "Godan verb with 'u' ending (special class)": "五段・う特殊",
+    "Kuru verb - special class": "カ变",
+    "Suru verb - special class": "サ变",
+    "Suru verb - included": "サ变",
     "su verb - precursor to the modern suru": "す动词",
     "'ku' adjective (archaic)": "く形容词・古语",
     "auxiliary": "助动词",
@@ -23,6 +62,25 @@ window.JPCORPUS_LEXICAL = (() => {
     "Nidan verb (upper class) with 'ru' ending (archaic)": "古典二段动词",
     "Nidan verb (lower class) with 'ru' ending (archaic)": "古典二段动词",
     "Yodan verb with 'ru' ending (archaic)": "古典四段动词",
+    "transitive verb": "他动",
+    "intransitive verb": "自动",
+    n: "名词",
+    pn: "代词",
+    adv: "副词",
+    "adj-i": "い形容词",
+    "adj-na": "な形容词",
+    v1: "一段动词",
+    v5u: "五段・う",
+    v5k: "五段・く",
+    v5g: "五段・ぐ",
+    v5s: "五段・す",
+    v5t: "五段・つ",
+    v5n: "五段・ぬ",
+    v5b: "五段・ぶ",
+    v5m: "五段・む",
+    v5r: "五段・る",
+    vt: "他动",
+    vi: "自动",
     unclassified: "未分类",
   };
   const HIDDEN_LEXICAL_POS_LABELS_ZH = new Set([
@@ -148,7 +206,8 @@ window.JPCORPUS_LEXICAL = (() => {
         .map((value) => String(value || "").trim())
         .filter(Boolean);
       return language() === "zh"
-        ? uniqueStrings(labels.map(labelLexicalPosZh)).filter((label) => !HIDDEN_LEXICAL_POS_LABELS_ZH.has(label))
+        ? compactLexicalPosZh(uniqueStrings(labels.map(labelLexicalPosZh)))
+          .filter((label) => !HIDDEN_LEXICAL_POS_LABELS_ZH.has(label))
         : labels;
     }
 
@@ -283,7 +342,27 @@ window.JPCORPUS_LEXICAL = (() => {
   }
 
   function labelLexicalPosZh(value) {
-    return LEXICAL_POS_LABELS_ZH[value] || value;
+    const mapped = LEXICAL_POS_LABELS_ZH[value];
+    if (mapped) {
+      return mapped;
+    }
+    return looksLikeEnglishLexicalLabel(value) ? "" : value;
+  }
+
+  function compactLexicalPosZh(labels) {
+    if (!labels.includes("自动") || !labels.includes("他动")) {
+      return labels;
+    }
+    const firstIndex = Math.min(labels.indexOf("自动"), labels.indexOf("他动"));
+    const compacted = labels.filter((label) => label !== "自动" && label !== "他动");
+    compacted.splice(firstIndex, 0, "自他");
+    return compacted;
+  }
+
+  function looksLikeEnglishLexicalLabel(value) {
+    const text = String(value || "");
+    const asciiLetters = (text.match(/[A-Za-z]/g) || []).length;
+    return asciiLetters >= 3 && asciiLetters >= text.length * 0.35;
   }
 
   function parseMeaning(value) {
