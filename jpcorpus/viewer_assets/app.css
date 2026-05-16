@@ -2164,7 +2164,29 @@ mark {
 .reader-line-speaking {
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent), white 91%);
-  box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent), white 91%);
+  box-shadow:
+    inset 4px 0 0 var(--accent),
+    0 0 0 8px color-mix(in srgb, var(--accent), white 91%);
+}
+
+.reader-line-speech-start {
+  border-radius: 8px;
+  animation: reader-speech-start-pulse 1.4s ease-out;
+}
+
+@keyframes reader-speech-start-pulse {
+  0% {
+    background: #fff2bd;
+    box-shadow:
+      inset 4px 0 0 #b85c38,
+      0 0 0 10px #fff2bd;
+  }
+  100% {
+    background: transparent;
+    box-shadow:
+      inset 4px 0 0 rgba(184, 92, 56, 0),
+      0 0 0 10px rgba(255, 242, 189, 0);
+  }
 }
 
 .reader-line-time {

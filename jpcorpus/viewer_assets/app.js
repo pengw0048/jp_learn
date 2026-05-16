@@ -1168,7 +1168,8 @@ async function startReaderSpeech(startKey = null, options = {}) {
   app.reader.tts.playing = true;
   app.reader.tts.preparing = true;
   app.reader.tts.stopRequested = false;
-  app.reader.tts.lineKey = null;
+  app.reader.tts.lineKey = lines[0].key;
+  markReaderSpeechStart(lines[0].key);
   updateReaderSpeechUi();
   let pendingPrefetch = null;
   let pendingPrefetchKey = "";
@@ -1191,6 +1192,8 @@ async function startReaderSpeech(startKey = null, options = {}) {
         break;
       }
       let prepared = null;
+      app.reader.tts.preparing = true;
+      setReaderSpeakingLine(line.key);
       if (pendingPrefetch && pendingPrefetchKey === line.key) {
         const result = await pendingPrefetch;
         if (!isReaderSpeechRunActive(runId)) {
@@ -1200,8 +1203,6 @@ async function startReaderSpeech(startKey = null, options = {}) {
         pendingPrefetch = null;
         pendingPrefetchKey = "";
       }
-      app.reader.tts.preparing = true;
-      setReaderSpeakingLine(line.key);
       const ok = await speakPreparedText(prepared, line.text, {
         awaitEnd: true,
         isCancelled: () => !isReaderSpeechRunActive(runId),
@@ -1306,10 +1307,31 @@ function firstVisibleReaderLineKey() {
     return null;
   }
   const scrollerRect = scroller.getBoundingClientRect();
-  const threshold = scrollerRect.top + 8;
-  const row = [...scroller.querySelectorAll(".reader-line")]
-    .find((line) => line.getBoundingClientRect().bottom > threshold);
+  const top = scrollerRect.top + 8;
+  const bottom = scrollerRect.bottom - 8;
+  const rows = [...scroller.querySelectorAll(".reader-line")];
+  const row = rows.find((line) => {
+    const rect = line.getBoundingClientRect();
+    const visibleHeight = Math.min(rect.bottom, bottom) - Math.max(rect.top, top);
+    return visibleHeight >= Math.min(rect.height * 0.45, 28);
+  }) || rows.find((line) => {
+    const rect = line.getBoundingClientRect();
+    return rect.bottom > top && rect.top < bottom;
+  });
   return row?.dataset.readerLineKey || null;
+}
+
+function markReaderSpeechStart(lineKey) {
+  const row = lineKey
+    ? refs.wordList.querySelector(`.reader-line[data-reader-line-key="${lineKey}"]`)
+    : null;
+  if (!row) {
+    return;
+  }
+  row.classList.add("reader-line-speech-start");
+  window.setTimeout(() => {
+    row.classList.remove("reader-line-speech-start");
+  }, 1400);
 }
 
 function setReaderSpeakingLine(lineKey) {

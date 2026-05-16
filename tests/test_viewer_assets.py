@@ -138,6 +138,8 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "firstVisibleReaderLineKey" in app
     assert "singleLine: true" in app
     assert "prefetchReaderSpeechLine" in app
+    assert "markReaderSpeechStart" in app
+    assert "visibleHeight" in app
     assert "stopAllSpeech();" in app
     assert 'window.addEventListener("pagehide", stopAllSpeech)' in app
     assert "stopAllSpeech();" in reader_mode
@@ -150,6 +152,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "speakPreparedText" in tts
     assert "reader-speech-stop-button" in css
     assert "reader-line-speaking" in css
+    assert "reader-line-speech-start" in css
     assert "reader-furigana-enabled" in css
 
 
