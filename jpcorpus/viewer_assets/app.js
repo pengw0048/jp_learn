@@ -91,8 +91,10 @@ const app = {
     positionSaveTimer: null,
     tts: {
       playing: false,
+      preparing: false,
       stopRequested: false,
       lineKey: null,
+      runId: 0,
     },
   },
   listLimit: WORD_LIST_PAGE_SIZE,
@@ -321,6 +323,7 @@ const {
   sourceDocumentKey,
   sourceDocumentLineCount,
   sourceDocumentWords,
+  startReaderSpeechFromLine,
   statusFor,
   strong,
   t,
@@ -1098,11 +1101,12 @@ function renderReaderSpeechButton(enabled) {
   const button = el(
     "button",
     `reader-speech-button${app.reader.tts.playing ? " active" : ""}`,
-    app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud"),
+    readerSpeechButtonLabel(),
   );
   button.type = "button";
   button.disabled = !enabled && !app.reader.tts.playing;
   button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
+  button.title = t("readerReadAloudHint");
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     if (app.reader.tts.playing) {
@@ -1114,55 +1118,92 @@ function renderReaderSpeechButton(enabled) {
   return button;
 }
 
-async function startReaderSpeech() {
-  if (app.reader.tts.playing) {
-    return;
+function readerSpeechButtonLabel() {
+  if (app.reader.tts.preparing) {
+    return t("readerPreparingSpeech");
   }
-  const lines = currentReaderSpeechLines();
+  return app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud");
+}
+
+function startReaderSpeechFromLine(lineKey) {
+  startReaderSpeech(lineKey);
+}
+
+async function startReaderSpeech(startKey = null) {
+  if (app.reader.tts.playing) {
+    stopReaderSpeech();
+  }
+  const runId = app.reader.tts.runId + 1;
+  app.reader.tts.runId = runId;
+  const lines = currentReaderSpeechLines(startKey || firstVisibleReaderLineKey());
   if (lines.length === 0) {
     return;
   }
   app.reader.tts.playing = true;
+  app.reader.tts.preparing = true;
   app.reader.tts.stopRequested = false;
+  app.reader.tts.lineKey = null;
   updateReaderSpeechUi();
   try {
     for (const line of lines) {
-      if (app.reader.tts.stopRequested) {
+      if (!isReaderSpeechRunActive(runId)) {
         break;
       }
+      app.reader.tts.preparing = true;
+      setReaderSpeakingLine(line.key);
       const ok = await speakText(line.text, {
         awaitEnd: true,
-        isCancelled: () => app.reader.tts.stopRequested,
-        onStart: () => setReaderSpeakingLine(line.key),
+        isCancelled: () => !isReaderSpeechRunActive(runId),
+        onStart: () => {
+          if (!isReaderSpeechRunActive(runId)) {
+            return;
+          }
+          app.reader.tts.preparing = false;
+          setReaderSpeakingLine(line.key);
+        },
         onEnd: () => {
-          if (app.reader.tts.lineKey === line.key) {
+          if (isReaderSpeechRunCurrent(runId) && app.reader.tts.lineKey === line.key) {
             setReaderSpeakingLine(null);
           }
         },
       });
-      if (!ok) {
+      if (!ok || !isReaderSpeechRunActive(runId)) {
         break;
       }
     }
   } finally {
+    if (!isReaderSpeechRunCurrent(runId)) {
+      return;
+    }
     app.reader.tts.playing = false;
+    app.reader.tts.preparing = false;
     app.reader.tts.stopRequested = false;
     setReaderSpeakingLine(null);
   }
 }
 
 function stopReaderSpeech() {
-  if (!app.reader.tts.playing && !app.reader.tts.lineKey) {
+  if (!app.reader.tts.playing && !app.reader.tts.preparing && !app.reader.tts.lineKey) {
     return;
   }
+  app.reader.tts.runId += 1;
   app.reader.tts.stopRequested = true;
   stopSpeech();
   app.reader.tts.playing = false;
+  app.reader.tts.preparing = false;
   setReaderSpeakingLine(null);
 }
 
-function currentReaderSpeechLines() {
-  return [...refs.wordList.querySelectorAll(".reader-mode-scroll .reader-line")]
+function isReaderSpeechRunCurrent(runId) {
+  return app.reader.tts.runId === runId;
+}
+
+function isReaderSpeechRunActive(runId) {
+  return isReaderSpeechRunCurrent(runId) && !app.reader.tts.stopRequested;
+}
+
+function currentReaderSpeechLines(startKey = null) {
+  const lines = [...refs.wordList.querySelectorAll(".reader-mode-scroll .reader-line")]
     .map((row) => ({
       key: row.dataset.readerLineKey || "",
       text: row.querySelector(".reader-line-text")?.textContent || "",
@@ -1172,6 +1213,23 @@ function currentReaderSpeechLines() {
       text: line.text.replace(/\s+/g, " ").trim(),
     }))
     .filter((line) => line.key && line.text);
+  if (!startKey) {
+    return lines;
+  }
+  const index = lines.findIndex((line) => line.key === startKey);
+  return index >= 0 ? lines.slice(index) : lines;
+}
+
+function firstVisibleReaderLineKey() {
+  const scroller = refs.wordList.querySelector(".reader-mode-scroll");
+  if (!scroller) {
+    return null;
+  }
+  const scrollerRect = scroller.getBoundingClientRect();
+  const threshold = scrollerRect.top + 8;
+  const row = [...scroller.querySelectorAll(".reader-line")]
+    .find((line) => line.getBoundingClientRect().bottom > threshold);
+  return row?.dataset.readerLineKey || null;
 }
 
 function setReaderSpeakingLine(lineKey) {
@@ -1194,7 +1252,12 @@ function updateReaderSpeechUi() {
   refs.wordList.querySelectorAll(".reader-speech-button").forEach((button) => {
     button.classList.toggle("active", app.reader.tts.playing);
     button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
-    button.textContent = app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud");
+    button.textContent = readerSpeechButtonLabel();
+  });
+  refs.wordList.querySelectorAll(".reader-line-speech-button").forEach((button) => {
+    const active = Boolean(app.reader.tts.lineKey) && button.dataset.readerSpeechLineKey === app.reader.tts.lineKey;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
   });
 }
 

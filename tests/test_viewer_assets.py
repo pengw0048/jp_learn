@@ -124,7 +124,10 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
 
     assert 'readerReadAloud: "朗读"' in i18n
     assert 'readerStopReading: "停止"' in i18n
+    assert 'readerPreparingSpeech: "准备中"' in i18n
     assert "reader-speech-button" in app
+    assert "reader-line-speech-button" in app
+    assert "firstVisibleReaderLineKey" in app
     assert "reader-line-speaking" in css
 
 

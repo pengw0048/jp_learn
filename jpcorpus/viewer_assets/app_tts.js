@@ -339,12 +339,18 @@ window.JPCORPUS_TTS = (() => {
       }
       return new Promise((resolve) => {
         const playback = beginPlayback(options, resolve);
-        utterance.onstart = () => {
+        let started = false;
+        const markStarted = () => {
+          if (started) {
+            return;
+          }
+          started = true;
           options.onStart?.();
           if (!options.awaitEnd) {
             resolve(true);
           }
         };
+        utterance.onstart = markStarted;
         utterance.onend = () => finishPlayback(playback, true);
         utterance.onerror = () => {
           app.tts.error = t("ttsBrowserUnavailable");
@@ -352,6 +358,7 @@ window.JPCORPUS_TTS = (() => {
           finishPlayback(playback, false);
         };
         window.speechSynthesis.speak(utterance);
+        markStarted();
         if (!options.awaitEnd) {
           resolve(true);
         }
