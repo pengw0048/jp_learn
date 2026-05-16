@@ -8,6 +8,7 @@ window.JPCORPUS_STORAGE = (() => {
   const STORAGE_MODE = "jpcorpus.viewer.mode.v1";
   const STORAGE_SPLIT_RATIOS = "jpcorpus.viewer.splitRatios.v1";
   const STORAGE_READER_WORD_LIST = "jpcorpus.viewer.readerWordList.v1";
+  const STORAGE_READER_FURIGANA = "jpcorpus.viewer.readerFurigana.v1";
   const STORAGE_READER_POSITIONS = "jpcorpus.viewer.readerPositions.v1";
   const STORAGE_TTS_PROVIDER = "jpcorpus.viewer.ttsProvider.v1";
   const STORAGE_TTS_BROWSER_VOICE = "jpcorpus.viewer.ttsBrowserVoice.v1";
@@ -130,6 +131,10 @@ window.JPCORPUS_STORAGE = (() => {
     return READER_WORD_LIST_VALUES.has(value) ? value : "focus";
   }
 
+  function readReaderFurigana() {
+    return localStorage.getItem(STORAGE_READER_FURIGANA) === "on";
+  }
+
   function readReaderPositions() {
     return Object.fromEntries(
       Object.entries(readJsonObject(STORAGE_READER_POSITIONS))
@@ -171,6 +176,7 @@ window.JPCORPUS_STORAGE = (() => {
     STORAGE_MODE,
     STORAGE_SPLIT_RATIOS,
     STORAGE_READER_WORD_LIST,
+    STORAGE_READER_FURIGANA,
     STORAGE_READER_POSITIONS,
     STORAGE_TTS_PROVIDER,
     STORAGE_TTS_BROWSER_VOICE,
@@ -194,6 +200,7 @@ window.JPCORPUS_STORAGE = (() => {
     readSplitRatios,
     readMode,
     readReaderWordList,
+    readReaderFurigana,
     readReaderPositions,
     readTtsProvider,
     readTtsBrowserVoice,

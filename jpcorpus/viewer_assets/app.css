@@ -1728,21 +1728,24 @@ mark {
   gap: 6px;
 }
 
-.reader-word-list-picker {
+.reader-word-list-picker,
+.reader-furigana-picker {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 10px;
 }
 
-.reader-word-list-tabs {
+.reader-word-list-tabs,
+.reader-furigana-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
 .reader-source-tabs button,
-.reader-word-list-tabs button {
+.reader-word-list-tabs button,
+.reader-furigana-tabs button {
   min-height: 32px;
   padding: 5px 10px;
   border: 1px solid var(--line);
@@ -1753,7 +1756,8 @@ mark {
 }
 
 .reader-source-tabs button.active,
-.reader-word-list-tabs button.active {
+.reader-word-list-tabs button.active,
+.reader-furigana-tabs button.active {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
@@ -2176,6 +2180,10 @@ mark {
   line-height: 1.55;
 }
 
+.reader-line-text.reader-furigana-enabled {
+  line-height: 2.05;
+}
+
 .reader-token {
   display: inline;
   padding: 0 1px;
@@ -2206,6 +2214,14 @@ mark {
 .reader-token:hover {
   background: var(--accent-soft);
   box-shadow: inset 0 -0.22em 0 rgba(20, 116, 111, 0.28);
+}
+
+.reader-ruby rt {
+  color: var(--accent);
+  font-size: 0.56em;
+  font-weight: 780;
+  line-height: 1;
+  user-select: none;
 }
 
 .reader-full {
@@ -2247,6 +2263,10 @@ mark {
 .reader-full .reader-line-text {
   font-size: 18px;
   line-height: 1.9;
+}
+
+.reader-full .reader-line-text.reader-furigana-enabled {
+  line-height: 2.15;
 }
 
 .reader-token.active {

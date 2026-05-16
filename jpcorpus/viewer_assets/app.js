@@ -15,6 +15,7 @@ const {
   readSplitRatios,
   readMode,
   readReaderWordList,
+  readReaderFurigana,
   readReaderPositions,
   readTtsProvider,
   readTtsBrowserVoice,
@@ -80,6 +81,7 @@ const app = {
     groupKey: null,
     documentKey: null,
     wordList: readReaderWordList(),
+    showFurigana: readReaderFurigana(),
     selection: null,
     explanation: null,
     question: null,
@@ -1284,7 +1286,7 @@ function currentReaderSpeechLines(startKey = null) {
   const lines = [...refs.wordList.querySelectorAll(".reader-mode-scroll .reader-line")]
     .map((row) => ({
       key: row.dataset.readerLineKey || "",
-      text: row.querySelector(".reader-line-text")?.textContent || "",
+      text: row.dataset.readerLineText || row.querySelector(".reader-line-text")?.textContent || "",
     }))
     .map((line) => ({
       ...line,

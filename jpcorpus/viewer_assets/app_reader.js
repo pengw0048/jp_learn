@@ -182,6 +182,7 @@ window.JPCORPUS_READER = (() => {
     function renderReaderLine(line, options = {}) {
       const row = el("div", "reader-line");
       row.dataset.readerLineKey = readerLineDomKey(options.document || {}, line, options.lineIndex);
+      row.dataset.readerLineText = line.text || "";
       const time = Number.isInteger(line.start_ms) ? formatTimestamp(line.start_ms) : "";
       row.append(el("span", "reader-line-time", time));
       if (options.full) {
@@ -197,6 +198,7 @@ window.JPCORPUS_READER = (() => {
         row.append(speechButton);
       }
       const textLine = el("div", "reader-line-text");
+      textLine.classList.toggle("reader-furigana-enabled", Boolean(app.reader.showFurigana));
       appendReaderHighlighted(textLine, line.text, line.matches, { ...options, line });
       row.append(textLine);
       return row;
@@ -219,11 +221,11 @@ window.JPCORPUS_READER = (() => {
         const button = el(
           "button",
           ["reader-token", readerTokenStatusClass(match)].filter(Boolean).join(" "),
-          text.slice(match.start, match.end),
         );
         button.type = "button";
         button.title = match.word;
         button.dataset.word = match.word;
+        appendReaderTokenText(button, text.slice(match.start, match.end), match.reading || "");
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           selectReaderWord(match.word, readerSelectionForLine(options.line || { text }, match, options));
@@ -237,6 +239,116 @@ window.JPCORPUS_READER = (() => {
       if (target.childNodes.length === 0) {
         target.textContent = text;
       }
+    }
+
+    function appendReaderTokenText(target, surface, reading) {
+      if (!app.reader.showFurigana) {
+        target.textContent = surface;
+        return;
+      }
+      const parts = readerRubyParts(surface, reading);
+      if (!parts.some((part) => part.rt)) {
+        target.textContent = surface;
+        return;
+      }
+      parts.forEach((part) => {
+        if (!part.rt) {
+          target.append(document.createTextNode(part.text));
+          return;
+        }
+        const ruby = el("ruby", "reader-ruby");
+        ruby.append(document.createTextNode(part.text), el("rt", "", part.rt));
+        target.append(ruby);
+      });
+    }
+
+    function readerRubyParts(surface, reading) {
+      const text = String(surface || "");
+      const rubyReading = primaryRubyReading(reading);
+      if (!text || !rubyReading || !hasCjkText(text)) {
+        return [{ text, rt: "" }];
+      }
+      const segments = splitRubySegments(text);
+      const parts = [];
+      let readingIndex = 0;
+      segments.forEach((segment, index) => {
+        if (!segment.cjk) {
+          parts.push({ text: segment.text, rt: "" });
+          readingIndex = advanceReadingIndex(rubyReading, readingIndex, segment.text);
+          return;
+        }
+        const nextAnchor = nextKanaAnchor(segments, index + 1);
+        const nextIndex = nextAnchor ? rubyReading.indexOf(nextAnchor, readingIndex) : -1;
+        const rt = nextIndex >= readingIndex
+          ? rubyReading.slice(readingIndex, nextIndex)
+          : rubyReading.slice(readingIndex);
+        parts.push({ text: segment.text, rt: rt && rt !== toHiragana(segment.text) ? rt : "" });
+        readingIndex = nextIndex >= readingIndex ? nextIndex : rubyReading.length;
+      });
+      return parts;
+    }
+
+    function primaryRubyReading(reading) {
+      return toHiragana(
+        String(reading || "")
+          .split(/[;；,、]/)[0]
+          .trim(),
+      ).replace(/\s+/g, "");
+    }
+
+    function splitRubySegments(text) {
+      const segments = [];
+      [...text].forEach((char) => {
+        const cjk = isCjkChar(char);
+        const current = segments[segments.length - 1];
+        if (current && current.cjk === cjk) {
+          current.text += char;
+        } else {
+          segments.push({ text: char, cjk });
+        }
+      });
+      return segments;
+    }
+
+    function nextKanaAnchor(segments, startIndex) {
+      for (let index = startIndex; index < segments.length; index += 1) {
+        if (!segments[index].cjk) {
+          const anchor = kanaAnchor(segments[index].text);
+          if (anchor) {
+            return anchor;
+          }
+        }
+      }
+      return "";
+    }
+
+    function advanceReadingIndex(reading, index, surface) {
+      const anchor = kanaAnchor(surface);
+      if (!anchor) {
+        return index;
+      }
+      if (reading.startsWith(anchor, index)) {
+        return index + anchor.length;
+      }
+      return index;
+    }
+
+    function kanaAnchor(value) {
+      return toHiragana(value).replace(/[^\u3040-\u309fー]/g, "");
+    }
+
+    function toHiragana(value) {
+      return String(value || "").replace(/[\u30a1-\u30f6]/g, (char) => (
+        String.fromCharCode(char.charCodeAt(0) - 0x60)
+      ));
+    }
+
+    function hasCjkText(value) {
+      return /[\u3400-\u9fff々〆ヶ]/.test(value);
+    }
+
+    function isCjkChar(char) {
+      return /^[\u3400-\u9fff々〆ヶ]$/.test(char);
     }
 
     function readerTokenStatusClass(match) {

@@ -120,8 +120,10 @@ def test_llm_config_labels_are_user_facing_and_localized():
 def test_reader_mode_has_read_aloud_strings_and_controls():
     i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
     app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    reader = (VIEWER_ASSET_DIR / "app_reader.js").read_text(encoding="utf-8")
     reader_mode = (VIEWER_ASSET_DIR / "app_reader_mode.js").read_text(encoding="utf-8")
     sources = (VIEWER_ASSET_DIR / "app_sources.js").read_text(encoding="utf-8")
+    storage = (VIEWER_ASSET_DIR / "app_storage.js").read_text(encoding="utf-8")
     tts = (VIEWER_ASSET_DIR / "app_tts.js").read_text(encoding="utf-8")
     css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
 
@@ -129,6 +131,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert 'readerStopReading: "停止"' in i18n
     assert 'readerPreparingSpeech: "准备中"' in i18n
     assert 'readerReadLine: "朗读这一句"' in i18n
+    assert 'readerFuriganaChoice: "注音"' in i18n
     assert "reader-speech-button" in app
     assert "reader-speech-dock" in app
     assert "reader-line-speech-button" in app
@@ -138,11 +141,16 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "stopAllSpeech();" in app
     assert 'window.addEventListener("pagehide", stopAllSpeech)' in app
     assert "stopAllSpeech();" in reader_mode
+    assert "renderReaderFuriganaPicker" in reader_mode
+    assert "STORAGE_READER_FURIGANA" in storage
+    assert 'el("ruby", "reader-ruby")' in reader
+    assert "readerLineText" in reader
     assert "stopAllSpeech" in sources
     assert "prepareSpeech" in tts
     assert "speakPreparedText" in tts
     assert "reader-speech-stop-button" in css
     assert "reader-line-speaking" in css
+    assert "reader-furigana-enabled" in css
 
 
 def test_tts_speech_text_skips_parentheticals():
