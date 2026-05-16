@@ -493,7 +493,7 @@ def clean_zhwiktionary_inline_gloss(value: str) -> str:
             for part in re.split(r"[;；]", value)
             if (cleaned := clean_zhwiktionary_gloss_part(part))
         )
-    )
+    ).replace("。；", "；")
 
 
 def clean_zhwiktionary_gloss_part(value: str) -> str:
@@ -505,11 +505,14 @@ def clean_zhwiktionary_gloss_part(value: str) -> str:
     value = strip_zhwiktionary_headword_prefix(value)
     value = strip_parenthetical_headword_prefix(value)
     value = strip_zhwiktionary_headword_usage_prefix(value)
+    value = strip_zhwiktionary_derived_form_gloss(value)
     value = strip_leading_japanese_usage_bracket(value)
     value = strip_latin_usage_bracket(value)
+    value = strip_square_usage_bracket(value)
     value = strip_zhwiktionary_semantic_prefix(value)
     value = strip_zhwiktionary_pos_prefix(value)
     value = normalize_zhwiktionary_meta_gloss(value)
+    value = strip_latin_parentheticals(value)
     value = strip_trailing_japanese_variant_note(value)
     value = strip_inline_japanese_example(value)
     value = value.strip(" 　，,；;")
@@ -622,6 +625,16 @@ def strip_zhwiktionary_headword_usage_prefix(value: str) -> str:
     ).strip()
 
 
+def strip_zhwiktionary_derived_form_gloss(value: str) -> str:
+    if re.match(
+        r"^[一-龯々ぁ-ゖァ-ヺー・]+(?:\s*[（(][A-Za-z0-9 ._'’-]+[)）])?"
+        r"\s*的(?:连用形|連用形|未然形|终止形|終止形|连体形|連体形|假定形|命令形|活用形)",
+        value,
+    ):
+        return ""
+    return value
+
+
 def strip_leading_japanese_usage_bracket(value: str) -> str:
     return re.sub(
         r"^【[^】]*(?:[一-龯々ぁ-ゖァ-ヺー「」～]|常用|多用|接)[^】]*】\s*",
@@ -638,6 +651,19 @@ def strip_latin_usage_bracket(value: str) -> str:
         value,
         count=1,
     ).strip()
+
+
+def strip_square_usage_bracket(value: str) -> str:
+    return re.sub(
+        r"^\[[^\]]*(?:动词|動詞|形容词|形容詞|名词|名詞)[^\]]*\]\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_latin_parentheticals(value: str) -> str:
+    return re.sub(r"\s*[（(][A-Za-z0-9 ._'’,;-]+[)）]", "", value).strip()
 
 
 def strip_zhwiktionary_semantic_prefix(value: str) -> str:
@@ -712,6 +738,8 @@ def is_useless_zhwiktionary_gloss_part(value: str) -> bool:
     if contains_kana(value) and re.fullmatch(r"[一-龯々ぁ-ゖァ-ヺー・]+", value):
         return True
     if contains_kana(value) and re.search(r"[をにでがはへとて][一-龯々ぁ-ゖァ-ヺー]", value):
+        return True
+    if contains_latin(value) and not re.search(r"[一-龯々]", value):
         return True
     return bool(re.fullmatch(r"=+.*=+", value))
 

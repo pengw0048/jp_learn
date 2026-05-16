@@ -2,6 +2,7 @@ window.JPCORPUS_DETAIL = (() => {
   function createDetailHelpers({
     app,
     displayCount,
+    displayReading,
     displayMeaningRaw,
     el,
     examplesForWord,
@@ -28,7 +29,7 @@ window.JPCORPUS_DETAIL = (() => {
       const header = el("header", "detail-header");
       const titleRow = el("div", "detail-title-row");
       const title = el("div", "detail-title");
-      title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
+      title.append(el("h2", "", word.word || ""), el("span", "reading", displayReading(word)));
       if (renderSpeakButton) {
         title.append(renderSpeakButton(() => speechTextForWord(word), "tts-button detail-tts-button"));
       }
@@ -67,7 +68,7 @@ window.JPCORPUS_DETAIL = (() => {
 
       const titleRow = el("div", "study-title-row");
       const title = el("div", "detail-title");
-      title.append(el("h2", "", word.word || ""), el("span", "reading", word.reading || ""));
+      title.append(el("h2", "", word.word || ""), el("span", "reading", displayReading(word)));
       if (renderSpeakButton) {
         title.append(renderSpeakButton(() => speechTextForWord(word), "tts-button detail-tts-button"));
       }

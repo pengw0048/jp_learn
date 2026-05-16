@@ -261,9 +261,12 @@ window.JPCORPUS_LEXICAL = (() => {
         if (!japanese) {
           return null;
         }
+        const translation = lexicalExampleTranslation(example);
+        if (language() === "zh" && !translation) {
+          return null;
+        }
         const item = el("div", "lexical-dictionary-example");
         item.append(el("div", "lexical-dictionary-example-ja", japanese));
-        const translation = lexicalExampleTranslation(example);
         if (translation) {
           item.append(el("div", "lexical-dictionary-example-translation", translation));
         }

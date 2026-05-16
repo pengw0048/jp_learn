@@ -150,6 +150,7 @@ const {
   getLanguage: () => app.lang,
 });
 const {
+  displayReading,
   exampleSourceClass,
   fileStem,
   formatNumber,
@@ -438,6 +439,7 @@ const {
 } = window.JPCORPUS_DETAIL.createDetailHelpers({
   app,
   displayCount,
+  displayReading,
   displayMeaningRaw,
   el,
   examplesForWord,
@@ -1468,7 +1470,7 @@ function renderWordRow(word) {
   const meta = el(
     "div",
     "word-meta",
-    `${word.reading || ""} · ${t("count")} ${formatNumber(displayCount(word))}`,
+    [displayReading(word), `${t("count")} ${formatNumber(displayCount(word))}`].filter(Boolean).join(" · "),
   );
   button.append(main, meta);
   if (app.mode !== "study") {
@@ -1588,7 +1590,7 @@ function renderReaderMarkedWordsPanel() {
     const button = el("button", `reader-marked-chip ${status}`.trim());
     button.type = "button";
     button.title = [
-      word.reading || "",
+      displayReading(word),
       stateLabels[status]?.[app.lang] || "",
       count > 1 ? `${formatNumber(count)}x` : "",
     ].filter(Boolean).join(" · ");

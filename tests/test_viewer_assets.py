@@ -307,6 +307,7 @@ def test_study_card_reveals_answer_before_review_actions():
         const helper = window.JPCORPUS_DETAIL.createDetailHelpers({{
           app,
           displayCount: () => 4,
+          displayReading: (word) => word.reading || "",
           displayMeaningRaw: () => "去，到",
           el: makeNode,
           examplesForWord: () => [],
@@ -449,6 +450,30 @@ def test_config_status_labels_hide_environment_variable_names():
         );
         assert.equal(zhLabels.join(", ").includes("JPCORPUS_"), false);
         assert.equal(enLabels.join(", ").includes("JPCORPUS_"), false);
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_display_reading_hides_plain_katakana_transliteration():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_format.js")!r});
+
+        const helpers = window.JPCORPUS_FORMAT.createFormatHelpers({{
+          getLanguage: () => "zh",
+        }});
+
+        assert.equal(helpers.displayReading({{ word: "パスタ", reading: "ぱすた" }}), "");
+        assert.equal(helpers.displayReading({{ word: "パスタ", reading: "パスタ" }}), "");
+        assert.equal(helpers.displayReading({{ word: "音", reading: "おと" }}), "おと");
+        assert.equal(helpers.displayReading({{ word: "良い", reading: "よい; いい" }}), "よい; いい");
         """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
@@ -684,6 +709,7 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
             lexicalNotes: "词语知识",
             lexicalPos: "词性",
             lexicalSenses: "词典义项",
+            lexicalExamples: "词典例句",
           }}[key] || key),
           getLanguage: () => "zh",
         }});
@@ -700,6 +726,16 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
                 tags: ["旧语"],
               }},
             ],
+            dictionary_examples: [
+              {{
+                japanese: "英語だけの例です。",
+                translations: {{ eng: "English only." }},
+              }},
+              {{
+                japanese: "中国語訳のある例です。",
+                translations: {{ cmn: "这是有中文翻译的例句。" }},
+              }},
+            ],
           }},
         }});
         const text = section.textContent;
@@ -714,6 +750,9 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
         assert.equal(text.includes("to do"), false);
         assert.equal(text.includes("词典义项"), false);
         assert.equal(text.includes("旧语"), false);
+        assert.equal(text.includes("英語だけの例です"), false);
+        assert.equal(text.includes("中国語訳のある例です"), true);
+        assert.equal(text.includes("这是有中文翻译的例句。"), true);
 
         const fallbackSection = helpers.renderLexicalNotes({{
           word: "やる",

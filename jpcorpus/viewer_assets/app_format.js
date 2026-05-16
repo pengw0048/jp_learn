@@ -73,7 +73,20 @@ window.JPCORPUS_FORMAT = (() => {
       return `${pad(minutes)}:${pad(seconds)}`;
     }
 
+    function displayReading(word) {
+      const surface = String(word?.word || "").trim();
+      const reading = String(word?.reading || "").trim();
+      if (!reading || reading === surface) {
+        return "";
+      }
+      if (isKatakanaText(surface) && hiraganaToKatakana(reading) === surface) {
+        return "";
+      }
+      return reading;
+    }
+
     return {
+      displayReading,
       exampleSourceClass,
       fileStem,
       formatNumber,
@@ -107,6 +120,16 @@ window.JPCORPUS_FORMAT = (() => {
 
   function pad(value) {
     return String(value).padStart(2, "0");
+  }
+
+  function isKatakanaText(value) {
+    return Boolean(value) && /^[ァ-ヺー・･]+$/u.test(value);
+  }
+
+  function hiraganaToKatakana(value) {
+    return String(value || "").replace(/[ぁ-ゖ]/gu, (char) => (
+      String.fromCharCode(char.charCodeAt(0) + 0x60)
+    ));
   }
 
   return {

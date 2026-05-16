@@ -755,6 +755,28 @@ def test_jlpt_lookup_can_use_safe_reading_index(tmp_path: Path):
     assert words.lookup_reading("いう").surface == "言う"
 
 
+def test_jlpt_pattern_entries_are_normalized_for_lookup(tmp_path: Path):
+    path = tmp_path / "jlpt.json"
+    path.write_text(
+        json.dumps(
+            [
+                {"word": "～期", "reading": "～き", "level": "N2", "meaning": "~period"},
+                {"word": "よって (よりどころ)", "reading": "よって (よりどころ)", "level": "N1"},
+                {"word": "こす (みずを～)", "reading": "こす", "level": "N1"},
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    words = load_jlpt_words(path)
+
+    assert words.lookup("期").reading == "き"
+    assert words.lookup("よって").reading == "よって"
+    assert words.lookup("こす").surface == "こす"
+    assert words.lookup("～期") is None
+
+
 def test_jlpt_common_greeting_overrides_are_beginner_level(tmp_path: Path):
     path = tmp_path / "jlpt.json"
     path.write_text(
@@ -800,11 +822,11 @@ def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
     assert clean_zhwiktionary_gloss("比喻：用作抽象意义") == "比喻：用作抽象意义"
     assert (
         clean_zhwiktionary_gloss("看，观看。；【観る】 观赏。；【看る】 照顾，照护。；【诊る】 诊断。")
-        == "看，观看。；观赏。；照顾，照护。；诊断。"
+        == "看，观看；观赏；照顾，照护；诊断。"
     )
     assert (
         clean_zhwiktionary_gloss("允许，准许。；== 日语 ==；御免【常用 「～下さい」 的形式，作为客套话】对不起，劳驾。")
-        == "允许，准许。；对不起，劳驾。"
+        == "允许，准许；对不起，劳驾。"
     )
     assert clean_zhwiktionary_gloss("抬，举，放，上。，【挙げる】手を高い位置に移动させる。") == "抬，举，放，上。"
     assert clean_zhwiktionary_gloss("感ずる【かんずる】 自他サ 感じる") == ""
@@ -824,6 +846,9 @@ def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
     assert clean_zhwiktionary_gloss("→ たま [玉・珠・球・弾]，玉，宝石，珍珠。") == "玉，宝石，珍珠。"
     assert clean_zhwiktionary_gloss("【たま】 → たま [玉・珠・球・弾]") == ""
     assert clean_zhwiktionary_gloss("【棒球】ソロホーマー的缩写（solo homer）") == ""
+    assert clean_zhwiktionary_gloss("洗う (arau) 的连用形 [五段动词]") == ""
+    assert clean_zhwiktionary_gloss("道路，路线。；途径。；root") == "道路，路线；途径。"
+    assert clean_zhwiktionary_gloss("一种芸香科的灌木（Zanthoxylum piperitum）") == "一种芸香科的灌木"
     assert (
         clean_zhwiktionary_gloss("好く【すく】\n他五\n== 日语 ==\n好く【多用其被动、否定形式】喜好，爱好。")
         == "喜好，爱好。"

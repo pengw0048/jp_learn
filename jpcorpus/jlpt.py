@@ -143,8 +143,8 @@ def _entry_from_mapping(mapping: dict[str, Any], default_level: int | None = Non
     level = parse_level(_first(mapping, LEVEL_KEYS)) or parse_level(_first(mapping, TAG_KEYS)) or default_level
     if level is None:
         raise ValueError(f"JLPT word row has no level field: {mapping!r}")
-    surface_text = str(surface)
-    reading = _string_or_none(_first(mapping, READING_KEYS))
+    surface_text = normalize_jlpt_pattern(str(surface))
+    reading = normalize_jlpt_reading(_string_or_none(_first(mapping, READING_KEYS)))
     meaning = _string_or_none(_first(mapping, MEANING_KEYS))
     override = JLPT_ENTRY_OVERRIDES.get(surface_text)
     if override:
@@ -171,6 +171,28 @@ def _string_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def normalize_jlpt_pattern(value: str) -> str:
+    text = normalize_jlpt_text(value)
+    text = re.sub(r"\s*[（(][^）)]*[～〜][^）)]*[）)]\s*$", "", text)
+    text = re.sub(r"\s*[（(][ぁ-ゖァ-ヺー・/／;；\s]+[）)]\s*$", "", text)
+    text = text.strip("～〜 　")
+    return text or value.strip()
+
+
+def normalize_jlpt_reading(value: str | None) -> str | None:
+    if not value:
+        return value
+    text = normalize_jlpt_text(value)
+    text = re.sub(r"\s*[（(][^）)]*[～〜][^）)]*[）)]\s*$", "", text)
+    text = re.sub(r"\s*[（(][ぁ-ゖァ-ヺー・/／;；\s]+[）)]\s*$", "", text)
+    text = text.strip("～〜 　")
+    return text or value.strip()
+
+
+def normalize_jlpt_text(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").replace("〜", "～")).strip()
 
 
 def parse_level(value: Any) -> int | None:
