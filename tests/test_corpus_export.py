@@ -681,7 +681,8 @@ def test_analysis_skips_bangumi_character_name_aliases(tmp_path: Path):
     subtitle.write_text(
         "1\n00:00:01,000 --> 00:00:03,000\n（武士）何だよ あの演奏\n\n"
         "2\n00:00:04,000 --> 00:00:06,000\n（武士(たけし)）頼むよ 冗談だろ？\n\n"
-        "3\n00:00:07,000 --> 00:00:09,000\nあれ？ 相座… ブ… ブシ…\n",
+        "3\n00:00:07,000 --> 00:00:09,000\nあれ？ 相座… ブ… ブシ…\n\n"
+        "4\n00:00:10,000 --> 00:00:12,000\n（鳥の鳴き声）\n",
         encoding="utf-8",
     )
 
@@ -702,6 +703,12 @@ def test_analysis_skips_bangumi_character_name_aliases(tmp_path: Path):
     )
 
     assert "武士" not in analysis.word_stats
+    assert [line.text for line in analysis.source_documents[0].lines] == [
+        "何だよ あの演奏",
+        "頼むよ 冗談だろ？",
+        "あれ？ 相座… ブ… ブシ…",
+        "（鳥の鳴き声）",
+    ]
 
 
 def test_build_character_aliases_includes_given_name_suffix():

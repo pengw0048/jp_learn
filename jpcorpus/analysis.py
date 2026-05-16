@@ -262,6 +262,8 @@ def analyze_media(
         source = show_stats.setdefault(source_title, ShowStats(title=source_title))
         source.file_count += 1
         character_aliases = build_character_aliases(show_characters or [], tokenizer)
+        if source_type == "subtitle":
+            lines = strip_character_speaker_tags(lines, character_aliases)
         document = SourceDocument(
             source_type=source_type,
             source_title=source_title,
@@ -568,6 +570,83 @@ def add_character_alias(aliases: set[str], value: str) -> None:
     if len(alias) == 1 and not has_japanese_text(alias):
         return
     aliases.add(alias)
+
+
+def strip_character_speaker_tags(lines: list[SubtitleLine], aliases: set[str]) -> list[SubtitleLine]:
+    if not aliases:
+        return lines
+    cleaned = []
+    for line in lines:
+        text = strip_character_speaker_tags_from_text(line.text, aliases)
+        if text:
+            cleaned.append(SubtitleLine(text=text, start_ms=line.start_ms, end_ms=line.end_ms))
+    return cleaned
+
+
+def strip_character_speaker_tags_from_text(text: str, aliases: set[str]) -> str:
+    cleaned_lines = []
+    for line in str(text or "").splitlines():
+        stripped = strip_leading_character_speaker_tag(line, aliases)
+        if stripped:
+            cleaned_lines.append(stripped)
+    return "\n".join(cleaned_lines)
+
+
+def strip_leading_character_speaker_tag(text: str, aliases: set[str]) -> str:
+    current = text.strip()
+    while current:
+        label, rest = leading_parenthesized_label(current)
+        if label is None or not is_character_speaker_label(label, aliases):
+            break
+        current = rest.strip()
+    return current
+
+
+def leading_parenthesized_label(text: str) -> tuple[str | None, str]:
+    current = text.lstrip()
+    if not current:
+        return None, text
+    pairs = {"(": ")", "（": "）"}
+    open_char = current[0]
+    close_char = pairs.get(open_char)
+    if close_char is None:
+        return None, text
+    depth = 0
+    for index, char in enumerate(current):
+        if char == open_char:
+            depth += 1
+        elif char == close_char:
+            depth -= 1
+            if depth == 0:
+                return current[1:index], current[index + 1 :]
+    return None, text
+
+
+def is_character_speaker_label(label: str, aliases: set[str]) -> bool:
+    return any(candidate in aliases for candidate in speaker_label_candidates(label))
+
+
+def speaker_label_candidates(label: str) -> set[str]:
+    candidates: set[str] = set()
+    normalized = remove_kana_parenthetical_readings(label).strip()
+    for part in re.split(r"[\s　・･/／、，,]+", normalized):
+        part = part.strip()
+        if not part:
+            continue
+        candidates.add(part)
+        without_honorific = re.sub(r"(さん|ちゃん|くん|君|様|先生|先輩)$", "", part)
+        if without_honorific and without_honorific != part:
+            candidates.add(without_honorific)
+    return candidates
+
+
+def remove_kana_parenthetical_readings(text: str) -> str:
+    previous = str(text or "")
+    while True:
+        current = re.sub(r"[（(][ぁ-ゖァ-ヺー・･\s　]+[）)]", "", previous)
+        if current == previous:
+            return current
+        previous = current
 
 
 def is_character_name_token(token: Token, aliases: set[str], *resolved_surfaces: str | None) -> bool:
