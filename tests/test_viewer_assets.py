@@ -137,7 +137,6 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-speech-button" in app
     assert "reader-furigana-button" in app
     assert "reader-quick-actions" in app
-    assert "reader-speech-dock" in app
     assert "reader-line-speech-button" in app
     assert "firstVisibleReaderLineKey" in app
     assert "singleLine: true" in reader
@@ -157,7 +156,6 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "stopAllSpeech" in sources
     assert "prepareSpeech" in tts
     assert "speakPreparedText" in tts
-    assert "reader-speech-stop-button" in css
     assert "reader-line-speaking" in css
     assert "reader-line-speech-anchor" in css
     assert "reader-line-speech-start" in css
