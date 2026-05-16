@@ -704,39 +704,10 @@ def test_analysis_skips_bangumi_character_name_aliases(tmp_path: Path):
 
     assert "武士" not in analysis.word_stats
     assert [line.text for line in analysis.source_documents[0].lines] == [
-        "何だよ あの演奏",
-        "頼むよ 冗談だろ？",
+        "（武士）何だよ あの演奏",
+        "（武士(たけし)）頼むよ 冗談だろ？",
         "あれ？ 相座… ブ… ブシ…",
-    ]
-
-
-def test_analysis_strips_all_subtitle_parentheticals(tmp_path: Path):
-    subtitle = tmp_path / "sample.srt"
-    subtitle.write_text(
-        "1\n00:00:01,000 --> 00:00:03,000\n（かをり）ありがとう（拍手）\n\n"
-        "2\n00:00:04,000 --> 00:00:06,000\n今日は（小声）学校へ行く。\n\n"
-        "3\n00:00:07,000 --> 00:00:09,000\n（鳥の鳴き声）\n",
-        encoding="utf-8",
-    )
-
-    analysis = analyze_media(
-        watched_show_count=1,
-        music_track_count=0,
-        subtitle_files=[
-            SubtitleFile(
-                bangumi_id=1,
-                show_title="Sample Show",
-                path=subtitle,
-                name=subtitle.name,
-            )
-        ],
-        lyric_files=[],
-        jlpt_words=load_jlpt_words_from_entries([]),
-    )
-
-    assert [line.text for line in analysis.source_documents[0].lines] == [
-        "ありがとう",
-        "今日は学校へ行く。",
+        "（鳥の鳴き声）",
     ]
 
 

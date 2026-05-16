@@ -139,6 +139,49 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-line-speaking" in css
 
 
+def test_tts_speech_text_skips_parentheticals():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        (async () => {{
+          const assert = require("node:assert/strict");
+          global.window = {{}};
+          require({str(VIEWER_ASSET_DIR / "app_tts.js")!r});
+
+          let captured = "";
+          const helpers = window.JPCORPUS_TTS.createTtsHelpers({{
+            api: {{
+              voicevoxSynthesize: async (payload) => {{
+                captured = payload.text;
+                return new Blob(["audio"]);
+              }},
+            }},
+            app: {{
+              tts: {{
+                provider: "voicevox",
+                voicevoxSpeaker: "1",
+                rate: 1,
+              }},
+            }},
+            el: () => null,
+            refs: {{}},
+            storage: {{}},
+            t: (key) => key,
+          }});
+
+          await helpers.prepareSpeech("（かをり）ありがとう（拍手）");
+          assert.equal(captured, "ありがとう");
+          await helpers.prepareSpeech("今日は（小声）学校へ行く。");
+          assert.equal(captured, "今日は学校へ行く。");
+        }})();
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_config_status_labels_hide_environment_variable_names():
     node = shutil.which("node")
     if not node:

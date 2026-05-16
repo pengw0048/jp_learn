@@ -511,7 +511,34 @@ window.JPCORPUS_TTS = (() => {
     }
 
     function normalizeSpeechText(value) {
-      return String(value || "").replace(/\s+/g, " ").trim();
+      return stripSpeechParentheticals(String(value || "")).replace(/\s+/g, " ").trim();
+    }
+
+    function stripSpeechParentheticals(value) {
+      const pairs = {
+        "(": ")",
+        "（": "）",
+      };
+      const closers = new Set(Object.values(pairs));
+      const output = [];
+      const stack = [];
+      [...value].forEach((char) => {
+        if (pairs[char]) {
+          stack.push(pairs[char]);
+          return;
+        }
+        if (stack.length > 0) {
+          if (char === stack[stack.length - 1]) {
+            stack.pop();
+          }
+          return;
+        }
+        if (closers.has(char)) {
+          return;
+        }
+        output.push(char);
+      });
+      return output.join("");
     }
 
     function clampTtsRate(value) {

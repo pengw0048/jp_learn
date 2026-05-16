@@ -262,8 +262,6 @@ def analyze_media(
         source = show_stats.setdefault(source_title, ShowStats(title=source_title))
         source.file_count += 1
         character_aliases = build_character_aliases(show_characters or [], tokenizer)
-        if source_type == "subtitle":
-            lines = strip_subtitle_parentheticals(lines)
         document = SourceDocument(
             source_type=source_type,
             source_title=source_title,
@@ -570,47 +568,6 @@ def add_character_alias(aliases: set[str], value: str) -> None:
     if len(alias) == 1 and not has_japanese_text(alias):
         return
     aliases.add(alias)
-
-
-def strip_subtitle_parentheticals(lines: list[SubtitleLine]) -> list[SubtitleLine]:
-    cleaned = []
-    for line in lines:
-        text = strip_parenthetical_text(line.text)
-        if text:
-            cleaned.append(SubtitleLine(text=text, start_ms=line.start_ms, end_ms=line.end_ms))
-    return cleaned
-
-
-def strip_parenthetical_text(text: str) -> str:
-    cleaned_lines = []
-    for line in str(text or "").splitlines():
-        stripped = normalize_space(strip_parenthetical_fragments(line))
-        if stripped:
-            cleaned_lines.append(stripped)
-    return "\n".join(cleaned_lines)
-
-
-def strip_parenthetical_fragments(text: str) -> str:
-    pairs = {"(": ")", "（": "）"}
-    close_to_open = {close: open_char for open_char, close in pairs.items()}
-    output = []
-    stack: list[str] = []
-    for char in str(text or ""):
-        if char in pairs:
-            stack.append(pairs[char])
-            continue
-        if stack:
-            if char == stack[-1]:
-                stack.pop()
-            continue
-        if char in close_to_open:
-            continue
-        output.append(char)
-    return "".join(output)
-
-
-def normalize_space(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
 
 
 def is_character_name_token(token: Token, aliases: set[str], *resolved_surfaces: str | None) -> bool:
