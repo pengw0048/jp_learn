@@ -34,13 +34,19 @@ def test_popup_keeps_success_feedback_after_selection_import() -> None:
     assert 'refs.status.textContent = "";' not in popup
 
 
-def test_extension_reader_panel_can_read_current_sentence() -> None:
+def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     content = (ROOT / "browser_extension" / "content.js").read_text(encoding="utf-8")
+    background = (ROOT / "browser_extension" / "background.js").read_text(encoding="utf-8")
 
-    assert 'readSentence: "朗读"' in content
+    assert 'readParagraph: "朗读段落"' in content
+    assert 'pickParagraph: "点击要朗读的段落。Esc 取消。"' in content
     assert 'stopReading: "停止"' in content
+    assert "jpcorpus-reader-toolbar" in content
     assert "jpcorpus-reader-speech-button" in content
-    assert "activeReaderSpeechButton" in content
+    assert "startReaderParagraphPicker" in content
+    assert "speakReaderParagraph" in content
+    assert "SYNTHESIZE_VOICEVOX" in content
+    assert "SYNTHESIZE_VOICEVOX" in background
     assert 'button.textContent = tr("stopReading");' in content
     assert "resetReaderSpeechButton" in content
     assert "jpcorpus-reader-speaking" in content

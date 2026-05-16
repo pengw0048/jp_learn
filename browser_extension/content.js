@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.14";
+  const SCRIPT_VERSION = "0.1.15";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -28,8 +28,12 @@
       ignore: "忽略",
       ignored: "已忽略",
       clearStatus: "取消标记",
-      readSentence: "朗读",
+      readParagraph: "朗读段落",
+      pickParagraph: "点击要朗读的段落。Esc 取消。",
+      cancelPick: "取消选择",
       stopReading: "停止",
+      closeReader: "关闭标注",
+      noReadableParagraph: "这个区域没有可朗读的日语。",
       pickerInitial: "点击导入高亮文本。Esc 取消。",
       pickerLabel: "点击导入 {count} 字 · Esc 取消",
       noReadableArticle: "没有在这个页面找到可读正文。",
@@ -55,8 +59,12 @@
       ignore: "Ignore",
       ignored: "Ignored",
       clearStatus: "Clear",
-      readSentence: "Read",
+      readParagraph: "Read paragraph",
+      pickParagraph: "Click a paragraph to read it. Esc cancels.",
+      cancelPick: "Cancel pick",
       stopReading: "Stop",
+      closeReader: "Close annotations",
+      noReadableParagraph: "No readable Japanese text in this area.",
       pickerInitial: "Click to import highlighted text. Esc cancel.",
       pickerLabel: "Click to import {count} chars. · Esc cancel",
       noReadableArticle: "No readable article text found on this page.",
@@ -67,6 +75,8 @@
   let picker = null;
   let reader = null;
   let activeReaderUtterance = null;
+  let activeReaderAudio = null;
+  let activeReaderSpeechRunId = 0;
   let activeReaderSpeechButton = null;
   let activeReaderHighlightFallback = null;
   const READER_TOKEN_STATUS_CLASSES = [
@@ -137,6 +147,8 @@
       replacements: [],
       selectedToken: null,
       panel: null,
+      toolbar: null,
+      paragraphPicker: null,
     };
     showToast(tr("annotating"));
     try {
@@ -174,6 +186,7 @@
       reader.active = true;
       reader.loading = false;
       reader.tokenCount = tokenCount;
+      renderReaderToolbar();
       document.addEventListener("click", onReaderDocumentClick, true);
       showToast(tokenCount ? tr("annotated", { count: tokenCount }) : tr("noAnnotations"));
       return { enabled: true, tokenCount };
@@ -191,6 +204,8 @@
     }
     document.removeEventListener("click", onReaderDocumentClick, true);
     stopReaderSpeech();
+    stopReaderParagraphPicker();
+    removeReaderToolbar();
     removeReaderPanel();
     reader.replacements.forEach(({ wrapper, text }) => {
       if (wrapper.parentNode) {
@@ -203,6 +218,10 @@
 
   function restoreOrphanedReaderAnnotations() {
     document.querySelectorAll("#jpcorpus-reader-panel").forEach((panel) => panel.remove());
+    document.querySelectorAll("#jpcorpus-reader-toolbar").forEach((toolbar) => toolbar.remove());
+    document.querySelectorAll(".jpcorpus-reader-speech-pick-target").forEach((target) => {
+      target.classList.remove("jpcorpus-reader-speech-pick-target");
+    });
     document.querySelectorAll(".jpcorpus-reader-wrapper").forEach((wrapper) => {
       if (wrapper.parentNode) {
         wrapper.replaceWith(document.createTextNode(wrapper.textContent || ""));
@@ -325,7 +344,7 @@
 
   function onReaderDocumentClick(event) {
     const target = event.target;
-    if (target instanceof Element && target.closest("#jpcorpus-reader-panel, .jpcorpus-reader-token")) {
+    if (target instanceof Element && target.closest("#jpcorpus-reader-panel, #jpcorpus-reader-toolbar, .jpcorpus-reader-token")) {
       return;
     }
     clearReaderSelection();
@@ -369,16 +388,7 @@
       event.stopPropagation();
       clearReaderSelection();
     });
-    const read = document.createElement("button");
-    read.type = "button";
-    read.className = "jpcorpus-reader-speech-button";
-    read.textContent = tr("readSentence");
-    read.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      speakReaderSentence(anchor, read);
-    });
-    title.append(word, read, close);
+    title.append(word, close);
 
     const meta = document.createElement("div");
     meta.className = "jpcorpus-reader-panel-meta";
@@ -512,6 +522,128 @@
     }
   }
 
+  function renderReaderToolbar() {
+    if (!reader) {
+      return;
+    }
+    removeReaderToolbar();
+    const toolbar = document.createElement("div");
+    toolbar.id = "jpcorpus-reader-toolbar";
+    toolbar.lang = extensionLang === "zh" ? "zh-Hans" : "en";
+    const read = document.createElement("button");
+    read.type = "button";
+    read.className = "jpcorpus-reader-speech-button";
+    read.textContent = tr("readParagraph");
+    read.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (activeReaderSpeechButton === read) {
+        stopReaderSpeech();
+        return;
+      }
+      if (reader.paragraphPicker) {
+        stopReaderParagraphPicker();
+        return;
+      }
+      startReaderParagraphPicker(read);
+    });
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = tr("closeReader");
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      disableReadingMode();
+      showToast(tr("readerOff"));
+    });
+    toolbar.append(read, close);
+    document.documentElement.append(toolbar);
+    reader.toolbar = toolbar;
+  }
+
+  function removeReaderToolbar() {
+    reader?.toolbar?.remove();
+    if (reader) {
+      reader.toolbar = null;
+    }
+  }
+
+  function startReaderParagraphPicker(button) {
+    if (!reader || reader.paragraphPicker) {
+      return;
+    }
+    showToast(tr("pickParagraph"));
+    button.textContent = tr("cancelPick");
+    button.setAttribute("aria-pressed", "true");
+    button.classList.add("active");
+    reader.paragraphPicker = {
+      button,
+      target: null,
+    };
+    document.addEventListener("mousemove", onReaderParagraphMouseMove, true);
+    document.addEventListener("click", onReaderParagraphClick, true);
+    document.addEventListener("keydown", onReaderParagraphKeyDown, true);
+  }
+
+  function stopReaderParagraphPicker() {
+    if (!reader?.paragraphPicker) {
+      return;
+    }
+    const { button, target } = reader.paragraphPicker;
+    target?.classList.remove("jpcorpus-reader-speech-pick-target");
+    button.textContent = tr("readParagraph");
+    button.setAttribute("aria-pressed", "false");
+    button.classList.remove("active");
+    document.removeEventListener("mousemove", onReaderParagraphMouseMove, true);
+    document.removeEventListener("click", onReaderParagraphClick, true);
+    document.removeEventListener("keydown", onReaderParagraphKeyDown, true);
+    reader.paragraphPicker = null;
+  }
+
+  function onReaderParagraphMouseMove(event) {
+    if (!reader?.paragraphPicker) {
+      return;
+    }
+    const target = readerSpeechBlockCandidate(event.target);
+    updateReaderParagraphPickerTarget(target);
+  }
+
+  function onReaderParagraphClick(event) {
+    if (!reader?.paragraphPicker) {
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest("#jpcorpus-reader-toolbar, #jpcorpus-reader-panel")) {
+      return;
+    }
+    const target = reader.paragraphPicker.target || readerSpeechBlockCandidate(event.target);
+    event.preventDefault();
+    event.stopPropagation();
+    if (!target) {
+      showToast(tr("noReadableParagraph"));
+      return;
+    }
+    const button = reader.paragraphPicker.button;
+    stopReaderParagraphPicker();
+    speakReaderParagraph(target, button);
+  }
+
+  function onReaderParagraphKeyDown(event) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      stopReaderParagraphPicker();
+    }
+  }
+
+  function updateReaderParagraphPickerTarget(target) {
+    if (!reader?.paragraphPicker || reader.paragraphPicker.target === target) {
+      return;
+    }
+    reader.paragraphPicker.target?.classList.remove("jpcorpus-reader-speech-pick-target");
+    reader.paragraphPicker.target = target;
+    target?.classList.add("jpcorpus-reader-speech-pick-target");
+  }
+
   function positionReaderPanel(panel, anchor) {
     const rect = anchor.getBoundingClientRect();
     const panelWidth = Math.min(340, window.innerWidth - 24);
@@ -525,53 +657,124 @@
   }
 
   function removeReaderPanel() {
-    stopReaderSpeech();
     reader?.panel?.remove();
     if (reader) {
       reader.panel = null;
     }
   }
 
-  function speakReaderSentence(anchor, button) {
-    const sentence = readerSentenceForToken(anchor);
-    const text = sentence.text || anchor.textContent || "";
-    if (!text.trim() || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
-      return;
-    }
-    if (activeReaderUtterance && activeReaderSpeechButton === button) {
-      stopReaderSpeech();
+  async function speakReaderParagraph(target, button) {
+    const text = normalizeReaderSpeechText(readableText(target));
+    if (!text) {
+      showToast(tr("noReadableParagraph"));
       return;
     }
     stopReaderSpeech();
+    const runId = activeReaderSpeechRunId + 1;
+    activeReaderSpeechRunId = runId;
     activeReaderSpeechButton = button;
     button.textContent = tr("stopReading");
     button.setAttribute("aria-pressed", "true");
-    button.classList.add("active");
-    showReaderSpeechHighlight(sentence.range, sentence.fallbackElement);
-    const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").trim());
-    utterance.lang = "ja-JP";
-    const voice = preferredJapaneseVoice(window.speechSynthesis.getVoices());
-    if (voice) {
-      utterance.voice = voice;
+    button.setAttribute("aria-busy", "true");
+    button.classList.add("active", "loading");
+    showReaderSpeechHighlight(rangeForElementContents(target), target);
+    try {
+      const voicevoxOk = await speakReaderVoicevox(text, runId);
+      if (!voicevoxOk && isActiveReaderSpeech(runId)) {
+        await speakReaderBrowser(text, runId);
+      }
+    } finally {
+      if (isActiveReaderSpeech(runId)) {
+        finishReaderSpeech(button);
+      }
     }
-    const finish = () => {
-      if (activeReaderUtterance !== utterance) {
+  }
+
+  async function speakReaderVoicevox(text, runId) {
+    const segments = readerSpeechSegments(text);
+    if (!segments.length) {
+      return false;
+    }
+    try {
+      for (const segment of segments) {
+        if (!isActiveReaderSpeech(runId)) {
+          return false;
+        }
+        const response = await chrome.runtime.sendMessage({
+          type: "SYNTHESIZE_VOICEVOX",
+          payload: { text: segment, rate: 1 },
+        });
+        if (!response?.ok || !response.result?.dataUrl) {
+          return false;
+        }
+        if (!isActiveReaderSpeech(runId)) {
+          return false;
+        }
+        const played = await playReaderAudioUrl(response.result.dataUrl, runId);
+        if (!played) {
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function playReaderAudioUrl(dataUrl, runId) {
+    return new Promise((resolve) => {
+      if (!isActiveReaderSpeech(runId)) {
+        resolve(false);
         return;
       }
-      activeReaderUtterance = null;
-      resetReaderSpeechButton(button);
-      activeReaderSpeechButton = null;
-      clearReaderSpeechHighlight();
-    };
-    utterance.onend = finish;
-    utterance.onerror = finish;
-    activeReaderUtterance = utterance;
-    window.speechSynthesis.speak(utterance);
+      activeReaderAudio = new Audio(dataUrl);
+      activeReaderAudio.addEventListener("ended", () => {
+        activeReaderAudio = null;
+        resolve(true);
+      }, { once: true });
+      activeReaderAudio.addEventListener("error", () => {
+        activeReaderAudio = null;
+        resolve(false);
+      }, { once: true });
+      activeReaderAudio.addEventListener("pause", () => {
+        if (!isActiveReaderSpeech(runId)) {
+          activeReaderAudio = null;
+          resolve(false);
+        }
+      }, { once: true });
+      activeReaderAudio.play().catch(() => {
+        activeReaderAudio = null;
+        resolve(false);
+      });
+    });
+  }
+
+  function speakReaderBrowser(text, runId) {
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined" || !isActiveReaderSpeech(runId)) {
+      return Promise.resolve(false);
+    }
+    return new Promise((resolve) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "ja-JP";
+      const voice = preferredJapaneseVoice(window.speechSynthesis.getVoices());
+      if (voice) {
+        utterance.voice = voice;
+      }
+      utterance.onend = () => resolve(true);
+      utterance.onerror = () => resolve(false);
+      activeReaderUtterance = utterance;
+      window.speechSynthesis.speak(utterance);
+    });
   }
 
   function stopReaderSpeech() {
+    activeReaderSpeechRunId += 1;
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
+    }
+    if (activeReaderAudio) {
+      activeReaderAudio.pause();
+      activeReaderAudio = null;
     }
     activeReaderUtterance = null;
     resetReaderSpeechButton(activeReaderSpeechButton);
@@ -580,88 +783,118 @@
     document.querySelectorAll(".jpcorpus-reader-speech-button.active").forEach(resetReaderSpeechButton);
   }
 
+  function finishReaderSpeech(button) {
+    activeReaderUtterance = null;
+    activeReaderAudio = null;
+    resetReaderSpeechButton(button);
+    activeReaderSpeechButton = null;
+    clearReaderSpeechHighlight();
+  }
+
   function resetReaderSpeechButton(button) {
     if (!button) {
       return;
     }
-    button.textContent = tr("readSentence");
+    button.textContent = tr("readParagraph");
     button.setAttribute("aria-pressed", "false");
-    button.classList.remove("active");
+    button.setAttribute("aria-busy", "false");
+    button.classList.remove("active", "loading");
   }
 
-  function readerSentenceForToken(token) {
-    const fallbackElement = token.closest("p, li, dd, dt, div, section, article") || token;
-    const root = token.closest(".jpcorpus-reader-wrapper") || token.parentNode || token;
-    const fullText = root.textContent || token.textContent || "";
-    const tokenOffset = textOffsetWithin(root, token);
-    const bounds = sentenceBounds(fullText, tokenOffset);
-    const range = rangeForTextOffsets(root, bounds.start, bounds.end);
-    return {
-      text: fullText.slice(bounds.start, bounds.end).trim() || token.textContent || "",
-      range,
-      fallbackElement,
-    };
+  function isActiveReaderSpeech(runId) {
+    return activeReaderSpeechRunId === runId;
   }
 
-  function textOffsetWithin(root, target) {
-    let offset = 0;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      if (target.contains(node)) {
-        return offset;
-      }
-      offset += (node.nodeValue || "").length;
-    }
-    return 0;
-  }
-
-  function sentenceBounds(text, offset) {
-    const punctuation = /[。！？!?]/u;
-    let start = 0;
-    for (let index = Math.max(0, offset - 1); index >= 0; index -= 1) {
-      if (punctuation.test(text[index]) || text[index] === "\n") {
-        start = index + 1;
-        break;
-      }
-    }
-    let end = text.length;
-    for (let index = Math.max(0, offset); index < text.length; index += 1) {
-      if (punctuation.test(text[index]) || text[index] === "\n") {
-        end = index + 1;
-        break;
-      }
-    }
-    while (start < end && /\s/u.test(text[start])) {
-      start += 1;
-    }
-    while (end > start && /\s/u.test(text[end - 1])) {
-      end -= 1;
-    }
-    return { start, end };
-  }
-
-  function rangeForTextOffsets(root, start, end) {
+  function rangeForElementContents(element) {
     const range = document.createRange();
-    let offset = 0;
-    let started = false;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      const length = (node.nodeValue || "").length;
-      const nextOffset = offset + length;
-      if (!started && start <= nextOffset) {
-        range.setStart(node, Math.max(0, start - offset));
-        started = true;
-      }
-      if (started && end <= nextOffset) {
-        range.setEnd(node, Math.max(0, end - offset));
-        return range;
-      }
-      offset = nextOffset;
-    }
-    range.selectNodeContents(root);
+    range.selectNodeContents(element);
     return range;
+  }
+
+  function readerSpeechBlockCandidate(node) {
+    if (!(node instanceof Element)) {
+      return null;
+    }
+    const preferred = node.closest("p, li, dd, dt, blockquote, h1, h2, h3");
+    if (preferred && isUsableReaderSpeechBlock(preferred)) {
+      return preferred;
+    }
+    let current = node.closest(".jpcorpus-reader-wrapper")?.parentElement || node;
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (isUsableReaderSpeechBlock(current)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function isUsableReaderSpeechBlock(element) {
+    if (!(element instanceof Element) || element.closest("#jpcorpus-reader-panel, #jpcorpus-reader-toolbar, .jpcorpus-import-toast")) {
+      return false;
+    }
+    if (element.classList.contains("jpcorpus-reader-token") || element.classList.contains("jpcorpus-reader-wrapper")) {
+      return false;
+    }
+    const text = normalizeReaderSpeechText(readableText(element));
+    if (text.length < 4 || !hasJapaneseText(text)) {
+      return false;
+    }
+    const rect = element.getBoundingClientRect();
+    return rect.width >= 40 && rect.height >= 10;
+  }
+
+  function readerSpeechSegments(text) {
+    const normalized = normalizeReaderSpeechText(text);
+    if (!normalized) {
+      return [];
+    }
+    const sentences = normalized
+      .split(/(?<=[。！？!?])\s*/u)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const parts = sentences.length ? sentences : [normalized];
+    const segments = [];
+    parts.forEach((part) => {
+      let rest = part;
+      while (rest.length > 280) {
+        segments.push(rest.slice(0, 280));
+        rest = rest.slice(280).trim();
+      }
+      if (rest) {
+        segments.push(rest);
+      }
+    });
+    return segments;
+  }
+
+  function normalizeReaderSpeechText(value) {
+    return stripReaderSpeechParentheticals(String(value || ""))
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function stripReaderSpeechParentheticals(value) {
+    const pairs = { "(": ")", "（": "）" };
+    const closers = new Set(Object.values(pairs));
+    const output = [];
+    const stack = [];
+    [...value].forEach((char) => {
+      if (pairs[char]) {
+        stack.push(pairs[char]);
+        return;
+      }
+      if (stack.length > 0) {
+        if (char === stack[stack.length - 1]) {
+          stack.pop();
+        }
+        return;
+      }
+      if (!closers.has(char)) {
+        output.push(char);
+      }
+    });
+    return output.join("");
   }
 
   function showReaderSpeechHighlight(range, fallbackElement) {
@@ -720,6 +953,56 @@
         box-shadow: inset 0 -0.36em rgba(255, 197, 61, 0.45) !important;
         outline: 1px solid rgba(183, 90, 53, 0.55) !important;
       }
+      #jpcorpus-reader-toolbar {
+        position: fixed !important;
+        z-index: 2147483647 !important;
+        top: 18px !important;
+        right: 18px !important;
+        display: flex !important;
+        gap: 8px !important;
+        align-items: center !important;
+        padding: 8px !important;
+        border: 1px solid #d6e0e3 !important;
+        border-left: 4px solid #147d73 !important;
+        border-radius: 10px !important;
+        background: rgba(255, 255, 255, 0.96) !important;
+        box-shadow: 0 14px 36px rgba(31, 39, 42, 0.18) !important;
+        font: 760 13px/1 ${CJK_FONT_CSS} !important;
+      }
+      #jpcorpus-reader-toolbar button {
+        min-height: 34px !important;
+        padding: 7px 11px !important;
+        border: 1px solid #d6e0e3 !important;
+        border-radius: 8px !important;
+        background: #ffffff !important;
+        color: #657178 !important;
+        font: inherit !important;
+        cursor: pointer !important;
+      }
+      #jpcorpus-reader-toolbar button:hover,
+      #jpcorpus-reader-toolbar button.active {
+        border-color: #147d73 !important;
+        background: #eef5f4 !important;
+        color: #147d73 !important;
+      }
+      #jpcorpus-reader-toolbar button.loading::after {
+        content: "" !important;
+        display: inline-block !important;
+        width: 0.65em !important;
+        height: 0.65em !important;
+        margin-left: 0.45em !important;
+        border: 2px solid currentColor !important;
+        border-right-color: transparent !important;
+        border-radius: 999px !important;
+        vertical-align: -0.08em !important;
+        animation: jpcorpus-reader-spin 800ms linear infinite !important;
+      }
+      .jpcorpus-reader-speech-pick-target {
+        outline: 2px solid rgba(20, 125, 115, 0.58) !important;
+        outline-offset: 3px !important;
+        border-radius: 6px !important;
+        background: rgba(20, 125, 115, 0.08) !important;
+      }
       #jpcorpus-reader-panel {
         position: fixed !important;
         z-index: 2147483647 !important;
@@ -755,14 +1038,6 @@
         color: #657178 !important;
         font: 700 12px/1 ${CJK_FONT_CSS} !important;
         cursor: pointer !important;
-      }
-      .jpcorpus-reader-panel-title .jpcorpus-reader-speech-button {
-        margin-left: auto !important;
-      }
-      .jpcorpus-reader-panel-title .jpcorpus-reader-speech-button.active {
-        border-color: #147d73 !important;
-        background: #eef5f4 !important;
-        color: #147d73 !important;
       }
       ::highlight(jpcorpus-reader-speaking) {
         background: rgba(20, 125, 115, 0.14);
@@ -829,6 +1104,9 @@
       .jpcorpus-reader-status-button.active:disabled:hover {
         border-color: #147d73 !important;
         color: #147d73 !important;
+      }
+      @keyframes jpcorpus-reader-spin {
+        to { transform: rotate(360deg); }
       }
     `;
     document.documentElement.append(style);

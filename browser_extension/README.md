@@ -13,7 +13,7 @@ This unpacked Chrome extension sends selected web text to the local jpcorpus vie
    - right-click the page and choose Add main article to jpcorpus, or
    - open the extension popup and click Import current selection, or
    - click Pick page area, hover a visible text block, then click it. Press Esc to cancel.
-6. For temporary on-page lookup, open the popup and click Toggle page reading mode, or right-click the page and choose Toggle jpcorpus reading mode. This does not save the page; it annotates words that match the local glossary and shows a floating glossary panel when an annotated word is clicked. Use the status buttons in that panel to add the word to review, mark it known, ignore it, or clear the local mark.
+6. For temporary on-page lookup, open the popup and click Toggle page reading mode, or right-click the page and choose Toggle jpcorpus reading mode. This does not save the page; it annotates words that match the local glossary and shows a floating glossary panel when an annotated word is clicked. Use the status buttons in that panel to add the word to review, mark it known, ignore it, or clear the local mark. The floating reader toolbar can read a picked paragraph aloud; it tries the local viewer's VOICEVOX endpoint first and falls back to browser speech.
 
 The popup language switch controls popup labels, context menu labels, in-page toasts, and the floating glossary panel. The extension UI uses a Chinese CJK font stack first so Chinese glossary text is not accidentally rendered with Japanese glyph variants from the host page.
 

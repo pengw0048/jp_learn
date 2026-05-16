@@ -145,6 +145,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
     return true;
   }
+  if (message?.type === "SYNTHESIZE_VOICEVOX") {
+    synthesizeVoicevox(message.payload || {})
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
+  }
   return false;
 });
 
@@ -166,6 +172,24 @@ async function setWordStatus(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
   }, t(lang, "studyUpdate"), lang);
+}
+
+async function synthesizeVoicevox(payload) {
+  const baseUrl = await localBaseUrl();
+  const lang = await currentLang();
+  const response = await requestBinary(`${baseUrl}/api/tts/voicevox`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: payload.text || "",
+      speaker: payload.speaker || "",
+      rate: payload.rate || 1,
+    }),
+  }, t(lang, "readingMode"), lang);
+  return {
+    contentType: response.contentType,
+    dataUrl: `data:${response.contentType};base64,${arrayBufferToBase64(response.buffer)}`,
+  };
 }
 
 async function toggleReadingMode(tab) {
@@ -308,6 +332,38 @@ async function requestJson(url, options, action, lang = "en") {
     throw new Error(payload?.error || t(lang, "httpFailed", { action, status: response.status }));
   }
   return payload || {};
+}
+
+async function requestBinary(url, options, action, lang = "en") {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch {
+    throw new Error(t(lang, "requestNoReach", { action }));
+  }
+  if (!response.ok) {
+    let message = t(lang, "httpFailed", { action, status: response.status });
+    try {
+      const payload = await response.json();
+      message = payload?.error || message;
+    } catch {
+      // Keep the HTTP status message for non-JSON errors.
+    }
+    throw new Error(message);
+  }
+  return {
+    contentType: response.headers.get("content-type") || "audio/wav",
+    buffer: await response.arrayBuffer(),
+  };
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
 }
 
 async function setStatus(message) {
