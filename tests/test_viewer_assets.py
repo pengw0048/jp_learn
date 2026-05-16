@@ -120,6 +120,8 @@ def test_llm_config_labels_are_user_facing_and_localized():
 def test_reader_mode_has_read_aloud_strings_and_controls():
     i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
     app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    reader_mode = (VIEWER_ASSET_DIR / "app_reader_mode.js").read_text(encoding="utf-8")
+    sources = (VIEWER_ASSET_DIR / "app_sources.js").read_text(encoding="utf-8")
     tts = (VIEWER_ASSET_DIR / "app_tts.js").read_text(encoding="utf-8")
     css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
 
@@ -133,6 +135,10 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "firstVisibleReaderLineKey" in app
     assert "singleLine: true" in app
     assert "prefetchReaderSpeechLine" in app
+    assert "stopAllSpeech();" in app
+    assert 'window.addEventListener("pagehide", stopAllSpeech)' in app
+    assert "stopAllSpeech();" in reader_mode
+    assert "stopAllSpeech" in sources
     assert "prepareSpeech" in tts
     assert "speakPreparedText" in tts
     assert "reader-speech-stop-button" in css

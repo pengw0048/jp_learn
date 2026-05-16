@@ -13,6 +13,7 @@ window.JPCORPUS_SOURCES = (() => {
     refs,
     render,
     startMaintenanceJob,
+    stopAllSpeech,
     storageMode,
     strong,
     t,
@@ -473,6 +474,7 @@ window.JPCORPUS_SOURCES = (() => {
     }
 
     function openSourceInReader(source) {
+      stopAllSpeech();
       app.mode = "read";
       localStorage.setItem(storageMode, app.mode);
       app.reader.sourceType = source.type || "all";

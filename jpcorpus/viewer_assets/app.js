@@ -269,6 +269,7 @@ const {
   refs,
   render,
   startMaintenanceJob,
+  stopAllSpeech,
   storageMode: STORAGE_MODE,
   strong,
   t,
@@ -364,7 +365,7 @@ const {
   todayKey,
   clearReaderSelection,
   persistReaderPositions,
-  stopReaderSpeech,
+  stopAllSpeech,
 });
 const {
   bindTtsSettings,
@@ -477,10 +478,13 @@ async function init() {
 function bindExternalStateRefresh() {
   window.addEventListener("focus", refreshExternalState);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      refreshExternalState();
+    if (document.hidden) {
+      stopAllSpeech();
+      return;
     }
+    refreshExternalState();
   });
+  window.addEventListener("pagehide", stopAllSpeech);
 }
 
 function refreshExternalState() {
@@ -793,6 +797,7 @@ function openWordFromSource(wordText) {
   if (!word) {
     return;
   }
+  stopAllSpeech();
   app.mode = "browse";
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.selectedWord = word;
@@ -1255,6 +1260,14 @@ function stopReaderSpeech() {
   setReaderSpeakingLine(null);
 }
 
+function stopAllSpeech() {
+  if (readerSpeechActive()) {
+    stopReaderSpeech();
+    return;
+  }
+  stopSpeech();
+}
+
 function readerSpeechActive() {
   return app.reader.tts.playing || app.reader.tts.preparing || Boolean(app.reader.tts.lineKey);
 }
@@ -1625,10 +1638,8 @@ function setStudyMode(mode) {
   if (!MODE_VALUES.has(mode) || app.mode === mode) {
     return;
   }
+  stopAllSpeech();
   const leavingReadMode = app.mode === "read" && mode !== "read";
-  if (leavingReadMode) {
-    stopReaderSpeech();
-  }
   app.mode = mode;
   localStorage.setItem(STORAGE_MODE, app.mode);
   app.study.showAnswer = false;
