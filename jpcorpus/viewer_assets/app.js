@@ -1,6 +1,7 @@
 const {
   STORAGE_LANG,
   STORAGE_MODE,
+  STORAGE_READER_FURIGANA,
   STORAGE_READER_POSITIONS,
   DAILY_STUDY_LIMIT,
   STUDY_TARGET_COUNT,
@@ -1061,7 +1062,7 @@ function renderReadingPane() {
   const summaryNode = renderReaderModeSummary(selected, selectedUnit);
   const titleNode = summaryNode.querySelector(".reader-mode-title");
   if (titleNode) {
-    titleNode.append(renderReaderSpeechButton(detailsReady));
+    titleNode.append(renderReaderQuickActions(detailsReady));
   }
   scroller.append(...[
     summaryNode,
@@ -1103,6 +1104,35 @@ function clearReaderSelection() {
   app.reader.selection = null;
   app.reader.explanation = null;
   app.reader.question = null;
+}
+
+function renderReaderQuickActions(detailsReady) {
+  const actions = el("div", "reader-quick-actions");
+  actions.append(renderReaderFuriganaButton(), renderReaderSpeechButton(detailsReady));
+  return actions;
+}
+
+function renderReaderFuriganaButton() {
+  const button = el(
+    "button",
+    `reader-furigana-button${app.reader.showFurigana ? " active" : ""}`,
+    t("readerFuriganaOn"),
+  );
+  button.type = "button";
+  button.setAttribute("aria-pressed", app.reader.showFurigana ? "true" : "false");
+  button.title = t(app.reader.showFurigana ? "readerFuriganaDisableHint" : "readerFuriganaEnableHint");
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    app.reader.showFurigana = !app.reader.showFurigana;
+    try {
+      localStorage.setItem(STORAGE_READER_FURIGANA, app.reader.showFurigana ? "on" : "off");
+    } catch {
+      // Keep the in-memory toggle working even if storage is unavailable.
+    }
+    app.reader.preserveScrollOnRender = true;
+    render();
+  });
+  return button;
 }
 
 function renderReaderSpeechButton(enabled) {

@@ -132,7 +132,10 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert 'readerPreparingSpeech: "准备中"' in i18n
     assert 'readerReadLine: "朗读这一句"' in i18n
     assert 'readerFuriganaChoice: "注音"' in i18n
+    assert 'readerSourceControl: "当前阅读"' in i18n
     assert "reader-speech-button" in app
+    assert "reader-furigana-button" in app
+    assert "reader-quick-actions" in app
     assert "reader-speech-dock" in app
     assert "reader-line-speech-button" in app
     assert "firstVisibleReaderLineKey" in app
@@ -143,7 +146,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "stopAllSpeech();" in app
     assert 'window.addEventListener("pagehide", stopAllSpeech)' in app
     assert "stopAllSpeech();" in reader_mode
-    assert "renderReaderFuriganaPicker" in reader_mode
+    assert "renderReaderModeControlsSummary" in reader_mode
     assert "STORAGE_READER_FURIGANA" in storage
     assert 'el("ruby", "reader-ruby")' in reader
     assert "readerLineText" in reader
@@ -154,6 +157,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-line-speaking" in css
     assert "reader-line-speech-start" in css
     assert "reader-furigana-enabled" in css
+    assert "reader-mode-controls-kicker" in css
 
 
 def test_tts_speech_text_skips_parentheticals():

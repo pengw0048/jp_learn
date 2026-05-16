@@ -28,7 +28,7 @@ window.JPCORPUS_READER_MODE = (() => {
     persistReaderPositions,
     stopAllSpeech,
   }) {
-    const { STORAGE_READER_FURIGANA, STORAGE_READER_WORD_LIST } = storage;
+    const { STORAGE_READER_WORD_LIST } = storage;
 
     function currentReaderScrollTop() {
       return refs.wordList.querySelector(".reader-mode-scroll")?.scrollTop || 0;
@@ -70,21 +70,26 @@ window.JPCORPUS_READER_MODE = (() => {
         app.reader.controlsOpen = details.open;
       });
       details.append(
-        el("summary", "reader-mode-controls-summary", readerModeSummaryLabel(groups, selected, selectedUnit)),
+        renderReaderModeControlsSummary(groups, selected, selectedUnit),
         renderReaderModeToolbar(groups, selected, units, selectedUnit),
       );
       return details;
     }
 
-    function readerModeSummaryLabel(groups, selected, selectedUnit) {
-      const parts = [
-        t("readerSourcesFound", { count: formatNumber(groups.length) }),
-        selected.title,
-      ];
+    function renderReaderModeControlsSummary(groups, selected, selectedUnit) {
+      const summary = el("summary", "reader-mode-controls-summary");
+      summary.title = t("readerSourceControlHint");
+      const body = el("span", "reader-mode-controls-summary-body");
+      body.append(
+        el("span", "reader-mode-controls-kicker", t("readerSourceControl")),
+        el("strong", "reader-mode-controls-current", selected.title || t("sourceInventoryUnknown")),
+      );
       if (selectedUnit?.label && selectedUnit.label !== selected.title) {
-        parts.push(selectedUnit.label);
+        body.append(el("span", "reader-mode-controls-unit", selectedUnit.label));
       }
-      return parts.filter(Boolean).join(" · ");
+      body.append(el("span", "reader-mode-controls-meta", t("readerSourcesFound", { count: formatNumber(groups.length) })));
+      summary.append(body, el("span", "reader-mode-controls-hint", t("readerSourceControlHint")));
+      return summary;
     }
 
     function renderReaderModeToolbar(groups, selected, units, selectedUnit) {
@@ -139,7 +144,6 @@ window.JPCORPUS_READER_MODE = (() => {
         sourcePicker,
         renderReaderUnitPicker(units, selectedUnit),
         renderReaderWordListPicker(),
-        renderReaderFuriganaPicker(),
       );
       return toolbar;
     }
@@ -194,33 +198,6 @@ window.JPCORPUS_READER_MODE = (() => {
           localStorage.setItem(STORAGE_READER_WORD_LIST, value);
           app.reader.preserveScrollOnRender = true;
           clearReaderSelection();
-          render();
-        });
-        options.append(button);
-      });
-      picker.append(options);
-      return picker;
-    }
-
-    function renderReaderFuriganaPicker() {
-      const picker = el("div", "reader-furigana-picker");
-      picker.append(el("span", "reader-source-picker-label", t("readerFuriganaChoice")));
-      const options = el("div", "reader-furigana-tabs");
-      [
-        [false, t("readerFuriganaOff")],
-        [true, t("readerFuriganaOn")],
-      ].forEach(([value, label]) => {
-        const button = el("button", "", label);
-        button.type = "button";
-        button.classList.toggle("active", app.reader.showFurigana === value);
-        button.addEventListener("click", () => {
-          app.reader.showFurigana = value;
-          try {
-            localStorage.setItem(STORAGE_READER_FURIGANA, value ? "on" : "off");
-          } catch {
-            // Keep the in-memory toggle working even if storage is unavailable.
-          }
-          app.reader.preserveScrollOnRender = true;
           render();
         });
         options.append(button);
