@@ -248,6 +248,122 @@ def test_example_highlight_can_add_unmarked_word_to_study():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
+def test_study_card_reveals_answer_before_review_actions():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+
+        function makeTextNode(value) {{
+          return {{ tag: "text", textContent: String(value || "") }};
+        }}
+
+        function makeNode(tag, className = "", value = "") {{
+          const listeners = {{}};
+          return {{
+            tag,
+            className,
+            value: String(value || ""),
+            children: [],
+            attrs: {{}},
+            type: "",
+            title: "",
+            append(...items) {{
+              this.children.push(...items.map((item) => typeof item === "string" ? makeTextNode(item) : item));
+            }},
+            setAttribute(name, nextValue) {{
+              this.attrs[name] = String(nextValue || "");
+            }},
+            addEventListener(name, handler) {{
+              listeners[name] = handler;
+            }},
+            click() {{
+              listeners.click?.({{
+                preventDefault() {{}},
+                stopPropagation() {{}},
+              }});
+            }},
+            get textContent() {{
+              return this.value + this.children.map((child) => child.textContent || "").join("");
+            }},
+          }};
+        }}
+
+        function nodes(node) {{
+          return [node, ...(node.children || []).flatMap(nodes)];
+        }}
+
+        function buttonByText(root, text) {{
+          return nodes(root).find((node) => node.tag === "button" && node.textContent === text);
+        }}
+
+        require({str(VIEWER_ASSET_DIR / "app_detail.js")!r});
+        const app = {{ study: {{ showAnswer: false }}, lang: "zh", mode: "study" }};
+        let rendered = 0;
+        const helper = window.JPCORPUS_DETAIL.createDetailHelpers({{
+          app,
+          displayCount: () => 4,
+          displayMeaningRaw: () => "去，到",
+          el: makeNode,
+          examplesForWord: () => [],
+          formatNumber: (value) => String(value),
+          render: () => {{ rendered += 1; }},
+          renderExamples: () => makeNode("section", "examples"),
+          renderLexicalNotes: () => makeNode("section", "lexical-notes"),
+          renderMeaningValue: () => makeNode("div", "meaning-main", "去，到"),
+          renderSpeakButton: null,
+          scheduleStudyReview: () => {{}},
+          setStatus: () => {{}},
+          speechTextForWord: () => "",
+          statChip: (value) => makeNode("span", "stat-chip", value),
+          stateLabels: {{}},
+          statusFor: () => "learning",
+          studyActions: {{
+            addStudyCheck: () => {{}},
+            markStudyWord: () => {{}},
+            nextStudyWord: () => {{}},
+          }},
+          studyCheckLabel: () => "进度 3/7",
+          studyCountFor: () => 3,
+          studyKindLabel: () => "复习",
+          studyTargetCount: 7,
+          t: (key, values = {{}}) => ({{
+            studyProgress: `今日 ${{values.current}} / ${{values.total}}`,
+            studyHint: "hint",
+            count: "频次",
+            examples: "例句",
+            revealAnswer: "看答案",
+            nextWord: "下一个",
+            studyCheckButton: "进度 +1",
+            studyAgain: "还不熟",
+            studyKnown: "已经会了",
+          }}[key] || key),
+        }});
+        const word = {{ word: "行く", reading: "いく", level: "N5" }};
+        const hidden = helper.renderStudyCard(word, 0, 2);
+        assert.ok(buttonByText(hidden, "看答案"));
+        assert.ok(buttonByText(hidden, "下一个"));
+        assert.equal(Boolean(buttonByText(hidden, "进度 +1")), false);
+        assert.equal(nodes(hidden).filter((node) => node.className.includes("study-progress-dot filled")).length, 3);
+
+        buttonByText(hidden, "看答案").click();
+        assert.equal(app.study.showAnswer, true);
+        assert.equal(rendered, 1);
+
+        const shown = helper.renderStudyCard(word, 0, 2);
+        assert.ok(buttonByText(shown, "进度 +1"));
+        assert.ok(buttonByText(shown, "还不熟"));
+        assert.ok(buttonByText(shown, "已经会了"));
+        assert.equal(Boolean(buttonByText(shown, "看答案")), false);
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_tts_speech_text_skips_parentheticals():
     node = shutil.which("node")
     if not node:
@@ -394,13 +510,14 @@ def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
           return {{
             corpusSyncBanner: {{ hidden: true }},
             corpusSyncMessage: {{ textContent: "" }},
-            corpusSyncApply: {{ disabled: false, textContent: "" }},
+            corpusSyncApply: {{ disabled: false, hidden: false, textContent: "" }},
           }};
         }}
 
-        async function runScenario(shouldDefer) {{
+        async function runScenario(shouldDefer, kind = "sync_media") {{
           const job = {{
             id: "job-1",
+            kind,
             status: "succeeded",
             result: {{ reload_corpus: true }},
             log: [],
@@ -415,6 +532,7 @@ def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
               pollInFlight: false,
               reloadedJobId: null,
               pendingReloadJob: null,
+              syncNotice: "",
               syncApplying: false,
               syncError: "",
             }},
@@ -450,13 +568,20 @@ def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
           assert.equal(deferred.calls.reloads, 1);
           assert.equal(deferred.app.maintenance.pendingReloadJob, null);
           assert.equal(deferred.app.maintenance.reloadedJobId, "job-1");
-          assert.equal(deferred.refs.corpusSyncBanner.hidden, true);
+          assert.equal(deferred.app.maintenance.syncNotice, "corpusUpdateApplied");
+          assert.equal(deferred.refs.corpusSyncBanner.hidden, false);
+          assert.equal(deferred.refs.corpusSyncApply.hidden, true);
 
           const automatic = await runScenario(false);
           assert.equal(automatic.calls.reloads, 1);
           assert.equal(automatic.app.maintenance.pendingReloadJob, null);
           assert.equal(automatic.app.maintenance.reloadedJobId, "job-1");
-          assert.equal(automatic.refs.corpusSyncBanner.hidden, true);
+          assert.equal(automatic.app.maintenance.syncNotice, "corpusUpdateApplied");
+          assert.equal(automatic.refs.corpusSyncBanner.hidden, false);
+
+          const imported = await runScenario(false, "refresh_imported_texts");
+          assert.equal(imported.calls.reloads, 1);
+          assert.equal(imported.app.maintenance.syncNotice, "corpusUpdateImported");
         }})().catch((error) => {{
           console.error(error);
           process.exit(1);
@@ -567,7 +692,7 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
           reading: "やる",
           meaning_zh: "做",
           lexical_notes: {{
-            parts_of_speech: ["Godan verb with 'ru' ending", "transitive verb", "intransitive verb", "接尾词", "unknown English grammar label"],
+            parts_of_speech: ["Godan verb with 'ru' ending", "transitive verb", "intransitive verb", "自他动1", "接尾词", "unknown English grammar label"],
             senses: [
               {{
                 glosses: ["to do", "to undertake"],
@@ -581,6 +706,7 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
 
         assert.equal((text.match(/五段・る/g) || []).length, 1);
         assert.equal((text.match(/自他/g) || []).length, 1);
+        assert.equal(text.includes("自他动1"), false);
         assert.equal(text.includes("transitive verb"), false);
         assert.equal(text.includes("unknown English grammar label"), false);
         assert.equal(text.includes("他动"), false);
@@ -614,6 +740,10 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
           meaning_zh: "（いい/よい）①【イ形】好的",
         }}, "meaning-main").textContent;
         assert.equal(parsedMeaning, "好的");
+        const staleMeaning = helpers.renderMeaningValue({{
+          meaning_zh: "③ 自他动1 道歉，谢罪",
+        }}, "meaning-main").textContent;
+        assert.equal(staleMeaning, "道歉，谢罪");
 
         const enHelpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
           el: makeNode,

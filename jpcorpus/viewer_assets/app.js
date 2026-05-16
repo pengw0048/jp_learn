@@ -125,6 +125,7 @@ const app = {
     pollInFlight: false,
     reloadedJobId: null,
     pendingReloadJob: null,
+    syncNotice: "",
     syncApplying: false,
     syncError: "",
   },
@@ -458,7 +459,9 @@ const {
     nextStudyWord,
   },
   studyCheckLabel,
+  studyCountFor,
   studyKindLabel,
+  studyTargetCount: STUDY_TARGET_COUNT,
   t,
 });
 

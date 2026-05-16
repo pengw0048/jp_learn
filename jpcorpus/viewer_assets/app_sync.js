@@ -9,15 +9,25 @@ window.JPCORPUS_SYNC = (() => {
     shouldDeferCorpusReload,
     t,
   }) {
+    let corpusNoticeTimer = null;
+
     function renderCorpusSyncBanner() {
       if (!refs.corpusSyncBanner) {
         return;
       }
       const job = app.maintenance.pendingReloadJob;
       const visible = Boolean(job) && app.maintenance.reloadedJobId !== job.id;
-      refs.corpusSyncBanner.hidden = !visible;
-      if (!visible) {
+      const notice = String(app.maintenance.syncNotice || "");
+      refs.corpusSyncBanner.hidden = !visible && !notice;
+      refs.corpusSyncBanner.classList?.toggle("notice", !visible && Boolean(notice));
+      refs.corpusSyncApply.hidden = !visible;
+      if (!visible && !notice) {
         refs.corpusSyncMessage.textContent = "";
+        refs.corpusSyncApply.disabled = false;
+        return;
+      }
+      if (!visible) {
+        refs.corpusSyncMessage.textContent = notice;
         refs.corpusSyncApply.disabled = false;
         return;
       }
@@ -129,6 +139,7 @@ window.JPCORPUS_SYNC = (() => {
         app.maintenance.reloadedJobId = job.id;
         app.maintenance.pendingReloadJob = null;
         await reloadCorpus();
+        showCorpusNotice(corpusNoticeLabel(job));
       } catch (error) {
         app.maintenance.reloadedJobId = null;
         app.maintenance.pendingReloadJob = job;
@@ -138,6 +149,28 @@ window.JPCORPUS_SYNC = (() => {
         renderMaintenance();
         renderCorpusSyncBanner();
       }
+    }
+
+    function showCorpusNotice(message) {
+      if (!message) {
+        return;
+      }
+      app.maintenance.syncNotice = message;
+      if (corpusNoticeTimer) {
+        clearTimeout(corpusNoticeTimer);
+      }
+      corpusNoticeTimer = setTimeout(() => {
+        app.maintenance.syncNotice = "";
+        corpusNoticeTimer = null;
+        renderCorpusSyncBanner();
+      }, 4200);
+      corpusNoticeTimer.unref?.();
+    }
+
+    function corpusNoticeLabel(job) {
+      return (job.kind || job.spec?.type) === "refresh_imported_texts"
+        ? t("corpusUpdateImported")
+        : t("corpusUpdateApplied");
     }
 
     return {

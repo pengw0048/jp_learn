@@ -859,12 +859,17 @@ def test_chinese_glossary_matches_multi_reading_words(tmp_path: Path):
 
 def test_chinese_glossary_extracts_compound_pos_prefixes(tmp_path: Path):
     path = tmp_path / "dict.json"
-    path.write_text('{"本当": "⓪【名·ナ形】真；真的；实在"}', encoding="utf-8")
+    path.write_text(
+        '{"本当": "⓪【名·ナ形】真；真的；实在", "謝る": "③ 自他动1 道歉，谢罪"}',
+        encoding="utf-8",
+    )
 
     glossary = ChineseGlossary.load(path)
 
     assert glossary.lookup("本当") == "真；真的；实在"
     assert glossary.lookup_parts_of_speech("本当") == ("名词", "な形容词")
+    assert glossary.lookup("謝る") == "道歉，谢罪"
+    assert glossary.lookup_parts_of_speech("謝る") == ("自他动",)
 
 
 def test_chinese_glossary_tries_fallback_after_primary_reading_mismatch():

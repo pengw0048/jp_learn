@@ -19,7 +19,9 @@ window.JPCORPUS_DETAIL = (() => {
     statusFor,
     studyActions,
     studyCheckLabel,
+    studyCountFor,
     studyKindLabel,
+    studyTargetCount,
     t,
   }) {
     function renderDetailHeader(word) {
@@ -79,6 +81,7 @@ window.JPCORPUS_DETAIL = (() => {
       );
       titleRow.append(title, stats);
       card.append(topLine, titleRow);
+      card.append(renderStudyProgressTrack(word));
 
       if (app.study.showAnswer) {
         const mainMeaning = displayMeaningRaw(word);
@@ -97,6 +100,20 @@ window.JPCORPUS_DETAIL = (() => {
 
     function renderStudyActions(word) {
       const actions = el("div", "study-actions");
+      if (!app.study.showAnswer) {
+        const reveal = el("button", "study-primary-action", t("revealAnswer"));
+        reveal.type = "button";
+        reveal.addEventListener("click", () => {
+          app.study.showAnswer = true;
+          render();
+        });
+        const next = el("button", "study-next-action", t("nextWord"));
+        next.type = "button";
+        next.addEventListener("click", studyActions.nextStudyWord);
+        actions.append(reveal, next);
+        return actions;
+      }
+
       const check = el("button", "study-primary-action", t("studyCheckButton"));
       check.type = "button";
       check.addEventListener("click", () => {
@@ -109,19 +126,32 @@ window.JPCORPUS_DETAIL = (() => {
         studyActions.markStudyWord("learning");
       });
 
-      const reveal = el("button", "study-answer-action", t(app.study.showAnswer ? "hideAnswer" : "revealAnswer"));
-      reveal.type = "button";
-      reveal.addEventListener("click", () => {
-        app.study.showAnswer = !app.study.showAnswer;
-        render();
+      const known = el("button", "study-answer-action", t("studyKnown"));
+      known.type = "button";
+      known.addEventListener("click", () => {
+        studyActions.markStudyWord("known");
       });
 
       const next = el("button", "study-next-action", t("nextWord"));
       next.type = "button";
       next.addEventListener("click", studyActions.nextStudyWord);
 
-      actions.append(check, shaky, reveal, next);
+      actions.append(check, shaky, known, next);
       return actions;
+    }
+
+    function renderStudyProgressTrack(word) {
+      const countText = studyCheckLabel(word);
+      const track = el("div", "study-progress-track");
+      track.title = countText;
+      track.setAttribute("aria-label", countText);
+      const current = studyCountFor(word);
+      const target = studyTargetCount;
+      for (let index = 0; index < target; index += 1) {
+        const dot = el("span", `study-progress-dot ${index < current ? "filled" : ""}`.trim());
+        track.append(dot);
+      }
+      return track;
     }
 
     function renderStatusActions(word) {

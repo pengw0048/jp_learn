@@ -81,6 +81,10 @@ window.JPCORPUS_LEXICAL = (() => {
     v5r: "五段・る",
     vt: "他动",
     vi: "自动",
+    "自他动": "自他",
+    "自他动1": "自他",
+    "自他动2": "自他",
+    "自他动3": "自他",
     unclassified: "未分类",
   };
   const HIDDEN_LEXICAL_POS_LABELS_ZH = new Set([
@@ -206,7 +210,7 @@ window.JPCORPUS_LEXICAL = (() => {
         .map((value) => String(value || "").trim())
         .filter(Boolean);
       return language() === "zh"
-        ? compactLexicalPosZh(uniqueStrings(labels.map(labelLexicalPosZh)))
+        ? uniqueStrings(compactLexicalPosZh(labels.map(labelLexicalPosZh)))
           .filter((label) => !HIDDEN_LEXICAL_POS_LABELS_ZH.has(label))
         : labels;
     }
@@ -403,9 +407,16 @@ window.JPCORPUS_LEXICAL = (() => {
       "自动1",
       "自动2",
       "自动3",
+      "自他动1",
+      "自他动2",
+      "自他动3",
+      "自他动",
       "他动1",
       "他动2",
       "他动3",
+      "自动",
+      "他动",
+      "动词",
       "名词",
       "代词",
       "副词",
@@ -414,6 +425,10 @@ window.JPCORPUS_LEXICAL = (() => {
       "动1",
       "动2",
       "动3",
+      "动",
+      "自サ",
+      "他サ",
+      "自他サ",
       "イ形",
       "ナ形",
       "连体",
@@ -431,6 +446,23 @@ window.JPCORPUS_LEXICAL = (() => {
       代词: "代",
       副词: "副",
       数词: "数",
+      动词: "动",
+      自他动: "自他",
+      自他动1: "自他",
+      自他动2: "自他",
+      自他动3: "自他",
+      自动: "自动",
+      自动1: "自动",
+      自动2: "自动",
+      自动3: "自动",
+      他动: "他动",
+      他动1: "他动",
+      他动2: "他动",
+      他动3: "他动",
+      自サ: "自动",
+      他サ: "他动",
+      自他サ: "自他",
+      动: "动",
     };
     return mapping[value] || value;
   }
