@@ -425,6 +425,9 @@ const {
   renderDetail,
   renderExplanationResult,
   renderSpeakButton,
+  scheduleStudyReview,
+  setStatus,
+  statusFor,
   storage: window.JPCORPUS_STORAGE,
   t,
 });
@@ -1489,11 +1492,12 @@ function renderDetail() {
   refs.emptyState.hidden = true;
   refs.wordDetail.hidden = false;
   ensureWordDetail(word);
-  const nodes = [renderDetailHeader(word), renderLexicalNotes(word)];
+  const nodes = [renderDetailHeader(word)];
   const readerContext = renderReaderContextPanel(word);
   if (readerContext) {
     nodes.push(readerContext);
   }
+  nodes.push(renderLexicalNotes(word));
   nodes.push(renderExamples(word));
   refs.wordDetail.replaceChildren(...nodes);
 }

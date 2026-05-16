@@ -16,6 +16,9 @@ window.JPCORPUS_EXAMPLES = (() => {
     renderDetail,
     renderExplanationResult,
     renderSpeakButton,
+    scheduleStudyReview,
+    setStatus,
+    statusFor,
     storage,
     t,
   }) {
@@ -65,7 +68,9 @@ window.JPCORPUS_EXAMPLES = (() => {
       const afterLines = contextPreview(example.context_after, "after");
       appendContextBlock(lines, beforeLines, "before");
       const current = el("div", "example-current");
-      appendHighlighted(current, example.sentence || "", example.matched_text || word.word);
+      appendHighlighted(current, example.sentence || "", example.matched_text || word.word, {
+        studyWord: word,
+      });
       lines.append(current);
       appendContextBlock(lines, afterLines, "after");
       lines.append(renderExampleFooter(word, example, sourceClass, { allowAiExplain }));
@@ -229,7 +234,7 @@ window.JPCORPUS_EXAMPLES = (() => {
       parent.append(block);
     }
 
-    function appendHighlighted(parent, value, match) {
+    function appendHighlighted(parent, value, match, options = {}) {
       if (!value) {
         return;
       }
@@ -239,8 +244,41 @@ window.JPCORPUS_EXAMPLES = (() => {
       }
       const index = value.indexOf(match);
       parent.append(value.slice(0, index));
-      parent.append(el("mark", "", match));
+      parent.append(renderHighlightedMatch(match, options));
       parent.append(value.slice(index + match.length));
+    }
+
+    function renderHighlightedMatch(match, options = {}) {
+      const word = options.studyWord;
+      if (!canAddExampleWordToStudy(word)) {
+        return el("mark", "", match);
+      }
+      const button = el("button", "example-match-button", match);
+      button.type = "button";
+      button.title = t("exampleAddStudyTitle");
+      button.setAttribute("aria-label", button.title);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        addExampleWordToStudy(word);
+      });
+      return button;
+    }
+
+    function canAddExampleWordToStudy(word) {
+      return Boolean(
+        word?.word
+        && typeof setStatus === "function"
+        && typeof scheduleStudyReview === "function"
+        && typeof statusFor === "function"
+        && statusFor(word) === "none",
+      );
+    }
+
+    function addExampleWordToStudy(word) {
+      setStatus(word, "learning");
+      scheduleStudyReview(word);
+      renderDetail();
     }
 
     return {

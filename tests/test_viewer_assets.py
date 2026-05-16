@@ -164,6 +164,90 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-mode-controls-kicker" in css
 
 
+def test_detail_orders_reader_context_before_lexical_notes():
+    app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert app.index("const nodes = [renderDetailHeader(word)]") < app.index("const readerContext = renderReaderContextPanel(word);")
+    assert app.index("nodes.push(readerContext);") < app.index("nodes.push(renderLexicalNotes(word));")
+    assert app.index("nodes.push(renderLexicalNotes(word));") < app.index("nodes.push(renderExamples(word));")
+
+
+def test_example_highlight_can_add_unmarked_word_to_study():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+
+        function makeTextNode(value) {{
+          return {{ tag: "text", textContent: String(value || "") }};
+        }}
+
+        function makeNode(tag, className = "", value = "") {{
+          const listeners = {{}};
+          return {{
+            tag,
+            className,
+            value: String(value || ""),
+            children: [],
+            attrs: {{}},
+            type: "",
+            title: "",
+            append(...items) {{
+              this.children.push(...items.map((item) => typeof item === "string" ? makeTextNode(item) : item));
+            }},
+            setAttribute(name, nextValue) {{
+              this.attrs[name] = String(nextValue || "");
+            }},
+            addEventListener(name, handler) {{
+              listeners[name] = handler;
+            }},
+            click() {{
+              listeners.click?.({{
+                preventDefault() {{}},
+                stopPropagation() {{}},
+              }});
+            }},
+            get textContent() {{
+              return this.value + this.children.map((child) => child.textContent || "").join("");
+            }},
+          }};
+        }}
+
+        require({str(VIEWER_ASSET_DIR / "app_examples.js")!r});
+        const calls = [];
+        let scheduled = 0;
+        let rendered = 0;
+        const word = {{ word: "行く" }};
+        const helpers = window.JPCORPUS_EXAMPLES.createExampleHelpers({{
+          app: {{ mode: "browse", exampleColumns: "1", exampleExplanations: {{}} }},
+          el: makeNode,
+          renderDetail: () => {{ rendered += 1; }},
+          scheduleStudyReview: () => {{ scheduled += 1; }},
+          setStatus: (nextWord, status) => calls.push([nextWord.word, status]),
+          statusFor: () => "none",
+          storage: {{ STORAGE_EXAMPLE_COLUMNS: "columns" }},
+          t: (key) => key === "exampleAddStudyTitle" ? "把这个词加入学习" : key,
+        }});
+        const parent = makeNode("div");
+        helpers.appendHighlighted(parent, "明日行く。", "行く", {{ studyWord: word }});
+        const button = parent.children.find((child) => child.tag === "button");
+
+        assert.ok(button);
+        assert.equal(button.className, "example-match-button");
+        assert.equal(button.title, "把这个词加入学习");
+        button.click();
+        assert.deepEqual(calls, [["行く", "learning"]]);
+        assert.equal(scheduled, 1);
+        assert.equal(rendered, 1);
+        """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_tts_speech_text_skips_parentheticals():
     node = shutil.which("node")
     if not node:
