@@ -1673,6 +1673,7 @@ mark {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
   background: var(--panel);
 }
 
@@ -1830,6 +1831,32 @@ mark {
   opacity: 0.55;
 }
 
+.reader-speech-dock {
+  position: absolute;
+  right: 22px;
+  bottom: 18px;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.reader-speech-stop-button {
+  min-height: 38px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 780;
+  box-shadow: 0 12px 28px rgba(18, 39, 43, 0.18);
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.reader-speech-stop-button:hover {
+  background: #0f6f69;
+}
+
 .reader-line-speech-button {
   width: 24px;
   height: 24px;
@@ -1843,7 +1870,7 @@ mark {
   font-size: 10px;
   font-weight: 760;
   line-height: 1;
-  opacity: 0.46;
+  opacity: 0.72;
 }
 
 .reader-line:hover .reader-line-speech-button,
@@ -2460,7 +2487,7 @@ mark {
   }
 
   .reader-full .reader-line {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 40px 28px minmax(0, 1fr);
   }
 
   .reader-mode-toolbar {

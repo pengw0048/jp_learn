@@ -187,7 +187,7 @@ window.JPCORPUS_READER = (() => {
       if (options.full) {
         const speechButton = el("button", "reader-line-speech-button", "▶");
         speechButton.type = "button";
-        speechButton.title = t("readerReadFromLine");
+        speechButton.title = t("readerReadLine");
         speechButton.setAttribute("aria-label", speechButton.title);
         speechButton.dataset.readerSpeechLineKey = row.dataset.readerLineKey;
         speechButton.addEventListener("click", (event) => {
