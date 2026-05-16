@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.13";
+  const SCRIPT_VERSION = "0.1.14";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -29,6 +29,7 @@
       ignored: "已忽略",
       clearStatus: "取消标记",
       readSentence: "朗读",
+      stopReading: "停止",
       pickerInitial: "点击导入高亮文本。Esc 取消。",
       pickerLabel: "点击导入 {count} 字 · Esc 取消",
       noReadableArticle: "没有在这个页面找到可读正文。",
@@ -55,6 +56,7 @@
       ignored: "Ignored",
       clearStatus: "Clear",
       readSentence: "Read",
+      stopReading: "Stop",
       pickerInitial: "Click to import highlighted text. Esc cancel.",
       pickerLabel: "Click to import {count} chars. · Esc cancel",
       noReadableArticle: "No readable article text found on this page.",
@@ -65,6 +67,7 @@
   let picker = null;
   let reader = null;
   let activeReaderUtterance = null;
+  let activeReaderSpeechButton = null;
   let activeReaderHighlightFallback = null;
   const READER_TOKEN_STATUS_CLASSES = [
     "jpcorpus-reader-token-learning",
@@ -535,9 +538,15 @@
     if (!text.trim() || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
       return;
     }
+    if (activeReaderUtterance && activeReaderSpeechButton === button) {
+      stopReaderSpeech();
+      return;
+    }
     stopReaderSpeech();
-    button.disabled = true;
-    button.setAttribute("aria-busy", "true");
+    activeReaderSpeechButton = button;
+    button.textContent = tr("stopReading");
+    button.setAttribute("aria-pressed", "true");
+    button.classList.add("active");
     showReaderSpeechHighlight(sentence.range, sentence.fallbackElement);
     const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").trim());
     utterance.lang = "ja-JP";
@@ -550,8 +559,8 @@
         return;
       }
       activeReaderUtterance = null;
-      button.disabled = false;
-      button.removeAttribute("aria-busy");
+      resetReaderSpeechButton(button);
+      activeReaderSpeechButton = null;
       clearReaderSpeechHighlight();
     };
     utterance.onend = finish;
@@ -565,11 +574,19 @@
       window.speechSynthesis.cancel();
     }
     activeReaderUtterance = null;
+    resetReaderSpeechButton(activeReaderSpeechButton);
+    activeReaderSpeechButton = null;
     clearReaderSpeechHighlight();
-    document.querySelectorAll(".jpcorpus-reader-speech-button[aria-busy='true']").forEach((button) => {
-      button.disabled = false;
-      button.removeAttribute("aria-busy");
-    });
+    document.querySelectorAll(".jpcorpus-reader-speech-button.active").forEach(resetReaderSpeechButton);
+  }
+
+  function resetReaderSpeechButton(button) {
+    if (!button) {
+      return;
+    }
+    button.textContent = tr("readSentence");
+    button.setAttribute("aria-pressed", "false");
+    button.classList.remove("active");
   }
 
   function readerSentenceForToken(token) {
@@ -741,6 +758,11 @@
       }
       .jpcorpus-reader-panel-title .jpcorpus-reader-speech-button {
         margin-left: auto !important;
+      }
+      .jpcorpus-reader-panel-title .jpcorpus-reader-speech-button.active {
+        border-color: #147d73 !important;
+        background: #eef5f4 !important;
+        color: #147d73 !important;
       }
       ::highlight(jpcorpus-reader-speaking) {
         background: rgba(20, 125, 115, 0.14);

@@ -38,5 +38,9 @@ def test_extension_reader_panel_can_read_current_sentence() -> None:
     content = (ROOT / "browser_extension" / "content.js").read_text(encoding="utf-8")
 
     assert 'readSentence: "朗读"' in content
+    assert 'stopReading: "停止"' in content
     assert "jpcorpus-reader-speech-button" in content
+    assert "activeReaderSpeechButton" in content
+    assert 'button.textContent = tr("stopReading");' in content
+    assert "resetReaderSpeechButton" in content
     assert "jpcorpus-reader-speaking" in content
