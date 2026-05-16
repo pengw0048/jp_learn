@@ -13,6 +13,7 @@ window.JPCORPUS_READER = (() => {
     sourceDocumentKey,
     sourceDocumentLineCount,
     sourceDocumentWords,
+    setReaderSpeechStartLine,
     startReaderSpeechFromLine,
     statusFor,
     strong,
@@ -183,6 +184,13 @@ window.JPCORPUS_READER = (() => {
       const row = el("div", "reader-line");
       row.dataset.readerLineKey = readerLineDomKey(options.document || {}, line, options.lineIndex);
       row.dataset.readerLineText = line.text || "";
+      row.title = t("readerSetStartLine");
+      row.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest(".reader-token, button, select, input, textarea, label, a")) {
+          return;
+        }
+        setReaderSpeechStartLine(row.dataset.readerLineKey);
+      });
       const time = Number.isInteger(line.start_ms) ? formatTimestamp(line.start_ms) : "";
       row.append(el("span", "reader-line-time", time));
       if (options.full) {
@@ -193,7 +201,7 @@ window.JPCORPUS_READER = (() => {
         speechButton.dataset.readerSpeechLineKey = row.dataset.readerLineKey;
         speechButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          startReaderSpeechFromLine(row.dataset.readerLineKey);
+          startReaderSpeechFromLine(row.dataset.readerLineKey, { singleLine: true });
         });
         row.append(speechButton);
       }

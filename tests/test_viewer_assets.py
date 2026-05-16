@@ -131,6 +131,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert 'readerStopReading: "停止"' in i18n
     assert 'readerPreparingSpeech: "准备中"' in i18n
     assert 'readerReadLine: "朗读这一句"' in i18n
+    assert 'readerSetStartLine: "点这一行，把这里设为朗读起点"' in i18n
     assert 'readerFuriganaChoice: "注音"' in i18n
     assert 'readerSourceControl: "当前阅读"' in i18n
     assert "reader-speech-button" in app
@@ -139,7 +140,10 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-speech-dock" in app
     assert "reader-line-speech-button" in app
     assert "firstVisibleReaderLineKey" in app
-    assert "singleLine: true" in app
+    assert "singleLine: true" in reader
+    assert "speechStartKey" in app
+    assert "setReaderSpeechStartLine" in app
+    assert 'document.querySelectorAll(".reader-speech-button")' in app
     assert "prefetchReaderSpeechLine" in app
     assert "markReaderSpeechStart" in app
     assert "visibleHeight" in app
@@ -155,6 +159,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "speakPreparedText" in tts
     assert "reader-speech-stop-button" in css
     assert "reader-line-speaking" in css
+    assert "reader-line-speech-anchor" in css
     assert "reader-line-speech-start" in css
     assert "reader-furigana-enabled" in css
     assert "reader-mode-controls-kicker" in css

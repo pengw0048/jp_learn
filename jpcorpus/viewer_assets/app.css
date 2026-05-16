@@ -1762,6 +1762,10 @@ mark {
   white-space: nowrap;
 }
 
+.reader-mode-controls-summary .reader-quick-actions {
+  margin-left: 0;
+}
+
 .reader-source-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -2221,6 +2225,14 @@ mark {
   box-shadow:
     inset 4px 0 0 var(--accent),
     0 0 0 8px color-mix(in srgb, var(--accent), white 91%);
+}
+
+.reader-line-speech-anchor {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent), white 95%);
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, var(--accent), white 25%),
+    0 0 0 6px color-mix(in srgb, var(--accent), white 95%);
 }
 
 .reader-line-speech-start {

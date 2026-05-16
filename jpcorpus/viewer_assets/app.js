@@ -86,6 +86,7 @@ const app = {
     selection: null,
     explanation: null,
     question: null,
+    speechStartKey: null,
     controlsOpen: false,
     markedOpen: false,
     preserveScrollOnRender: false,
@@ -327,6 +328,7 @@ const {
   sourceDocumentKey,
   sourceDocumentLineCount,
   sourceDocumentWords,
+  setReaderSpeechStartLine,
   startReaderSpeechFromLine,
   statusFor,
   strong,
@@ -359,6 +361,7 @@ const {
   readerMarkedWordsForCurrentUnit,
   refs,
   render,
+  renderReaderQuickActions,
   sourceDocumentLineCount,
   sourceLabel,
   statusFor,
@@ -1046,9 +1049,9 @@ function renderReadingPane() {
   }
   const selectedUnit = units.find((unit) => unit.key === app.reader.documentKey) || units[0] || null;
   syncSelectedWordToReaderSource(selectedUnit || selected, readerWords);
-  refs.resultCount.replaceChildren(renderReaderModeControls(groups, selected, units, selectedUnit));
   const detailDocuments = selectedUnit?.documents || selected.sourceDocuments || [];
   const detailsReady = sourceDetailsReady(detailDocuments);
+  refs.resultCount.replaceChildren(renderReaderModeControls(groups, selected, units, selectedUnit, detailsReady));
   if (!detailsReady) {
     ensureSourceDetails(detailDocuments);
   }
@@ -1060,10 +1063,6 @@ function renderReadingPane() {
   scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
   scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller), { passive: true });
   const summaryNode = renderReaderModeSummary(selected, selectedUnit);
-  const titleNode = summaryNode.querySelector(".reader-mode-title");
-  if (titleNode) {
-    titleNode.append(renderReaderQuickActions(detailsReady));
-  }
   scroller.append(...[
     summaryNode,
     renderReaderMarkedWordsPanel(),
@@ -1144,7 +1143,7 @@ function renderReaderSpeechButton(enabled) {
   button.type = "button";
   button.disabled = !enabled && !app.reader.tts.playing;
   button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
-  button.title = t("readerReadAloudHint");
+  button.title = t(app.reader.speechStartKey ? "readerReadFromSelectedHint" : "readerReadAloudHint");
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     if (app.reader.tts.playing) {
@@ -1178,8 +1177,8 @@ function readerSpeechButtonLabel() {
   return app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud");
 }
 
-function startReaderSpeechFromLine(lineKey) {
-  startReaderSpeech(lineKey, { singleLine: true });
+function startReaderSpeechFromLine(lineKey, options = {}) {
+  startReaderSpeech(lineKey, { singleLine: options.singleLine === true });
 }
 
 async function startReaderSpeech(startKey = null, options = {}) {
@@ -1188,7 +1187,7 @@ async function startReaderSpeech(startKey = null, options = {}) {
   }
   const runId = app.reader.tts.runId + 1;
   app.reader.tts.runId = runId;
-  let lines = currentReaderSpeechLines(startKey || firstVisibleReaderLineKey());
+  let lines = currentReaderSpeechLines(startKey || app.reader.speechStartKey || firstVisibleReaderLineKey());
   if (options.singleLine) {
     lines = lines.slice(0, 1);
   }
@@ -1364,6 +1363,11 @@ function markReaderSpeechStart(lineKey) {
   }, 1400);
 }
 
+function setReaderSpeechStartLine(lineKey) {
+  app.reader.speechStartKey = lineKey || null;
+  updateReaderSpeechUi();
+}
+
 function setReaderSpeakingLine(lineKey) {
   app.reader.tts.lineKey = lineKey || null;
   updateReaderSpeechUi();
@@ -1377,22 +1381,34 @@ function updateReaderSpeechUi() {
   refs.wordList.querySelectorAll(".reader-line-speaking").forEach((row) => {
     row.classList.remove("reader-line-speaking");
   });
+  refs.wordList.querySelectorAll(".reader-line-speech-anchor").forEach((row) => {
+    row.classList.remove("reader-line-speech-anchor");
+  });
+  if (app.reader.speechStartKey) {
+    const row = refs.wordList.querySelector(`.reader-line[data-reader-line-key="${app.reader.speechStartKey}"]`);
+    if (row) {
+      row.classList.add("reader-line-speech-anchor");
+    } else {
+      app.reader.speechStartKey = null;
+    }
+  }
   if (app.reader.tts.lineKey) {
     const row = refs.wordList.querySelector(`.reader-line[data-reader-line-key="${app.reader.tts.lineKey}"]`);
     row?.classList.add("reader-line-speaking");
   }
-  refs.wordList.querySelectorAll(".reader-speech-button").forEach((button) => {
+  document.querySelectorAll(".reader-speech-button").forEach((button) => {
     button.classList.toggle("active", app.reader.tts.playing);
     button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
+    button.title = t(app.reader.speechStartKey ? "readerReadFromSelectedHint" : "readerReadAloudHint");
     button.textContent = readerSpeechButtonLabel();
   });
-  refs.wordList.querySelectorAll(".reader-speech-dock").forEach((dock) => {
+  document.querySelectorAll(".reader-speech-dock").forEach((dock) => {
     dock.hidden = !readerSpeechActive();
   });
-  refs.wordList.querySelectorAll(".reader-speech-stop-button").forEach((button) => {
+  document.querySelectorAll(".reader-speech-stop-button").forEach((button) => {
     button.textContent = t("readerStopReading");
   });
-  refs.wordList.querySelectorAll(".reader-line-speech-button").forEach((button) => {
+  document.querySelectorAll(".reader-line-speech-button").forEach((button) => {
     const active = Boolean(app.reader.tts.lineKey) && button.dataset.readerSpeechLineKey === app.reader.tts.lineKey;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");

@@ -16,6 +16,7 @@ window.JPCORPUS_READER_MODE = (() => {
     readerDocumentsForSource,
     readerMarkedWordsForCurrentUnit,
     refs,
+    renderReaderQuickActions,
     render,
     sourceDocumentLineCount,
     sourceLabel,
@@ -63,20 +64,20 @@ window.JPCORPUS_READER_MODE = (() => {
       }, 150);
     }
 
-    function renderReaderModeControls(groups, selected, units, selectedUnit) {
+    function renderReaderModeControls(groups, selected, units, selectedUnit, detailsReady = false) {
       const details = el("details", "reader-mode-controls");
       details.open = app.reader.controlsOpen;
       details.addEventListener("toggle", () => {
         app.reader.controlsOpen = details.open;
       });
       details.append(
-        renderReaderModeControlsSummary(groups, selected, selectedUnit),
+        renderReaderModeControlsSummary(groups, selected, selectedUnit, detailsReady),
         renderReaderModeToolbar(groups, selected, units, selectedUnit),
       );
       return details;
     }
 
-    function renderReaderModeControlsSummary(groups, selected, selectedUnit) {
+    function renderReaderModeControlsSummary(groups, selected, selectedUnit, detailsReady) {
       const summary = el("summary", "reader-mode-controls-summary");
       summary.title = t("readerSourceControlHint");
       const body = el("span", "reader-mode-controls-summary-body");
@@ -89,6 +90,9 @@ window.JPCORPUS_READER_MODE = (() => {
       }
       body.append(el("span", "reader-mode-controls-meta", t("readerSourcesFound", { count: formatNumber(groups.length) })));
       summary.append(body, el("span", "reader-mode-controls-hint", t("readerSourceControlHint")));
+      if (typeof renderReaderQuickActions === "function") {
+        summary.append(renderReaderQuickActions(detailsReady));
+      }
       return summary;
     }
 
