@@ -68,6 +68,7 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "importMainArticleFromPage" in content
     assert "startReaderParagraphPicker" in content
     assert "toggleReaderFurigana" in content
+    assert 'furigana.classList.toggle("active", Boolean(reader.furigana));' in content
     assert "renderReaderTokenText" in content
     assert "readerMeaning(annotation)" in content
     assert "readerStudyCountLabel(annotation)" in content
@@ -75,6 +76,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "study_count: nextStudyCount" in content
     assert "readerSelectedText" in content
     assert "updateReaderSelectionButton" in content
+    assert "importPickedText" in content
+    assert 'showToast(message, "success");' in content
     assert "positionToastUnderToolbar" in content
     assert "toolbarStatusTimer" in content
     assert "options.transient" in content

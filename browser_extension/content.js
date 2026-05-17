@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.26";
+  const SCRIPT_VERSION = "0.1.27";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -826,7 +826,8 @@
     furigana.type = "button";
     furigana.className = "jpcorpus-reader-furigana-button";
     furigana.textContent = tr("furigana");
-    furigana.setAttribute("aria-pressed", "false");
+    furigana.classList.toggle("active", Boolean(reader.furigana));
+    furigana.setAttribute("aria-pressed", reader.furigana ? "true" : "false");
     furigana.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1961,15 +1962,28 @@
       return;
     }
     const text = readableText(picker.target);
+    const title = articleTitle(picker.target) || document.title || "";
     stopPicker();
-    chrome.runtime.sendMessage({
-      type: "IMPORT_TEXT",
-      payload: {
-        title: document.title || "",
-        url: location.href,
-        text,
-      },
-    });
+    importPickedText({ title, url: location.href, text });
+  }
+
+  async function importPickedText(payload) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "IMPORT_TEXT",
+        payload,
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error || tr("importFailed"));
+      }
+      const message = importResultMessage(response.result);
+      setReaderToolbarStatus(message, { transient: true });
+      showToast(message, "success");
+    } catch (error) {
+      const message = error.message || String(error);
+      setReaderToolbarStatus(message);
+      showToast(message, "error");
+    }
   }
 
   function onKeyDown(event) {

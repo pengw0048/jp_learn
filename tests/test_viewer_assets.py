@@ -157,6 +157,9 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "renderReaderModeControlsSummary" in reader_mode
     assert "renderRecentReaderList" in reader_mode
     assert "recentReaderEntries" in reader_mode
+    assert "touchReaderPosition" in app
+    assert "app.selectedWord.word" in app
+    assert "studyLastSeenFor(right).localeCompare(studyLastSeenFor(left))" in app
     assert "STORAGE_READER_FURIGANA" in storage
     assert 'el("ruby", "reader-ruby")' in reader
     assert "readerLineText" in reader
@@ -199,6 +202,8 @@ def test_dictionary_manager_assets_are_wired():
     assert "importDictionary" in api
     assert "/api/dictionaries/import" in api
     assert "renderUserDictionaryResults" in lexical
+    assert "USER_DICTIONARY_PREVIEW_LIMIT = 3" in lexical
+    assert "dictionary_priority" in lexical
     assert 'event.key === "Escape"' in lexical
     assert "dictionary-detail-reference" in lexical
     assert 'value.startsWith("javascript:")' in lexical

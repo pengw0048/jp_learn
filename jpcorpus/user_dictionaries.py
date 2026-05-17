@@ -395,6 +395,7 @@ def yomitan_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row])
             {
                 "dictionary_id": record["id"],
                 "dictionary_name": record["name"],
+                "dictionary_priority": int(record.get("priority") or 0),
                 "format": "yomitan",
                 "headword": content.get("headword") or row["headword"],
                 "reading": content.get("reading") or row["reading"] or "",
@@ -432,6 +433,7 @@ def mdx_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row]) -> 
             {
                 "dictionary_id": record["id"],
                 "dictionary_name": record["name"],
+                "dictionary_priority": int(record.get("priority") or 0),
                 "format": "mdx",
                 "headword": row["headword"] or row["lookup_key"],
                 "reading": row["reading"] or "",

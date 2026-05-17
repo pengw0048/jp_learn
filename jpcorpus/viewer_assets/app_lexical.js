@@ -1,4 +1,5 @@
 window.JPCORPUS_LEXICAL = (() => {
+  const USER_DICTIONARY_PREVIEW_LIMIT = 3;
   const LEXICAL_POS_LABELS_ZH = {
     "noun or participle which takes the aux. verb suru": "动词",
     "nouns which may take the genitive case particle 'no'": "名词",
@@ -179,7 +180,10 @@ window.JPCORPUS_LEXICAL = (() => {
       const section = el("section", "user-dictionary-results");
       section.append(el("h3", "section-title", t("userDictionaryResults")));
       const list = el("div", "user-dictionary-result-list");
-      groupedUserDictionaryResults(results).sort(compareUserDictionaryGroups).slice(0, 4).forEach((group) => {
+      groupedUserDictionaryResults(results)
+        .sort(compareUserDictionaryGroups)
+        .slice(0, USER_DICTIONARY_PREVIEW_LIMIT)
+        .forEach((group) => {
         const definitions = compactUserDictionaryDefinitions(group.results);
         const spellings = compactUserDictionaryReferences(group.results, "spelling");
         const references = compactUserDictionaryReferences(group.results, "see_also");
@@ -224,6 +228,7 @@ window.JPCORPUS_LEXICAL = (() => {
           const group = {
             key,
             name: result.dictionary_name || t("userDictionaryUnknown"),
+            priority: Number.isFinite(Number(result.dictionary_priority)) ? Number(result.dictionary_priority) : groups.length,
             results: [],
             index: groups.length,
           };
@@ -236,8 +241,22 @@ window.JPCORPUS_LEXICAL = (() => {
     }
 
     function compareUserDictionaryGroups(left, right) {
-      return userDictionaryGroupScore(right) - userDictionaryGroupScore(left)
+      return userDictionaryQualityTier(right) - userDictionaryQualityTier(left)
+        || left.priority - right.priority
+        || userDictionaryGroupScore(right) - userDictionaryGroupScore(left)
         || left.index - right.index;
+    }
+
+    function userDictionaryQualityTier(group) {
+      const definitions = compactUserDictionaryDefinitions(group.results);
+      if (!definitions.length) {
+        return 0;
+      }
+      const preview = userDictionaryPreviewText(userDictionaryDefinitionText(definitions));
+      if (/[\u4e00-\u9fff]/.test(preview) && !userDictionaryLooksLikeMetaLine(preview)) {
+        return 2;
+      }
+      return 1;
     }
 
     function userDictionaryGroupScore(group) {

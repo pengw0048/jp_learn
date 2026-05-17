@@ -1245,6 +1245,7 @@ function renderReadingPane() {
   const scroller = el("div", "reader-mode-scroll");
   const positionKey = readerPositionKey(selected, selectedUnit);
   app.reader.positionKey = positionKey;
+  touchReaderPosition(positionKey);
   scroller.addEventListener("click", clearReaderWordSelectionFromBlank);
   scroller.addEventListener("scroll", () => saveReaderPosition(positionKey, scroller), { passive: true });
   const summaryNode = renderReaderModeSummary(selected, selectedUnit);
@@ -1274,6 +1275,13 @@ function renderReadingPane() {
 function syncSelectedWordToReaderSource(readingTarget, wordSet) {
   const words = readingTarget?.words || new Set();
   if (
+    app.selectedWord
+    && words.has(app.selectedWord.word)
+    && readerWordAllowed(app.selectedWord.word, wordSet)
+  ) {
+    return;
+  }
+  if (
     app.reader.selection
     && words.has(app.selectedWord?.word)
     && readerWordAllowed(app.selectedWord.word, wordSet)
@@ -1282,6 +1290,22 @@ function syncSelectedWordToReaderSource(readingTarget, wordSet) {
   }
   app.selectedWord = null;
   clearReaderSelection();
+}
+
+function touchReaderPosition(positionKey) {
+  if (!positionKey) {
+    return;
+  }
+  const current = app.reader.positions[positionKey] || {};
+  if (current.updatedAt) {
+    return;
+  }
+  app.reader.positions[positionKey] = {
+    scrollTop: Math.max(0, Math.round(Number(current.scrollTop) || 0)),
+    progress: Math.min(100, Math.max(0, Math.round(Number(current.progress) || 0))),
+    updatedAt: Date.now(),
+  };
+  persistReaderPositions();
 }
 
 function clearReaderSelection() {
@@ -2061,9 +2085,15 @@ function isStudyReviewWord(word) {
 
 function compareReviewStudyWords(left, right) {
   return studyDueDateFor(left).localeCompare(studyDueDateFor(right))
+    || studyLastSeenFor(right).localeCompare(studyLastSeenFor(left))
     || studyCountFor(left) - studyCountFor(right)
     || (right.count || 0) - (left.count || 0)
     || compareKana(left, right);
+}
+
+function studyLastSeenFor(word) {
+  const schedule = app.studySchedule[word.word] || {};
+  return typeof schedule.last_seen === "string" ? schedule.last_seen : "";
 }
 
 function studyKindLabel(word) {

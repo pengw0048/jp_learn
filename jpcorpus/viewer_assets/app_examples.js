@@ -276,6 +276,15 @@ window.JPCORPUS_EXAMPLES = (() => {
     function addExampleWordToStudy(word) {
       setStatus(word, "learning");
       renderDetail();
+      if (app.mode !== "read") {
+        const activeRow = refs?.wordList?.querySelector(`.word-row.active`);
+        const dot = activeRow?.querySelector(".status-dot");
+        if (dot) {
+          dot.className = "status-dot learning";
+          dot.textContent = "★";
+          dot.title = t("statusLearning");
+        }
+      }
     }
 
     return {

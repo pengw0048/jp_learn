@@ -45,6 +45,7 @@ def test_yomitan_dictionary_import_and_lookup(tmp_path):
 
     matches = dictionaries.lookup_user_dictionaries({"word": "行く", "reading": "いく"}, base_dir=tmp_path / "dicts")
     assert matches[0]["dictionary_name"] == "Test Chinese"
+    assert matches[0]["dictionary_priority"] == result["dictionary"]["priority"]
     assert matches[0]["definitions"] == ["去；到"]
 
     duplicate = dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
