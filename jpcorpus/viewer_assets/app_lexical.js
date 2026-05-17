@@ -438,9 +438,7 @@ window.JPCORPUS_LEXICAL = (() => {
         [...node.attributes].forEach((attribute) => {
           const name = attribute.name.toLowerCase();
           const value = String(attribute.value || "").trim().toLowerCase();
-          if (name.startsWith("on")
-            || value.startsWith("javascript:")
-            || ["bgcolor", "color", "face", "size", "style"].includes(name)) {
+          if (name.startsWith("on") || value.startsWith("javascript:")) {
             node.removeAttribute(attribute.name);
           }
         });

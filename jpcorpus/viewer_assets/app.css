@@ -1184,17 +1184,6 @@ select {
   margin-block: 2px 6px;
 }
 
-.dictionary-detail-html :is(font, span) {
-  color: inherit;
-  font-size: inherit;
-}
-
-.dictionary-detail-html br {
-  display: block;
-  content: "";
-  margin-top: 4px;
-}
-
 .dictionary-detail-html table {
   border-collapse: collapse;
   width: 100%;
