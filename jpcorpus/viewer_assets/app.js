@@ -3,7 +3,6 @@ const {
   STORAGE_MODE,
   STORAGE_READER_FURIGANA,
   STORAGE_READER_POSITIONS,
-  DAILY_STUDY_LIMIT,
   STUDY_TARGET_COUNT,
   MODE_VALUES,
   READER_WORD_LIST_VALUES,
@@ -52,7 +51,7 @@ const {
 
 const stateLabels = {
   none: { zh: "未标记", en: "Unmarked", symbol: "·" },
-  learning: { zh: "复习中", en: "Reviewing", symbol: "★" },
+  learning: { zh: "学习中", en: "Learning", symbol: "★" },
   uncertain: { zh: "模糊", en: "Unsure", symbol: "?" },
   known: { zh: "认识", en: "Known", symbol: "✓" },
   ignored: { zh: "忽略", en: "Ignored", symbol: "−" },
@@ -164,7 +163,6 @@ const {
   mergeRemoteStudyState,
   renderStudyCountBadge,
   sameStudySession,
-  scheduleStudyReview,
   setStatus,
   setStudyCount,
   statusFor,
@@ -353,7 +351,6 @@ const {
   compareNullableNumbers,
   compareReaderDocuments,
   el,
-  findWord,
   formatEpisodeLabel,
   formatNumber,
   isActiveStudyStatus,
@@ -370,7 +367,6 @@ const {
   storage: window.JPCORPUS_STORAGE,
   studyQueue,
   t,
-  todayKey,
   clearReaderSelection,
   persistReaderPositions,
   stopAllSpeech,
@@ -427,7 +423,6 @@ const {
   renderDetail,
   renderExplanationResult,
   renderSpeakButton,
-  scheduleStudyReview,
   setStatus,
   statusFor,
   storage: window.JPCORPUS_STORAGE,
@@ -449,8 +444,8 @@ const {
   renderLexicalNotes,
   renderMeaningValue,
   renderSpeakButton,
-  scheduleStudyReview,
   setStatus,
+  setStudyCount,
   speechTextForWord,
   statChip,
   stateLabels,
@@ -994,11 +989,8 @@ function renderLevelFilter() {
 function renderWordList() {
   const words = currentWordSet();
   if (app.mode === "study") {
-    const breakdown = studyQueueBreakdown(words);
     refs.resultCount.textContent = t("studyWordsFound", {
       count: formatNumber(words.length),
-      review: formatNumber(breakdown.review),
-      new: formatNumber(breakdown.new),
     });
   } else {
     refs.resultCount.textContent = t("wordsFound", {
@@ -1487,6 +1479,7 @@ function renderDetail() {
   const word = app.selectedWord;
   if (!word) {
     refs.wordDetail.hidden = true;
+    refs.wordDetail.replaceChildren();
     if (app.words.length === 0) {
       renderEmptyState("emptyCorpusTitle", "emptyCorpusBody", "emptyCorpusAction");
     } else {
@@ -1517,6 +1510,7 @@ function renderStudyDetail() {
   const words = studyQueue();
   if (words.length === 0) {
     refs.wordDetail.hidden = true;
+    refs.wordDetail.replaceChildren();
     if (app.words.length === 0) {
       renderEmptyState("emptyCorpusTitle", "emptyCorpusBody", "emptyCorpusAction");
     } else {
@@ -1750,9 +1744,6 @@ function markStudyWord(status) {
     setStudyCount(word, STUDY_TARGET_COUNT);
   }
   setStatus(word, status);
-  if (status === "learning" || status === "uncertain") {
-    scheduleStudyReview(word);
-  }
   advanceStudyQueue(previousQueue, word);
 }
 
@@ -1761,9 +1752,6 @@ function addStudyCheck(word) {
   const nextCount = Math.min(studyCountFor(word) + 1, STUDY_TARGET_COUNT);
   setStudyCount(word, nextCount);
   setStatus(word, nextCount >= STUDY_TARGET_COUNT ? "known" : "learning");
-  if (nextCount < STUDY_TARGET_COUNT) {
-    scheduleStudyReview(word);
-  }
   advanceStudyQueue(previousQueue, word);
 }
 
@@ -1859,36 +1847,11 @@ function currentWordSet() {
 }
 
 function studyQueue() {
-  const eligible = filteredWords()
+  const queued = filteredWords()
     .filter(isStudyEligibleWord)
-    .filter((word) => isStudyReviewDueWord(word) || isStudyNewWord(word));
+    .filter(isStudyReviewWord)
+    .sort(compareReviewStudyWords);
   const today = todayKey();
-  const session = app.study.session?.date === today
-    ? app.study.session
-    : { date: today, words: [] };
-  const byWord = new Map(eligible.map((word) => [word.word, word]));
-  const queued = [];
-  const seen = new Set();
-  session.words.forEach((wordText) => {
-    const word = byWord.get(wordText);
-    if (!word || seen.has(word.word)) {
-      return;
-    }
-    queued.push(word);
-    seen.add(word.word);
-  });
-
-  const reviewCandidates = eligible.filter(isStudyReviewDueWord).sort(compareReviewStudyWords);
-  const newCandidates = eligible.filter(isStudyNewWord).sort(compareNewStudyWords);
-  const candidates = [...reviewCandidates, ...newCandidates];
-  candidates.forEach((word) => {
-    if (queued.length >= DAILY_STUDY_LIMIT || seen.has(word.word)) {
-      return;
-    }
-    queued.push(word);
-    seen.add(word.word);
-  });
-
   const nextSession = { date: today, words: queued.map((word) => word.word) };
   if (!sameStudySession(app.study.session, nextSession)) {
     app.study.session = nextSession;
@@ -1900,24 +1863,14 @@ function studyQueue() {
 function isStudyEligibleWord(word) {
   const status = statusFor(word);
   return status !== "ignored"
-    && status !== "known"
-    && (examplesForWord(word).length > 0 || Number(word.example_count || 0) > 0);
+    && status !== "known";
 }
 
 function isStudyReviewWord(word) {
   const status = statusFor(word);
   const count = studyCountFor(word);
-  return count > 0 && count < STUDY_TARGET_COUNT
-    || status === "learning"
-    || status === "uncertain";
-}
-
-function isStudyReviewDueWord(word) {
-  return isStudyReviewWord(word) && studyDueDateFor(word) <= todayKey();
-}
-
-function isStudyNewWord(word) {
-  return statusFor(word) === "none" && studyCountFor(word) === 0;
+  return count < STUDY_TARGET_COUNT
+    && (status === "learning" || status === "uncertain");
 }
 
 function compareReviewStudyWords(left, right) {
@@ -1927,24 +1880,8 @@ function compareReviewStudyWords(left, right) {
     || compareKana(left, right);
 }
 
-function compareNewStudyWords(left, right) {
-  return (right.count || 0) - (left.count || 0)
-    || compareKana(left, right);
-}
-
-function studyQueueBreakdown(words) {
-  return words.reduce((counts, word) => {
-    if (isStudyReviewWord(word)) {
-      counts.review += 1;
-    } else {
-      counts.new += 1;
-    }
-    return counts;
-  }, { review: 0, new: 0 });
-}
-
 function studyKindLabel(word) {
-  return isStudyReviewWord(word) ? t("studyReview") : t("studyNew");
+  return stateLabels[statusFor(word)]?.[app.lang] || t("statusNone");
 }
 
 function compareWords(left, right) {

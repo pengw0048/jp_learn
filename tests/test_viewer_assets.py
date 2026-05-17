@@ -219,14 +219,12 @@ def test_example_highlight_can_add_unmarked_word_to_study():
 
         require({str(VIEWER_ASSET_DIR / "app_examples.js")!r});
         const calls = [];
-        let scheduled = 0;
         let rendered = 0;
         const word = {{ word: "行く" }};
         const helpers = window.JPCORPUS_EXAMPLES.createExampleHelpers({{
           app: {{ mode: "browse", exampleColumns: "1", exampleExplanations: {{}} }},
           el: makeNode,
           renderDetail: () => {{ rendered += 1; }},
-          scheduleStudyReview: () => {{ scheduled += 1; }},
           setStatus: (nextWord, status) => calls.push([nextWord.word, status]),
           statusFor: () => "none",
           storage: {{ STORAGE_EXAMPLE_COLUMNS: "columns" }},
@@ -241,7 +239,6 @@ def test_example_highlight_can_add_unmarked_word_to_study():
         assert.equal(button.title, "把这个词加入学习");
         button.click();
         assert.deepEqual(calls, [["行く", "learning"]]);
-        assert.equal(scheduled, 1);
         assert.equal(rendered, 1);
         """
     )

@@ -16,7 +16,6 @@ window.JPCORPUS_EXAMPLES = (() => {
     renderDetail,
     renderExplanationResult,
     renderSpeakButton,
-    scheduleStudyReview,
     setStatus,
     statusFor,
     storage,
@@ -269,7 +268,6 @@ window.JPCORPUS_EXAMPLES = (() => {
       return Boolean(
         word?.word
         && typeof setStatus === "function"
-        && typeof scheduleStudyReview === "function"
         && typeof statusFor === "function"
         && statusFor(word) === "none",
       );
@@ -277,7 +275,6 @@ window.JPCORPUS_EXAMPLES = (() => {
 
     function addExampleWordToStudy(word) {
       setStatus(word, "learning");
-      scheduleStudyReview(word);
       renderDetail();
     }
 

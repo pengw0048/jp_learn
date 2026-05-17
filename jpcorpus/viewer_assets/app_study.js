@@ -14,7 +14,6 @@ window.JPCORPUS_STUDY = (() => {
       STORAGE_STUDY_COUNTS,
       STORAGE_STUDY_SESSION,
       STORAGE_STUDY_SCHEDULE,
-      DAILY_STUDY_LIMIT,
       STUDY_REVIEW_DELAY_DAYS,
       STUDY_TARGET_COUNT,
       addDaysKey,
@@ -49,6 +48,9 @@ window.JPCORPUS_STUDY = (() => {
         app.statuses[word.word] = status;
         if (isActiveStudyStatus(status) && studyCountFor(word) >= STUDY_TARGET_COUNT) {
           setStudyCount(word, 0);
+        }
+        if (isActiveStudyStatus(status)) {
+          scheduleStudyReview(word);
         }
         if (status === "known") {
           setStudyCount(word, STUDY_TARGET_COUNT);
@@ -261,7 +263,7 @@ window.JPCORPUS_STUDY = (() => {
     function writeStudySession(session) {
       localStorage.setItem(STORAGE_STUDY_SESSION, JSON.stringify({
         date: session.date,
-        words: asArray(session.words).slice(0, DAILY_STUDY_LIMIT),
+        words: asArray(session.words),
       }));
     }
 

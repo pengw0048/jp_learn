@@ -15,7 +15,6 @@ window.JPCORPUS_STORAGE = (() => {
   const STORAGE_TTS_VOICEVOX_SPEAKER = "jpcorpus.viewer.ttsVoicevoxSpeaker.v1";
   const STORAGE_TTS_RATE = "jpcorpus.viewer.ttsRate.v1";
 
-  const DAILY_STUDY_LIMIT = 30;
   const STUDY_REVIEW_DELAY_DAYS = 1;
   const STUDY_TARGET_COUNT = 7;
   const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
@@ -88,7 +87,6 @@ window.JPCORPUS_STORAGE = (() => {
       ? value.words
         .map((word) => String(word || "").trim())
         .filter(Boolean)
-        .slice(0, DAILY_STUDY_LIMIT)
       : [];
     return { date, words };
   }
@@ -182,7 +180,6 @@ window.JPCORPUS_STORAGE = (() => {
     STORAGE_TTS_BROWSER_VOICE,
     STORAGE_TTS_VOICEVOX_SPEAKER,
     STORAGE_TTS_RATE,
-    DAILY_STUDY_LIMIT,
     STUDY_REVIEW_DELAY_DAYS,
     STUDY_TARGET_COUNT,
     EXAMPLE_COLUMN_VALUES,

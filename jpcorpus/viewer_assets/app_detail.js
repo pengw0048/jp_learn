@@ -12,8 +12,8 @@ window.JPCORPUS_DETAIL = (() => {
     renderLexicalNotes,
     renderMeaningValue,
     renderSpeakButton,
-    scheduleStudyReview,
     setStatus,
+    setStudyCount,
     speechTextForWord,
     statChip,
     stateLabels,
@@ -179,13 +179,23 @@ window.JPCORPUS_DETAIL = (() => {
     function renderReaderStudyActions(word) {
       const wrap = el("div", "status-actions reader-study-actions");
       const status = statusFor(word);
-      [
-        {
-          label: readerStudyPrimaryLabel(status),
-          active: status === "learning" || status === "uncertain",
+      const items = [];
+      if (status === "learning" || status === "uncertain") {
+        items.push({
+          label: t("studyCheckButton"),
+          active: true,
+          className: "reader-study-primary",
+          action: () => recordReaderStudyProgress(word),
+        });
+      } else if (status !== "known" && status !== "ignored") {
+        items.push({
+          label: t("readerAddStudy"),
+          active: false,
           className: "reader-study-primary",
           action: () => addWordToStudyFromReader(word),
-        },
+        });
+      }
+      items.push(
         {
           label: t("readerKnown"),
           active: status === "known",
@@ -196,7 +206,8 @@ window.JPCORPUS_DETAIL = (() => {
           active: status === "ignored",
           action: () => setStatus(word, "ignored"),
         },
-      ].forEach((item) => {
+      );
+      items.forEach((item) => {
         const button = el("button", item.className || "", item.label);
         button.type = "button";
         button.classList.toggle("active", item.active);
@@ -221,16 +232,14 @@ window.JPCORPUS_DETAIL = (() => {
       return wrap;
     }
 
-    function readerStudyPrimaryLabel(status) {
-      if (status === "learning" || status === "uncertain") {
-        return stateLabels[status][app.lang];
-      }
-      return t("readerAddStudy");
-    }
-
     function addWordToStudyFromReader(word) {
       setStatus(word, "learning");
-      scheduleStudyReview(word);
+    }
+
+    function recordReaderStudyProgress(word) {
+      const nextCount = Math.min(studyCountFor(word) + 1, studyTargetCount);
+      setStudyCount(word, nextCount);
+      setStatus(word, nextCount >= studyTargetCount ? "known" : "learning");
     }
 
     return {

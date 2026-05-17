@@ -7,7 +7,6 @@ window.JPCORPUS_READER_MODE = (() => {
     compareNullableNumbers,
     compareReaderDocuments,
     el,
-    findWord,
     formatEpisodeLabel,
     formatNumber,
     isActiveStudyStatus,
@@ -24,7 +23,6 @@ window.JPCORPUS_READER_MODE = (() => {
     storage,
     studyQueue,
     t,
-    todayKey,
     clearReaderSelection,
     persistReaderPositions,
     stopAllSpeech,
@@ -235,10 +233,7 @@ window.JPCORPUS_READER_MODE = (() => {
     }
 
     function readerStudyWords() {
-      const sessionWords = app.study.session?.date === todayKey()
-        ? asArray(app.study.session.words).map(findWord).filter(Boolean)
-        : [];
-      return sessionWords.length ? sessionWords : studyQueue();
+      return studyQueue();
     }
 
     function isFocusReaderWord(word) {
