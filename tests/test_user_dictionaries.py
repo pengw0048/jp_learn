@@ -104,6 +104,16 @@ def test_yomitan_structured_content_keeps_primary_glosses_only(tmp_path):
                         ],
                     },
                     {"tag": "li", "content": [{"tag": "div", "content": "送达"}]},
+                    {"tag": "li", "content": [{"tag": "div", "content": "行く：抵达"}]},
+                    {
+                        "tag": "li",
+                        "content": [
+                            {
+                                "tag": "div",
+                                "content": "行く【いく】\n自五\n1. 离开，逝去。\nゆく年くる年。\n冬去春来。\n2. 进展顺利。",
+                            }
+                        ],
+                    },
                 ],
             },
             {
@@ -123,7 +133,39 @@ def test_yomitan_structured_content_keeps_primary_glosses_only(tmp_path):
     dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
 
     matches = dictionaries.lookup_user_dictionaries("行く", base_dir=tmp_path / "dicts")
-    assert matches[0]["definitions"] == ["去，前往", "送达"]
+    assert matches[0]["definitions"] == ["去，前往", "送达", "抵达", "离开，逝去", "进展顺利"]
+
+
+def test_yomitan_reference_entries_are_classified(tmp_path):
+    source = tmp_path / "wty.zip"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("index.json", json.dumps({"title": "WTY"}))
+        archive.writestr(
+            "term_bank_1.json",
+            json.dumps(
+                [
+                    ["見る", "", "non-lemma", "v", 0, [["みる", ["alternative kanji"]]]],
+                    ["良い", "", "adj", "adj", 0, ["好的"]],
+                    ["良い", "", "non-lemma", "adj", 0, [["善い", ["alt-of"]]]],
+                    ["いい", "", "non-lemma", "v", 0, [["いう", ["redirected from いい"]]]],
+                ],
+                ensure_ascii=False,
+            ),
+        )
+
+    dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
+
+    references = dictionaries.lookup_user_dictionaries("見る", base_dir=tmp_path / "dicts")
+    assert references[0]["kind"] == "reference"
+    assert references[0]["reference_type"] == "spelling"
+    assert references[0]["references"] == ["みる"]
+
+    matches = dictionaries.lookup_user_dictionaries("良い", base_dir=tmp_path / "dicts")
+    assert matches[0]["definitions"] == ["好的"]
+    assert matches[1]["kind"] == "reference"
+    assert matches[1]["reference_type"] == "see_also"
+    assert matches[1]["references"] == ["善い"]
+    assert dictionaries.lookup_user_dictionaries("いい", base_dir=tmp_path / "dicts") == []
 
 
 def test_dictionary_enable_toggle_controls_lookup(tmp_path):

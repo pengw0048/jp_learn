@@ -179,24 +179,26 @@ window.JPCORPUS_LEXICAL = (() => {
       const section = el("section", "user-dictionary-results");
       section.append(el("h3", "section-title", t("userDictionaryResults")));
       const list = el("div", "user-dictionary-result-list");
-      results.slice(0, 4).forEach((result) => {
-        const definitions = asArray(result.definitions).filter(Boolean);
-        const text = definitions.length ? definitions.slice(0, 4).join("；") : String(result.text || "");
-        if (!text) {
+      groupedUserDictionaryResults(results).slice(0, 4).forEach((group) => {
+        const definitions = compactUserDictionaryDefinitions(group.results);
+        const spellings = compactUserDictionaryReferences(group.results, "spelling");
+        const references = compactUserDictionaryReferences(group.results, "see_also");
+        if (!definitions.length && !spellings.length && !references.length) {
           return;
         }
         const item = el("article", "user-dictionary-result");
-        const content = el("p", "user-dictionary-definition");
-        const resultHeadword = String(result.headword || "");
-        if (resultHeadword && resultHeadword !== word.word) {
-          content.append(el("span", "user-dictionary-headword", `${resultHeadword}：`), text);
-        } else {
-          content.textContent = text;
+        if (definitions.length) {
+          const content = el("p", "user-dictionary-definition", definitions.join("；"));
+          item.append(content);
         }
-        item.append(content);
-        const source = result.dictionary_name || t("userDictionaryUnknown");
-        if (source) {
-          item.append(el("small", "user-dictionary-source", source));
+        if (spellings.length) {
+          item.append(userDictionaryReferenceLine(t("userDictionarySpellings"), spellings));
+        }
+        if (references.length) {
+          item.append(userDictionaryReferenceLine(t("userDictionarySeeAlso"), references));
+        }
+        if (group.name) {
+          item.append(el("small", "user-dictionary-source", group.name));
         }
         list.append(item);
       });
@@ -205,6 +207,63 @@ window.JPCORPUS_LEXICAL = (() => {
       }
       section.append(list);
       return section;
+    }
+
+    function groupedUserDictionaryResults(results) {
+      const groups = [];
+      const byKey = new Map();
+      asArray(results).forEach((result) => {
+        const key = result.dictionary_id || result.dictionary_name || result.format || "dictionary";
+        if (!byKey.has(key)) {
+          const group = {
+            key,
+            name: result.dictionary_name || t("userDictionaryUnknown"),
+            results: [],
+          };
+          byKey.set(key, group);
+          groups.push(group);
+        }
+        byKey.get(key).results.push(result);
+      });
+      return groups;
+    }
+
+    function compactUserDictionaryDefinitions(results) {
+      return uniqueUserDictionaryStrings(
+        results
+          .filter((result) => result.kind !== "reference")
+          .flatMap((result) => asArray(result.definitions).filter(Boolean)),
+      ).slice(0, 8);
+    }
+
+    function userDictionaryReferenceLine(label, values) {
+      const reference = el("p", "user-dictionary-reference");
+      reference.append(el("span", "", `${label}：`), values.join("、"));
+      return reference;
+    }
+
+    function compactUserDictionaryReferences(results, type) {
+      return uniqueUserDictionaryStrings(
+        results
+          .filter((result) => result.kind === "reference")
+          .filter((result) => (result.reference_type || "see_also") === type)
+          .flatMap((result) => asArray(result.references).length ? result.references : result.definitions)
+          .filter(Boolean),
+      ).slice(0, 6);
+    }
+
+    function uniqueUserDictionaryStrings(values) {
+      const seen = new Set();
+      const output = [];
+      asArray(values).forEach((value) => {
+        const text = String(value || "").trim();
+        if (!text || seen.has(text)) {
+          return;
+        }
+        seen.add(text);
+        output.push(text);
+      });
+      return output;
     }
 
     function appendLexicalRow(parent, label, nodes, valueClassName = "lexical-note-values") {

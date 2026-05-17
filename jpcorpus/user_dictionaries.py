@@ -230,9 +230,10 @@ def lookup_user_dictionaries(
     word: dict[str, Any] | str,
     *,
     base_dir: Path = DEFAULT_USER_DICTIONARY_DIR,
-    limit_per_dictionary: int = 4,
+    limit_per_dictionary: int = 8,
 ) -> list[dict[str, Any]]:
     candidates = dictionary_lookup_candidates(word)
+    primary_terms = dictionary_primary_lookup_terms(word)
     if not candidates:
         return []
     registry = load_dictionary_registry(base_dir=base_dir)
@@ -241,7 +242,7 @@ def lookup_user_dictionaries(
         if len(results) >= 24:
             break
         try:
-            results.extend(lookup_one_dictionary(record, candidates, limit=limit_per_dictionary))
+            results.extend(lookup_one_dictionary(record, candidates, primary_terms=primary_terms, limit=limit_per_dictionary))
         except Exception:
             continue
     return results
@@ -252,7 +253,13 @@ def attach_user_dictionary_results(word: dict[str, Any]) -> dict[str, Any]:
     return word
 
 
-def lookup_one_dictionary(record: dict[str, Any], candidates: list[str], *, limit: int) -> list[dict[str, Any]]:
+def lookup_one_dictionary(
+    record: dict[str, Any],
+    candidates: list[str],
+    *,
+    primary_terms: list[str],
+    limit: int,
+) -> list[dict[str, Any]]:
     index_path = Path(record.get("index_path") or "")
     if record.get("status") != "ready" or not index_path.is_file():
         return []
@@ -261,7 +268,22 @@ def lookup_one_dictionary(record: dict[str, Any], candidates: list[str], *, limi
         rows = select_dictionary_rows(conn, candidates, limit=limit)
     if record.get("format") == "mdx":
         return mdx_rows_to_results(record, rows)
-    return yomitan_rows_to_results(record, rows)
+    return prune_yomitan_lookup_results(yomitan_rows_to_results(record, rows), primary_terms)
+
+
+def prune_yomitan_lookup_results(results: list[dict[str, Any]], primary_terms: list[str]) -> list[dict[str, Any]]:
+    primary_set = set(primary_terms)
+    has_primary_definition = any(
+        result.get("kind") != "reference" and normalize_dictionary_text(result.get("headword")) in primary_set
+        for result in results
+    )
+    if not has_primary_definition:
+        return results
+    return [
+        result
+        for result in results
+        if result.get("kind") == "reference" or normalize_dictionary_text(result.get("headword")) in primary_set
+    ]
 
 
 def select_dictionary_rows(conn: sqlite3.Connection, candidates: list[str], *, limit: int) -> list[sqlite3.Row]:
@@ -297,15 +319,21 @@ def yomitan_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row])
         except json.JSONDecodeError:
             content = {}
         definitions = unique_strings(content.get("definitions") or [])
+        tags = unique_strings(content.get("tags") or [])
+        reference_markers = unique_strings(content.get("reference_markers") or [])
+        if is_yomitan_redirect_reference(tags, definitions, reference_markers):
+            continue
+        reference = yomitan_reference_info(tags, definitions, reference_markers)
+        display_definitions = reference.get("targets") or definitions
         key = (
             str(content.get("headword") or row["headword"] or ""),
             str(content.get("reading") or row["reading"] or ""),
-            tuple(definitions),
+            tuple(display_definitions),
         )
         if key in seen:
             continue
         seen.add(key)
-        text = "；".join(definitions)
+        text = "；".join(display_definitions)
         results.append(
             {
                 "dictionary_id": record["id"],
@@ -313,8 +341,11 @@ def yomitan_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row])
                 "format": "yomitan",
                 "headword": content.get("headword") or row["headword"],
                 "reading": content.get("reading") or row["reading"] or "",
-                "tags": unique_strings(content.get("tags") or []),
-                "definitions": definitions,
+                "tags": tags,
+                "kind": "reference" if reference else "definition",
+                "reference_type": reference.get("type") or "",
+                "references": reference.get("targets") or [],
+                "definitions": display_definitions,
                 "text": text,
             }
         )
@@ -494,6 +525,7 @@ def parse_yomitan_term(term: Any) -> dict[str, Any] | None:
     definition_tags = split_tags(term[2] if len(term) > 2 else "")
     score = int(term[4] or 0) if len(term) > 4 and isinstance(term[4], int | float) else 0
     definitions = yomitan_glossary_texts(term[5])
+    reference_markers = yomitan_reference_markers(term[5])
     term_tags = split_tags(term[7] if len(term) > 7 else "")
     if not definitions and not term_tags and not definition_tags:
         return None
@@ -501,6 +533,7 @@ def parse_yomitan_term(term: Any) -> dict[str, Any] | None:
         "headword": headword,
         "reading": reading if reading != headword else "",
         "definitions": definitions,
+        "reference_markers": reference_markers,
         "tags": unique_strings([*definition_tags, *term_tags]),
         "score": score,
     }
@@ -553,6 +586,22 @@ def dictionary_lookup_candidates(word: dict[str, Any] | str) -> list[str]:
     if word_text and reading and word_text != reading:
         for reading_part in split_candidate_forms(reading):
             candidates.append(f"{word_text}\t{reading_part}")
+    for value in values:
+        candidates.extend(split_candidate_forms(value))
+    return unique_strings(normalize_dictionary_text(value) for value in candidates)
+
+
+def dictionary_primary_lookup_terms(word: dict[str, Any] | str) -> list[str]:
+    if isinstance(word, str):
+        return split_candidate_forms(word)
+    values = [word.get("word"), word.get("base_form")]
+    notes = word.get("lexical_notes") if isinstance(word.get("lexical_notes"), dict) else {}
+    for form in notes.get("spellings") or []:
+        if isinstance(form, dict):
+            values.append(form.get("text"))
+        else:
+            values.append(form)
+    candidates = []
     for value in values:
         candidates.extend(split_candidate_forms(value))
     return unique_strings(normalize_dictionary_text(value) for value in candidates)
@@ -642,9 +691,7 @@ def _extract_yomitan_primary_glosses(value: Any) -> list[str]:
         content = node.get("content")
         items = content if isinstance(content, list) else [content]
         for item in items:
-            text = clean_yomitan_definition(_yomitan_structured_text(item))
-            if text:
-                glosses.append(text)
+            glosses.extend(clean_yomitan_definitions(_yomitan_structured_text(item)))
     return glosses
 
 
@@ -695,16 +742,91 @@ def _yomitan_structured_text(value: Any) -> str:
 
 
 def clean_yomitan_definition(value: Any) -> str:
+    definitions = clean_yomitan_definitions(value)
+    return definitions[0] if definitions else ""
+
+
+def clean_yomitan_definitions(value: Any) -> list[str]:
+    numbered = extract_numbered_yomitan_definitions(str(value or ""))
+    if numbered:
+        return numbered
     text = normalize_space(str(value or ""))
     if not text:
-        return ""
+        return []
     if text in {"Wiktionary", "Kaikki", "|", "词源"}:
-        return ""
+        return []
     if re.fullmatch(r"\d+\s*例", text):
-        return ""
-    if text in {"n", "v", "vi", "vt", "adj", "adv", "intj", "godan", "non-lemma", "sl", "alternative kanji"}:
-        return ""
-    return text
+        return []
+    if "redirected from" in text:
+        return []
+    if text in {
+        "n",
+        "v",
+        "vi",
+        "vt",
+        "adj",
+        "adv",
+        "intj",
+        "godan",
+        "non-lemma",
+        "sl",
+        "alt-of",
+        "alternative kanji",
+    }:
+        return []
+    text = strip_yomitan_headword_prefix(text)
+    return [text]
+
+
+def yomitan_reference_markers(value: Any) -> list[str]:
+    return unique_strings(
+        text
+        for text in _flatten_yomitan_glossary(value)
+        if text in {"alt-of", "alternative kanji"} or "redirected from" in text
+    )
+
+
+def extract_numbered_yomitan_definitions(value: str) -> list[str]:
+    definitions = []
+    for line in str(value or "").splitlines():
+        text = normalize_space(line)
+        match = re.match(r"^\d+[.．]\s*(.+)$", text)
+        if not match:
+            continue
+        definition = re.sub(r"[。．.]+$", "", match.group(1).strip())
+        if definition:
+            definitions.append(definition)
+    return unique_strings(definitions)
+
+
+def strip_yomitan_headword_prefix(value: str) -> str:
+    match = re.match(r"^([^：]{1,24})：\s*(.+)$", value)
+    if not match:
+        return value
+    prefix, body = match.groups()
+    if re.search(r"[\u3040-\u30ff]", prefix):
+        return body
+    return value
+
+
+def yomitan_reference_info(tags: list[str], definitions: list[str], markers: list[str]) -> dict[str, Any]:
+    if "non-lemma" not in set(tags):
+        return {}
+    targets = [
+        definition
+        for definition in definitions
+        if definition not in {"alt-of", "alternative kanji"}
+    ]
+    if not targets:
+        return {}
+    reference_type = "spelling" if "alternative kanji" in set(markers) else "see_also"
+    return {"type": reference_type, "targets": unique_strings(targets)}
+
+
+def is_yomitan_redirect_reference(tags: list[str], definitions: list[str], markers: list[str]) -> bool:
+    return "non-lemma" in set(tags) and any(
+        "redirected from" in value for value in [*definitions, *markers]
+    )
 
 
 def _flatten_yomitan_glossary(value: Any) -> list[str]:

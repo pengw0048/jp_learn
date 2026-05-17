@@ -1008,9 +1008,10 @@ select {
 }
 
 .user-dictionary-result {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 7px;
+  gap: 2px 8px;
   min-width: 0;
   padding: 0;
   background: transparent;
@@ -1038,7 +1039,6 @@ select {
 }
 
 .user-dictionary-definition {
-  flex: 1;
   min-width: 0;
   color: var(--text);
   font-size: 14px;
@@ -1048,6 +1048,20 @@ select {
 
 .user-dictionary-definition {
   margin: 0;
+}
+
+.user-dictionary-reference {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.user-dictionary-reference span {
+  color: var(--text-source);
+  font-weight: 700;
 }
 
 .user-dictionary-source {

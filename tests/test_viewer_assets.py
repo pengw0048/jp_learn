@@ -249,24 +249,48 @@ def test_user_dictionary_results_render_compact_primary_definitions():
         require({str(VIEWER_ASSET_DIR / "app_lexical.js")!r});
         const helpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
           el: makeNode,
-          t: (key) => ({{ userDictionaryResults: "本地词典", userDictionaryUnknown: "未命名词典" }}[key] || key),
+          t: (key) => ({{
+            userDictionaryResults: "本地词典",
+            userDictionaryUnknown: "未命名词典",
+            userDictionarySpellings: "写法",
+            userDictionarySeeAlso: "参见",
+          }}[key] || key),
           getLanguage: () => "zh",
         }});
         const section = helpers.renderUserDictionaryResults({{
           word: "行く",
           user_dictionary_results: [
             {{
+              dictionary_id: "wty",
               dictionary_name: "wty-ja-zh",
               format: "yomitan",
               headword: "行く",
               tags: ["v", "godan"],
               definitions: ["去，前往", "送达", "离开，逝去"],
             }},
+            {{
+              dictionary_id: "wty",
+              dictionary_name: "wty-ja-zh",
+              format: "yomitan",
+              headword: "行く",
+              definitions: ["口语用法"],
+            }},
+            {{
+              dictionary_id: "wty",
+              dictionary_name: "wty-ja-zh",
+              format: "yomitan",
+              kind: "reference",
+              reference_type: "spelling",
+              headword: "行く",
+              references: ["ゆく"],
+            }},
           ],
         }});
         const text = section.textContent;
 
         assert.equal(text.includes("去，前往；送达；离开，逝去"), true);
+        assert.equal(text.includes("口语用法"), true);
+        assert.equal(text.includes("写法：ゆく"), true);
         assert.equal(text.includes("YOMITAN"), false);
         assert.equal(text.includes("godan"), false);
       """
