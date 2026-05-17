@@ -51,8 +51,14 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "renderReaderTokenText" in content
     assert "positionToastUnderToolbar" in content
     assert "speakReaderParagraph" in content
+    assert "readerSpeechUnitsForElement" in content
+    assert "speakReaderVoicevoxUnits" in content
+    assert "prepareReaderVoicevoxUnit(units[index + 1])" in content
+    assert "rangeForSpeechOffsets" in content
+    assert "readabilityMatchScore" in content
     assert "SYNTHESIZE_VOICEVOX" in content
     assert "SYNTHESIZE_VOICEVOX" in background
+    assert 'files: ["vendor/Readability.js", "content.js"]' in (ROOT / "browser_extension" / "popup.js").read_text(encoding="utf-8")
     assert 'button.textContent = tr("stopReading");' in content
     assert "resetReaderSpeechButton" in content
     assert "jpcorpus-reader-speaking" in content

@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.16";
+  const SCRIPT_VERSION = "0.1.17";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -243,10 +243,28 @@
   }
 
   function readerRoot() {
+    const readabilityArticle = extractReadabilityArticle();
+    const readabilityText = readabilityArticle?.text || "";
     const candidates = articleCandidates()
-      .map((element) => ({ element, score: articleScore(element), text: readableText(element) }))
+      .map((element) => ({
+        element,
+        score: articleScore(element),
+        text: readableText(element),
+      }))
       .filter((candidate) => candidate.text.length >= 80)
+      .map((candidate) => {
+        const matchScore = readabilityMatchScore(candidate.text, readabilityText);
+        return {
+          ...candidate,
+          score: candidate.score + matchScore,
+          readabilityMatchScore: matchScore,
+        };
+      })
       .sort((left, right) => right.score - left.score);
+    const readabilityMatched = candidates.find((candidate) => candidate.readabilityMatchScore >= 1400);
+    if (readabilityMatched) {
+      return readabilityMatched.element;
+    }
     return candidates[0]?.element || document.body;
   }
 
@@ -776,8 +794,8 @@
   }
 
   async function speakReaderParagraph(target, button) {
-    const text = normalizeReaderSpeechText(readableText(target));
-    if (!text) {
+    const units = readerSpeechUnitsForElement(target);
+    if (!units.length) {
       showToast(tr("noReadableParagraph"));
       return;
     }
@@ -789,11 +807,10 @@
     button.setAttribute("aria-pressed", "true");
     button.setAttribute("aria-busy", "true");
     button.classList.add("active", "loading");
-    showReaderSpeechHighlight(rangeForElementContents(target), target);
     try {
-      const voicevoxOk = await speakReaderVoicevox(text, runId);
-      if (!voicevoxOk && isActiveReaderSpeech(runId)) {
-        await speakReaderBrowser(text, runId);
+      const voicevoxResult = await speakReaderVoicevoxUnits(units, runId);
+      if (!voicevoxResult.ok && isActiveReaderSpeech(runId)) {
+        await speakReaderBrowserUnits(units.slice(voicevoxResult.nextIndex || 0), runId);
       }
     } finally {
       if (isActiveReaderSpeech(runId)) {
@@ -802,35 +819,42 @@
     }
   }
 
-  async function speakReaderVoicevox(text, runId) {
-    const segments = readerSpeechSegments(text);
-    if (!segments.length) {
-      return false;
+  async function speakReaderVoicevoxUnits(units, runId) {
+    if (!units.length) {
+      return { ok: false, nextIndex: 0 };
     }
     try {
-      for (const segment of segments) {
+      let nextAudio = prepareReaderVoicevoxUnit(units[0]);
+      for (let index = 0; index < units.length; index += 1) {
         if (!isActiveReaderSpeech(runId)) {
-          return false;
+          return { ok: false, nextIndex: index };
         }
-        const response = await chrome.runtime.sendMessage({
-          type: "SYNTHESIZE_VOICEVOX",
-          payload: { text: segment, rate: 1 },
-        });
-        if (!response?.ok || !response.result?.dataUrl) {
-          return false;
+        const dataUrl = await nextAudio;
+        if (!dataUrl) {
+          return { ok: false, nextIndex: index };
         }
+        nextAudio = units[index + 1] ? prepareReaderVoicevoxUnit(units[index + 1]) : null;
         if (!isActiveReaderSpeech(runId)) {
-          return false;
+          return { ok: false, nextIndex: index };
         }
-        const played = await playReaderAudioUrl(response.result.dataUrl, runId);
+        showReaderSpeechHighlight(units[index].range, units[index].fallbackElement);
+        const played = await playReaderAudioUrl(dataUrl, runId);
         if (!played) {
-          return false;
+          return { ok: false, nextIndex: index + 1 };
         }
       }
-      return true;
+      return { ok: true, nextIndex: units.length };
     } catch {
-      return false;
+      return { ok: false, nextIndex: 0 };
     }
+  }
+
+  async function prepareReaderVoicevoxUnit(unit) {
+    const response = await chrome.runtime.sendMessage({
+      type: "SYNTHESIZE_VOICEVOX",
+      payload: { text: unit.text, rate: 1 },
+    });
+    return response?.ok && response.result?.dataUrl ? response.result.dataUrl : "";
   }
 
   function playReaderAudioUrl(dataUrl, runId) {
@@ -861,19 +885,176 @@
     });
   }
 
-  function speakReaderBrowser(text, runId) {
-    const segments = readerSpeechSegments(text);
-    if (!segments.length || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined" || !isActiveReaderSpeech(runId)) {
+  function speakReaderBrowserUnits(units, runId) {
+    if (!units.length || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined" || !isActiveReaderSpeech(runId)) {
       return Promise.resolve(false);
     }
-    return segments.reduce(
-      (chain, segment) => chain.then((ok) => (
-        ok && isActiveReaderSpeech(runId)
-          ? speakReaderBrowserSegment(segment, runId)
-          : false
-      )),
+    return units.reduce(
+      (chain, unit) => chain.then((ok) => {
+        if (ok && isActiveReaderSpeech(runId)) {
+          showReaderSpeechHighlight(unit.range, unit.fallbackElement);
+          return speakReaderBrowserSegment(unit.text, runId);
+        }
+        return false;
+      }),
       Promise.resolve(true),
     );
+  }
+
+  function readerSpeechUnitsForElement(element) {
+    const source = collectReaderSpeechText(element);
+    return readerSpeechTextRanges(source.text)
+      .map((range) => {
+        const text = normalizeReaderSpeechText(source.text.slice(range.start, range.end));
+        if (!text || !hasJapaneseText(text)) {
+          return null;
+        }
+        const domRange = rangeForSpeechOffsets(source.pieces, range.start, range.end);
+        return {
+          text,
+          range: domRange,
+          fallbackElement: speechFallbackElement(source.pieces, range.start, range.end, element),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function collectReaderSpeechText(root) {
+    const pieces = [];
+    let text = "";
+    const appendBreak = () => {
+      if (text && !/\n$/u.test(text)) {
+        text += "\n";
+      }
+    };
+    const appendText = (node) => {
+      const value = node.nodeValue || "";
+      if (!value.trim()) {
+        return;
+      }
+      const start = text.length;
+      text += value;
+      pieces.push({ node, start, end: text.length });
+    };
+    const visit = (node) => {
+      if (!node) {
+        return;
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (isReadableSpeechTextNode(node)) {
+          appendText(node);
+        }
+        return;
+      }
+      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+        node.childNodes.forEach(visit);
+        return;
+      }
+      if (!(node instanceof Element) || isSpeechExcludedElement(node)) {
+        return;
+      }
+      const tag = node.tagName.toLowerCase();
+      const block = isBlockTag(tag);
+      if (block) {
+        appendBreak();
+      }
+      node.childNodes.forEach(visit);
+      if (block) {
+        appendBreak();
+      }
+    };
+    visit(root);
+    return { text, pieces };
+  }
+
+  function isReadableSpeechTextNode(node) {
+    const text = node.nodeValue || "";
+    if (!text.trim()) {
+      return false;
+    }
+    const parent = node.parentElement;
+    if (!parent) {
+      return false;
+    }
+    let current = parent;
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (isSpeechExcludedElement(current)) {
+        return false;
+      }
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function isSpeechExcludedElement(element) {
+    const tag = element.tagName.toLowerCase();
+    if (["button", "canvas", "form", "iframe", "input", "noscript", "rp", "rt", "script", "select", "style", "svg", "textarea"].includes(tag)) {
+      return true;
+    }
+    if (element.closest("#jpcorpus-reader-panel, #jpcorpus-reader-toolbar, .jpcorpus-import-toast, #jpcorpus-picker-overlay, #jpcorpus-picker-label")) {
+      return true;
+    }
+    if (isSkippableElement(element)) {
+      return true;
+    }
+    const style = window.getComputedStyle(element);
+    return style.display === "none" || style.visibility === "hidden";
+  }
+
+  function readerSpeechTextRanges(text) {
+    const ranges = [];
+    let start = 0;
+    const pushRange = (end) => {
+      const range = trimSpeechRange(text, start, end);
+      if (range) {
+        ranges.push(range);
+      }
+      start = end;
+    };
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (/[。！？!?]/u.test(char)) {
+        pushRange(index + 1);
+      } else if (char === "\n" && index - start >= 40) {
+        pushRange(index);
+        start = index + 1;
+      } else if (index - start >= 280) {
+        pushRange(index + 1);
+      }
+    }
+    pushRange(text.length);
+    return ranges;
+  }
+
+  function trimSpeechRange(text, start, end) {
+    let from = start;
+    let to = end;
+    while (from < to && /\s/u.test(text[from])) {
+      from += 1;
+    }
+    while (to > from && /\s/u.test(text[to - 1])) {
+      to -= 1;
+    }
+    return to > from ? { start: from, end: to } : null;
+  }
+
+  function rangeForSpeechOffsets(pieces, start, end) {
+    const textPieces = pieces.filter((piece) => piece.node && piece.end > start && piece.start < end);
+    if (!textPieces.length) {
+      return null;
+    }
+    const first = textPieces[0];
+    const last = textPieces[textPieces.length - 1];
+    const range = document.createRange();
+    range.setStart(first.node, Math.max(0, start - first.start));
+    range.setEnd(last.node, Math.min((last.node.nodeValue || "").length, end - last.start));
+    return range;
+  }
+
+  function speechFallbackElement(pieces, start, end, fallback) {
+    const piece = pieces.find((item) => item.node && item.end > start && item.start < end);
+    const parent = piece?.node?.parentElement;
+    return parent?.closest("p, li, dd, dt, blockquote, h1, h2, h3") || fallback;
   }
 
   function speakReaderBrowserSegment(text, runId) {
@@ -929,12 +1110,6 @@
     return activeReaderSpeechRunId === runId;
   }
 
-  function rangeForElementContents(element) {
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    return range;
-  }
-
   function readerSpeechBlockCandidate(node) {
     if (!(node instanceof Element)) {
       return null;
@@ -966,30 +1141,6 @@
     }
     const rect = element.getBoundingClientRect();
     return rect.width >= 40 && rect.height >= 10;
-  }
-
-  function readerSpeechSegments(text) {
-    const normalized = normalizeReaderSpeechText(text);
-    if (!normalized) {
-      return [];
-    }
-    const sentences = normalized
-      .split(/(?<=[。！？!?])\s*/u)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    const parts = sentences.length ? sentences : [normalized];
-    const segments = [];
-    parts.forEach((part) => {
-      let rest = part;
-      while (rest.length > 280) {
-        segments.push(rest.slice(0, 280));
-        rest = rest.slice(280).trim();
-      }
-      if (rest) {
-        segments.push(rest);
-      }
-    });
-    return segments;
   }
 
   function normalizeReaderSpeechText(value) {
@@ -1473,6 +1624,44 @@
     return japaneseCount / clean.length >= 0.2;
   }
 
+  function readabilityMatchScore(candidateText, readabilityText) {
+    const candidate = compactArticleText(candidateText);
+    const article = compactArticleText(readabilityText);
+    if (candidate.length < 80 || article.length < 80) {
+      return 0;
+    }
+    const anchors = readabilityAnchors(article);
+    const hits = anchors.filter((anchor) => candidate.includes(anchor)).length;
+    if (!hits) {
+      return 0;
+    }
+    const hitRatio = hits / anchors.length;
+    const lengthRatio = Math.min(candidate.length, article.length) / Math.max(candidate.length, article.length);
+    const extraPenalty = Math.max(0, candidate.length - article.length) * 0.18;
+    return hitRatio * 6000 + lengthRatio * 1200 - extraPenalty;
+  }
+
+  function compactArticleText(text) {
+    return cleanText(text)
+      .replace(/\s+/gu, "")
+      .replace(/[「」『』（）()\[\]【】]/gu, "");
+  }
+
+  function readabilityAnchors(articleText) {
+    const anchorLength = Math.min(72, Math.max(32, Math.floor(articleText.length / 12)));
+    if (articleText.length <= anchorLength) {
+      return [articleText];
+    }
+    const starts = [
+      0,
+      Math.floor(articleText.length * 0.25),
+      Math.floor(articleText.length * 0.5),
+      Math.floor(articleText.length * 0.75),
+      Math.max(0, articleText.length - anchorLength),
+    ];
+    return Array.from(new Set(starts.map((start) => articleText.slice(start, start + anchorLength))));
+  }
+
   function articleCandidates() {
     const selectors = [
       "article",
@@ -1502,7 +1691,7 @@
     });
     document.querySelectorAll("p, section, div").forEach((element) => {
       let current = element;
-      for (let depth = 0; depth < 3 && current && current !== document.body; depth += 1) {
+      for (let depth = 0; depth < 5 && current && current !== document.body; depth += 1) {
         if (isUsableArticleCandidate(current)) {
           candidates.add(current);
         }

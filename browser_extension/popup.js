@@ -121,7 +121,7 @@ async function toggleReadingMode() {
     const tab = await activeTab();
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["content.js"],
+      files: ["vendor/Readability.js", "content.js"],
     });
     const response = await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_READING_MODE" });
     if (!response?.ok) {
