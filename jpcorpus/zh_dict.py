@@ -501,6 +501,7 @@ def clean_zhwiktionary_gloss_part(value: str) -> str:
     if not value or re.fullmatch(r"=+\s*日语\s*=+", value):
         return ""
     value = re.sub(r"=+\s*日语\s*=+\s*", "", value)
+    value = strip_zhwiktionary_template_prefix(value)
     value = strip_japanese_form_prefix(value)
     value = strip_zhwiktionary_headword_prefix(value)
     value = strip_parenthetical_headword_prefix(value)
@@ -548,6 +549,15 @@ def zhwiktionary_definition_lines(lines: list[str]) -> list[str]:
 def strip_zhwiktionary_headword_prefix(value: str) -> str:
     return re.sub(
         r"^.+?(?:【[ぁ-ゖァ-ヺー・/／;；\s]+】)+\s*",
+        "",
+        value,
+        count=1,
+    ).strip()
+
+
+def strip_zhwiktionary_template_prefix(value: str) -> str:
+    return re.sub(
+        r"^:?Template:[^\s　]+[\s　]+",
         "",
         value,
         count=1,
@@ -732,6 +742,14 @@ def is_likely_example_translation(value: str) -> bool:
 
 def is_useless_zhwiktionary_gloss_part(value: str) -> bool:
     if not value:
+        return True
+    if "Template:" in value:
+        return True
+    japanese_meta_prefix = (
+        r"^(?:口语中|口語中|有时|有時|常)(?:有时|有時)?"
+        r"(?:用|写作|寫作|说成|說成)"
+    )
+    if contains_kana(value) and re.match(japanese_meta_prefix, value):
         return True
     if value in {"自サ", "他サ", "自他サ", "他五", "自五", "他下一", "自下一", "补动五"}:
         return True

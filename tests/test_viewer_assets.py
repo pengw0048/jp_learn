@@ -802,13 +802,14 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
         }});
         const text = section.textContent;
 
-        assert.equal((text.match(/五段・る/g) || []).length, 1);
+        assert.equal(text.includes("五段・る"), false);
         assert.equal((text.match(/自他/g) || []).length, 1);
         assert.equal(text.includes("自他动1"), false);
         assert.equal(text.includes("transitive verb"), false);
         assert.equal(text.includes("unknown English grammar label"), false);
         assert.equal(text.includes("他动"), false);
         assert.equal(text.includes("自动"), false);
+        assert.equal(text.includes("动词"), false);
         assert.equal(text.includes("to do"), false);
         assert.equal(text.includes("词典义项"), false);
         assert.equal(text.includes("旧语"), false);
@@ -832,11 +833,14 @@ def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
         }});
         const fallbackText = fallbackSection.textContent;
 
-        assert.equal((fallbackText.match(/五段・る/g) || []).length, 1);
+        assert.equal(fallbackText.includes("五段・る"), false);
         assert.equal((fallbackText.match(/他动/g) || []).length, 1);
+        assert.equal(fallbackText.includes("动词"), false);
         assert.equal(fallbackText.includes("to do"), false);
         assert.equal(fallbackText.includes("词典义项"), false);
         assert.equal(fallbackText.includes("旧语"), false);
+        assert.equal(helpers.displayMeaningRaw({{ meaning: "sound" }}), "");
+        assert.equal(helpers.displayMeaningRaw({{ meaning_zh: "声音", meaning: "sound" }}), "声音");
         const parsedMeaning = helpers.renderMeaningValue({{
           meaning_zh: "（いい/よい）①【イ形】好的",
         }}, "meaning-main").textContent;

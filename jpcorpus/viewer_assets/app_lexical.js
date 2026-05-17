@@ -1,17 +1,17 @@
 window.JPCORPUS_LEXICAL = (() => {
   const LEXICAL_POS_LABELS_ZH = {
-    "noun or participle which takes the aux. verb suru": "する名词",
-    "nouns which may take the genitive case particle 'no'": "の名词",
+    "noun or participle which takes the aux. verb suru": "动词",
+    "nouns which may take the genitive case particle 'no'": "名词",
     "noun (common) (futsuumeishi)": "名词",
-    "noun, used as a suffix": "名词・接尾",
+    "noun, used as a suffix": "接尾词",
     "pronoun": "代词",
     "adverb (fukushi)": "副词",
     "adjective (keiyoushi)": "い形容词",
     "adjectival nouns or quasi-adjectives (keiyodoshi)": "な形容词",
-    "adverbial noun (fukushitekimeishi)": "副词性名词",
-    "adverb taking the 'to' particle": "と副词",
+    "adverbial noun (fukushitekimeishi)": "副词",
+    "adverb taking the 'to' particle": "副词",
     "expressions (phrases, clauses, etc.)": "表达",
-    "noun or verb acting prenominally": "连体用法",
+    "noun or verb acting prenominally": "连体词",
     "auxiliary verb": "助动词",
     "auxiliary adjective": "辅助形容词",
     "conjunction": "接续词",
@@ -20,48 +20,48 @@ window.JPCORPUS_LEXICAL = (() => {
     "particle": "助词",
     "prefix": "接头词",
     "suffix": "接尾词",
-    "suru verb - special class": "サ变",
-    "suru verb - included": "サ变",
+    "suru verb - special class": "动词",
+    "suru verb - included": "动词",
     "numeric": "数词",
-    "noun, used as a prefix": "名词・接头",
-    "Ichidan verb": "一段动词",
-    "Ichidan verb - kureru special class": "一段・くれる",
-    "Ichidan verb - zuru verb (alternative form of -jiru verbs)": "一段・ずる",
-    "Godan verb - Iku/Yuku special class": "五段・行く",
+    "noun, used as a prefix": "接头词",
+    "Ichidan verb": "动词",
+    "Ichidan verb - kureru special class": "动词",
+    "Ichidan verb - zuru verb (alternative form of -jiru verbs)": "动词",
+    "Godan verb - Iku/Yuku special class": "动词",
     "'taru' adjective": "たる形容词",
     "pre-noun adjectival (rentaishi)": "连体词",
-    "Godan verb with 'u' ending": "五段・う",
-    "Godan verb with `u' ending": "五段・う",
-    "Godan verb with 'ru' ending (irregular verb)": "五段・る特殊",
-    "Godan verb with 'ru' ending": "五段・る",
-    "Godan verb with `ru' ending": "五段・る",
-    "Godan verb with 'ku' ending": "五段・く",
-    "Godan verb with `ku' ending": "五段・く",
-    "Godan verb with 'gu' ending": "五段・ぐ",
-    "Godan verb with `gu' ending": "五段・ぐ",
-    "Godan verb with 'su' ending": "五段・す",
-    "Godan verb with `su' ending": "五段・す",
-    "Godan verb with 'tsu' ending": "五段・つ",
-    "Godan verb with `tsu' ending": "五段・つ",
-    "Godan verb with 'nu' ending": "五段・ぬ",
-    "Godan verb with `nu' ending": "五段・ぬ",
-    "Godan verb with 'bu' ending": "五段・ぶ",
-    "Godan verb with `bu' ending": "五段・ぶ",
-    "Godan verb with 'mu' ending": "五段・む",
-    "Godan verb with `mu' ending": "五段・む",
-    "Godan verb - -aru special class": "五段・ある",
-    "Godan verb with 'u' ending (special class)": "五段・う特殊",
-    "Kuru verb - special class": "カ变",
-    "Suru verb - special class": "サ变",
-    "Suru verb - included": "サ变",
-    "su verb - precursor to the modern suru": "す动词",
-    "'ku' adjective (archaic)": "く形容词・古语",
+    "Godan verb with 'u' ending": "动词",
+    "Godan verb with `u' ending": "动词",
+    "Godan verb with 'ru' ending (irregular verb)": "动词",
+    "Godan verb with 'ru' ending": "动词",
+    "Godan verb with `ru' ending": "动词",
+    "Godan verb with 'ku' ending": "动词",
+    "Godan verb with `ku' ending": "动词",
+    "Godan verb with 'gu' ending": "动词",
+    "Godan verb with `gu' ending": "动词",
+    "Godan verb with 'su' ending": "动词",
+    "Godan verb with `su' ending": "动词",
+    "Godan verb with 'tsu' ending": "动词",
+    "Godan verb with `tsu' ending": "动词",
+    "Godan verb with 'nu' ending": "动词",
+    "Godan verb with `nu' ending": "动词",
+    "Godan verb with 'bu' ending": "动词",
+    "Godan verb with `bu' ending": "动词",
+    "Godan verb with 'mu' ending": "动词",
+    "Godan verb with `mu' ending": "动词",
+    "Godan verb - -aru special class": "动词",
+    "Godan verb with 'u' ending (special class)": "动词",
+    "Kuru verb - special class": "动词",
+    "Suru verb - special class": "动词",
+    "Suru verb - included": "动词",
+    "su verb - precursor to the modern suru": "动词",
+    "'ku' adjective (archaic)": "形容词",
     "auxiliary": "助动词",
-    "'shiku' adjective (archaic)": "しく形容词・古语",
-    "Nidan verb (lower class) with 'u' ending and 'we' conjugation (archaic)": "古典二段动词",
-    "Nidan verb (upper class) with 'ru' ending (archaic)": "古典二段动词",
-    "Nidan verb (lower class) with 'ru' ending (archaic)": "古典二段动词",
-    "Yodan verb with 'ru' ending (archaic)": "古典四段动词",
+    "'shiku' adjective (archaic)": "形容词",
+    "Nidan verb (lower class) with 'u' ending and 'we' conjugation (archaic)": "动词",
+    "Nidan verb (upper class) with 'ru' ending (archaic)": "动词",
+    "Nidan verb (lower class) with 'ru' ending (archaic)": "动词",
+    "Yodan verb with 'ru' ending (archaic)": "动词",
     "transitive verb": "他动",
     "intransitive verb": "自动",
     n: "名词",
@@ -69,16 +69,16 @@ window.JPCORPUS_LEXICAL = (() => {
     adv: "副词",
     "adj-i": "い形容词",
     "adj-na": "な形容词",
-    v1: "一段动词",
-    v5u: "五段・う",
-    v5k: "五段・く",
-    v5g: "五段・ぐ",
-    v5s: "五段・す",
-    v5t: "五段・つ",
-    v5n: "五段・ぬ",
-    v5b: "五段・ぶ",
-    v5m: "五段・む",
-    v5r: "五段・る",
+    v1: "动词",
+    v5u: "动词",
+    v5k: "动词",
+    v5g: "动词",
+    v5s: "动词",
+    v5t: "动词",
+    v5n: "动词",
+    v5b: "动词",
+    v5m: "动词",
+    v5r: "动词",
     vt: "他动",
     vi: "自动",
     "自他动": "自他",
@@ -89,6 +89,7 @@ window.JPCORPUS_LEXICAL = (() => {
   };
   const HIDDEN_LEXICAL_POS_LABELS_ZH = new Set([
     "名词",
+    "动词",
     "未分类",
   ]);
 
@@ -97,7 +98,7 @@ window.JPCORPUS_LEXICAL = (() => {
 
     function displayMeaningRaw(word) {
       if (language() === "zh") {
-        return word.meaning_zh || word.meaning || "";
+        return word.meaning_zh || "";
       }
       return word.meaning || word.meaning_zh || "";
     }
@@ -353,7 +354,34 @@ window.JPCORPUS_LEXICAL = (() => {
     if (mapped) {
       return mapped;
     }
+    const compacted = compactFineGrainedLexicalPosZh(value);
+    if (compacted) {
+      return compacted;
+    }
     return looksLikeEnglishLexicalLabel(value) ? "" : value;
+  }
+
+  function compactFineGrainedLexicalPosZh(value) {
+    const text = String(value || "").trim();
+    if (/^(?:五段・|一段(?:动词)?|一段・|カ变|サ变|す动词|古典.*动词)/u.test(text)) {
+      return "动词";
+    }
+    if (text === "する名词") {
+      return "动词";
+    }
+    if (text === "の名词") {
+      return "名词";
+    }
+    if (text === "名词・接尾") {
+      return "接尾词";
+    }
+    if (text === "名词・接头") {
+      return "接头词";
+    }
+    if (text === "副词性名词" || text === "と副词") {
+      return "副词";
+    }
+    return "";
   }
 
   function compactLexicalPosZh(labels) {

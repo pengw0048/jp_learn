@@ -865,6 +865,8 @@ def test_clean_zhwiktionary_gloss_removes_embedded_example_lines():
     assert clean_zhwiktionary_gloss("洗う (arau) 的连用形 [五段动词]") == ""
     assert clean_zhwiktionary_gloss("道路，路线。；途径。；root") == "道路，路线；途径。"
     assert clean_zhwiktionary_gloss("一种芸香科的灌木（Zanthoxylum piperitum）") == "一种芸香科的灌木"
+    assert clean_zhwiktionary_gloss(":Template:音乐 小提琴。") == "小提琴。"
+    assert clean_zhwiktionary_gloss("口语中有时用「あっためる」；温，热，烫。") == "温，热，烫。"
     assert (
         clean_zhwiktionary_gloss("好く【すく】\n他五\n== 日语 ==\n好く【多用其被动、否定形式】喜好，爱好。")
         == "喜好，爱好。"
