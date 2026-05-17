@@ -38,12 +38,18 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     content = (ROOT / "browser_extension" / "content.js").read_text(encoding="utf-8")
     background = (ROOT / "browser_extension" / "background.js").read_text(encoding="utf-8")
 
-    assert 'readParagraph: "朗读段落"' in content
-    assert 'pickParagraph: "点击要朗读的段落。Esc 取消。"' in content
+    assert 'readAll: "读全文"' in content
+    assert 'readParagraph: "选段落"' in content
+    assert 'pickParagraph: "点正文里的一个段落。Esc 取消。"' in content
+    assert 'furigana: "假名"' in content
     assert 'stopReading: "停止"' in content
     assert "jpcorpus-reader-toolbar" in content
+    assert "jpcorpus-reader-toolbar-status" in content
     assert "jpcorpus-reader-speech-button" in content
     assert "startReaderParagraphPicker" in content
+    assert "toggleReaderFurigana" in content
+    assert "renderReaderTokenText" in content
+    assert "positionToastUnderToolbar" in content
     assert "speakReaderParagraph" in content
     assert "SYNTHESIZE_VOICEVOX" in content
     assert "SYNTHESIZE_VOICEVOX" in background

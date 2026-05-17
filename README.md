@@ -95,7 +95,7 @@ EPUB 会优先使用书内 metadata，文件名作为备用标题。
 - 右键导入网页主要正文。
 - 在当前网页直接高亮日语词，并显示浮动词典面板。
 - 从浮动面板把词加入学习、标记已认识、忽略或清除状态。
-- 在网页右上角用浮动朗读工具条选择段落朗读，优先使用本地 VOICEVOX，失败时退回浏览器语音。
+- 在网页右上角用浮动工具条朗读全文或选择段落朗读，优先使用本地 VOICEVOX，失败时退回浏览器语音；也可以临时显示假名。
 
 安装方式：
 
@@ -231,7 +231,7 @@ Study progress is stored locally.
 - Import the main article text from the right-click menu.
 - Highlight Japanese words directly on the current page.
 - Show a floating glossary panel where words can be added to review, marked known, ignored, or cleared.
-- Read a picked paragraph from the floating page toolbar, preferring local VOICEVOX and falling back to browser speech.
+- Read the full page area or a picked paragraph from the floating page toolbar, preferring local VOICEVOX and falling back to browser speech; furigana can be toggled temporarily.
 
 Install it with:
 
