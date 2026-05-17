@@ -254,6 +254,8 @@ def test_user_dictionary_results_render_compact_primary_definitions():
             userDictionaryUnknown: "未命名词典",
             userDictionarySpellings: "写法",
             userDictionarySeeAlso: "参见",
+            userDictionaryExpand: "展开释义",
+            userDictionaryCollapse: "收起",
           }}[key] || key),
           getLanguage: () => "zh",
         }});
@@ -294,6 +296,79 @@ def test_user_dictionary_results_render_compact_primary_definitions():
         assert.equal((text.match(/wty-ja-zh/g) || []).length, 1);
         assert.equal(text.includes("YOMITAN"), false);
         assert.equal(text.includes("godan"), false);
+      """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_long_user_dictionary_results_are_collapsible():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+
+        function makeTextNode(value) {{
+          return {{ tag: "text", textContent: String(value || "") }};
+        }}
+
+        function makeNode(tag, className = "", value = "") {{
+          return {{
+            tag,
+            className,
+            value: String(value || ""),
+            children: [],
+            title: "",
+            append(...items) {{
+              this.children.push(...items.map((item) => typeof item === "string" ? makeTextNode(item) : item));
+            }},
+            get childElementCount() {{
+              return this.children.filter((child) => child && child.tag).length;
+            }},
+            get textContent() {{
+              return this.value + this.children.map((child) => child.textContent || "").join("");
+            }},
+            set textContent(nextValue) {{
+              this.value = String(nextValue || "");
+              this.children = [];
+            }},
+          }};
+        }}
+
+        require({str(VIEWER_ASSET_DIR / "app_lexical.js")!r});
+        const helpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
+          el: makeNode,
+          t: (key) => ({{
+            userDictionaryResults: "本地词典",
+            userDictionaryUnknown: "未命名词典",
+            userDictionarySpellings: "写法",
+            userDictionarySeeAlso: "参见",
+            userDictionaryExpand: "展开释义",
+            userDictionaryCollapse: "收起",
+          }}[key] || key),
+          getLanguage: () => "zh",
+        }});
+        const longText = Array.from({{ length: 12 }}, (_, index) => `释义 ${{index + 1}}`).join("\\n");
+        const section = helpers.renderUserDictionaryResults({{
+          word: "言う",
+          user_dictionary_results: [
+            {{
+              dictionary_id: "mdx",
+              dictionary_name: "新日漢大辭典",
+              definitions: [longText],
+            }},
+          ],
+        }});
+        const details = section.children[1].children[0].children[0];
+        const text = section.textContent;
+
+        assert.equal(details.tag, "details");
+        assert.equal(text.includes("展开释义"), true);
+        assert.equal(text.includes("收起"), true);
+        assert.equal((text.match(/新日漢大辭典/g) || []).length, 1);
       """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)

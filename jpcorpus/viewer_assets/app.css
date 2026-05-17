@@ -1040,14 +1040,45 @@ select {
 
 .user-dictionary-definition {
   min-width: 0;
+  margin: 0;
   color: var(--text);
   font-size: 14px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-.user-dictionary-definition {
+.user-dictionary-definition-details {
   margin: 0;
+}
+
+.user-dictionary-definition-summary {
+  cursor: pointer;
+  display: block;
+  list-style: none;
+}
+
+.user-dictionary-definition-summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-dictionary-definition-details[open] .user-dictionary-preview,
+.user-dictionary-definition-details:not([open]) .user-dictionary-toggle-open,
+.user-dictionary-definition-details[open] .user-dictionary-toggle-closed {
+  display: none;
+}
+
+.user-dictionary-full {
+  margin-top: 8px;
+}
+
+.user-dictionary-toggle {
+  display: inline-flex;
+  margin-left: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .user-dictionary-reference {

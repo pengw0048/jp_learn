@@ -189,9 +189,9 @@ window.JPCORPUS_LEXICAL = (() => {
         const item = el("article", "user-dictionary-result");
         let sourceTarget = null;
         if (definitions.length) {
-          const content = el("p", "user-dictionary-definition", definitions.join("；"));
-          item.append(content);
-          sourceTarget = content;
+          const definitionBlock = userDictionaryDefinitionBlock(definitions);
+          item.append(definitionBlock.node);
+          sourceTarget = definitionBlock.sourceTarget;
         }
         if (spellings.length) {
           const line = userDictionaryReferenceLine(t("userDictionarySpellings"), spellings);
@@ -240,6 +240,47 @@ window.JPCORPUS_LEXICAL = (() => {
           .filter((result) => result.kind !== "reference")
           .flatMap((result) => asArray(result.definitions).filter(Boolean)),
       ).slice(0, 8);
+    }
+
+    function userDictionaryDefinitionBlock(definitions) {
+      const text = userDictionaryDefinitionText(definitions);
+      if (!userDictionaryNeedsCollapse(text)) {
+        const content = el("p", "user-dictionary-definition", text);
+        return { node: content, sourceTarget: content };
+      }
+      const details = el("details", "user-dictionary-definition-details");
+      const summary = el("summary", "user-dictionary-definition-summary");
+      const preview = el("span", "user-dictionary-definition user-dictionary-preview", userDictionaryPreviewText(text));
+      summary.append(
+        preview,
+        el("span", "user-dictionary-toggle user-dictionary-toggle-closed", t("userDictionaryExpand")),
+        el("span", "user-dictionary-toggle user-dictionary-toggle-open", t("userDictionaryCollapse")),
+      );
+      details.append(summary, el("p", "user-dictionary-definition user-dictionary-full", text));
+      return { node: details, sourceTarget: preview };
+    }
+
+    function userDictionaryDefinitionText(definitions) {
+      const joined = definitions.join("；");
+      if (joined.length > 260 || definitions.some((definition) => String(definition || "").includes("\n"))) {
+        return definitions.join("\n");
+      }
+      return joined;
+    }
+
+    function userDictionaryNeedsCollapse(text) {
+      return text.length > 360 || text.split(/\n/).filter(Boolean).length > 5;
+    }
+
+    function userDictionaryPreviewText(text) {
+      const lines = text.split(/\n/).filter(Boolean);
+      if (lines.length > 4) {
+        return `${lines.slice(0, 4).join("\n")}...`;
+      }
+      if (text.length > 260) {
+        return `${text.slice(0, 260).trim()}...`;
+      }
+      return text;
     }
 
     function userDictionaryReferenceLine(label, values) {
