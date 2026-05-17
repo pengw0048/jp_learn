@@ -1,11 +1,13 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.17";
+  const SCRIPT_VERSION = "0.1.18";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
   window.__jpcorpusContentVersion = SCRIPT_VERSION;
   window.__jpcorpusPickerLoaded = true;
   const CJK_FONT_CSS = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  const SPEECH_SOFT_CHARS = 70;
+  const SPEECH_MAX_CHARS = 120;
   const MESSAGES = {
     zh: {
       stillAnnotating: "jpcorpus 仍在标注这个页面...",
@@ -28,11 +30,22 @@
       ignore: "忽略",
       ignored: "已忽略",
       clearStatus: "取消标记",
-      readAll: "读全文",
-      readParagraph: "选段落",
-      pickParagraph: "点正文里的一个段落。Esc 取消。",
+      importSelection: "导入选中",
+      importArticle: "导入正文",
+      pickImport: "点选导入",
+      importingSelection: "正在导入选中文字...",
+      extractingArticle: "正在提取正文...",
+      noSelection: "没有选中文字可导入。",
+      alreadyImported: "已经导入过 {title}。",
+      imported: "已导入 {title}。",
+      importFailed: "导入失败。",
+      webTextTitle: "网页文本",
+      readAll: "朗读全文",
+      readParagraph: "朗读选段",
+      pickParagraph: "点要朗读的段落。Esc 取消。",
       cancelPick: "取消选择",
       furigana: "假名",
+      switchLanguage: "EN",
       stopReading: "停止",
       closeReader: "关闭",
       noReadableParagraph: "这个区域没有可朗读的日语。",
@@ -61,11 +74,22 @@
       ignore: "Ignore",
       ignored: "Ignored",
       clearStatus: "Clear",
+      importSelection: "Import selection",
+      importArticle: "Import article",
+      pickImport: "Pick import",
+      importingSelection: "Importing selected text...",
+      extractingArticle: "Extracting article text...",
+      noSelection: "No selected text to import.",
+      alreadyImported: "Already imported {title}.",
+      imported: "Imported {title}.",
+      importFailed: "Import failed.",
+      webTextTitle: "web text",
       readAll: "Read all",
-      readParagraph: "Pick paragraph",
-      pickParagraph: "Click a paragraph in the page. Esc cancels.",
+      readParagraph: "Read passage",
+      pickParagraph: "Click a passage to read. Esc cancels.",
       cancelPick: "Cancel pick",
       furigana: "Furigana",
+      switchLanguage: "中",
       stopReading: "Stop",
       closeReader: "Close",
       noReadableParagraph: "No readable Japanese text in this area.",
@@ -605,11 +629,49 @@
     const toolbar = document.createElement("div");
     toolbar.id = "jpcorpus-reader-toolbar";
     toolbar.lang = extensionLang === "zh" ? "zh-Hans" : "en";
+    toolbar.addEventListener("mousedown", (event) => {
+      if (event.target instanceof HTMLButtonElement) {
+        event.preventDefault();
+      }
+    });
     const actions = document.createElement("div");
     actions.className = "jpcorpus-reader-toolbar-actions";
     const status = document.createElement("div");
     status.className = "jpcorpus-reader-toolbar-status";
     status.hidden = true;
+
+    const importSelection = document.createElement("button");
+    importSelection.type = "button";
+    importSelection.className = "jpcorpus-reader-import-button";
+    importSelection.textContent = tr("importSelection");
+    importSelection.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      importSelectedTextFromPage(importSelection);
+    });
+
+    const importArticle = document.createElement("button");
+    importArticle.type = "button";
+    importArticle.className = "jpcorpus-reader-import-button";
+    importArticle.textContent = tr("importArticle");
+    importArticle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      importMainArticleFromPage(importArticle);
+    });
+
+    const pickImport = document.createElement("button");
+    pickImport.type = "button";
+    pickImport.className = "jpcorpus-reader-import-button";
+    pickImport.textContent = tr("pickImport");
+    pickImport.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      stopReaderSpeech();
+      stopReaderParagraphPicker();
+      setReaderToolbarStatus("");
+      startPicker();
+    });
 
     const readAll = document.createElement("button");
     readAll.type = "button";
@@ -673,11 +735,92 @@
       showToast(tr("readerOff"));
       disableReadingMode();
     });
-    actions.append(readAll, readParagraph, furigana, close);
+
+    const lang = document.createElement("button");
+    lang.type = "button";
+    lang.className = "jpcorpus-reader-lang-button";
+    lang.textContent = tr("switchLanguage");
+    lang.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleExtensionLanguage();
+    });
+
+    actions.append(importSelection, importArticle, pickImport, readAll, readParagraph, furigana, lang, close);
     toolbar.append(actions, status);
     document.documentElement.append(toolbar);
     reader.toolbar = toolbar;
     reader.toolbarStatus = status;
+  }
+
+  async function importSelectedTextFromPage(button) {
+    const text = String(window.getSelection()?.toString() || "").trim();
+    if (!text) {
+      setReaderToolbarStatus(tr("noSelection"));
+      return;
+    }
+    await runReaderToolbarAction(button, tr("importingSelection"), async () => {
+      const response = await chrome.runtime.sendMessage({
+        type: "IMPORT_TEXT",
+        payload: {
+          title: document.title || "",
+          url: location.href,
+          text,
+        },
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error || tr("importFailed"));
+      }
+      setReaderToolbarStatus(importResultMessage(response.result));
+    });
+  }
+
+  async function importMainArticleFromPage(button) {
+    await runReaderToolbarAction(button, tr("extractingArticle"), async () => {
+      const article = extractMainArticle();
+      const response = await chrome.runtime.sendMessage({
+        type: "IMPORT_TEXT",
+        payload: article,
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error || tr("importFailed"));
+      }
+      setReaderToolbarStatus(importResultMessage(response.result));
+    });
+  }
+
+  async function runReaderToolbarAction(button, busyLabel, action) {
+    const idleLabel = button.textContent;
+    button.disabled = true;
+    button.classList.add("loading");
+    setReaderToolbarStatus(busyLabel);
+    try {
+      await action();
+    } catch (error) {
+      setReaderToolbarStatus(error.message || String(error));
+      showToast(error.message || String(error), "error");
+    } finally {
+      button.disabled = false;
+      button.classList.remove("loading");
+      button.textContent = idleLabel;
+    }
+  }
+
+  function importResultMessage(result) {
+    const imported = result?.imported || {};
+    const title = imported.title || tr("webTextTitle");
+    return result?.duplicate || imported.duplicate
+      ? tr("alreadyImported", { title })
+      : tr("imported", { title });
+  }
+
+  async function toggleExtensionLanguage() {
+    extensionLang = extensionLang === "zh" ? "en" : "zh";
+    await chrome.storage?.local?.set?.({ lang: extensionLang });
+    renderReaderToolbar();
+    if (reader?.panel && reader.selectedToken) {
+      showReaderPanel(reader.selectedToken.__jpcorpusAnnotation || {}, reader.selectedToken);
+    }
   }
 
   function removeReaderToolbar() {
@@ -1015,10 +1158,12 @@
       const char = text[index];
       if (/[。！？!?]/u.test(char)) {
         pushRange(index + 1);
-      } else if (char === "\n" && index - start >= 40) {
+      } else if (char === "\n") {
         pushRange(index);
         start = index + 1;
-      } else if (index - start >= 280) {
+      } else if (/[、，,；;：:]/u.test(char) && index - start >= SPEECH_SOFT_CHARS) {
+        pushRange(index + 1);
+      } else if (index - start >= SPEECH_MAX_CHARS) {
         pushRange(index + 1);
       }
     }

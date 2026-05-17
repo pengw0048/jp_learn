@@ -37,15 +37,22 @@ def test_popup_keeps_success_feedback_after_selection_import() -> None:
 def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     content = (ROOT / "browser_extension" / "content.js").read_text(encoding="utf-8")
     background = (ROOT / "browser_extension" / "background.js").read_text(encoding="utf-8")
+    manifest = (ROOT / "browser_extension" / "manifest.json").read_text(encoding="utf-8")
 
-    assert 'readAll: "读全文"' in content
-    assert 'readParagraph: "选段落"' in content
-    assert 'pickParagraph: "点正文里的一个段落。Esc 取消。"' in content
+    assert 'importSelection: "导入选中"' in content
+    assert 'importArticle: "导入正文"' in content
+    assert 'pickImport: "点选导入"' in content
+    assert 'readAll: "朗读全文"' in content
+    assert 'readParagraph: "朗读选段"' in content
+    assert 'pickParagraph: "点要朗读的段落。Esc 取消。"' in content
     assert 'furigana: "假名"' in content
+    assert 'switchLanguage: "EN"' in content
     assert 'stopReading: "停止"' in content
     assert "jpcorpus-reader-toolbar" in content
     assert "jpcorpus-reader-toolbar-status" in content
     assert "jpcorpus-reader-speech-button" in content
+    assert "importSelectedTextFromPage" in content
+    assert "importMainArticleFromPage" in content
     assert "startReaderParagraphPicker" in content
     assert "toggleReaderFurigana" in content
     assert "renderReaderTokenText" in content
@@ -58,6 +65,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "readabilityMatchScore" in content
     assert "SYNTHESIZE_VOICEVOX" in content
     assert "SYNTHESIZE_VOICEVOX" in background
+    assert "chrome.action.onClicked.addListener" in background
+    assert '"default_popup"' not in manifest
     assert 'files: ["vendor/Readability.js", "content.js"]' in (ROOT / "browser_extension" / "popup.js").read_text(encoding="utf-8")
     assert 'button.textContent = tr("stopReading");' in content
     assert "resetReaderSpeechButton" in content

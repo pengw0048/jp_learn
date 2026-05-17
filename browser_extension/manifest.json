@@ -10,7 +10,6 @@
     "type": "module"
   },
   "action": {
-    "default_title": "jpcorpus importer",
-    "default_popup": "popup.html"
+    "default_title": "Toggle jpcorpus toolbar"
   }
 }

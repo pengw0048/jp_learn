@@ -116,6 +116,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
+chrome.action.onClicked.addListener((tab) => {
+  toggleReadingMode(tab).catch(async (error) => reportImportError(error, tab?.id, t(await currentLang(), "readerFailedTitle")));
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "GET_EXTENSION_LANG") {
     currentLang()
