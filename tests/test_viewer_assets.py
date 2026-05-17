@@ -202,6 +202,8 @@ def test_dictionary_manager_assets_are_wired():
     assert 'event.key === "Escape"' in lexical
     assert "dictionary-detail-reference" in lexical
     assert 'value.startsWith("javascript:")' in lexical
+    assert "script, iframe, object, embed" in lexical
+    assert "script, style, iframe" not in lexical
     assert '["bgcolor", "color", "face", "size", "style"].includes(name)' not in lexical
     assert 'document.body?.classList?.add("dictionary-detail-open")' in lexical
     assert 'dictionaryManagerTitle: "本地词典"' in i18n
@@ -210,6 +212,7 @@ def test_dictionary_manager_assets_are_wired():
     assert ".dictionary-detail-reference" in css
     assert "body.dictionary-detail-open" in css
     assert ".dictionary-detail-html :is(font, span)" not in css
+    assert ".dictionary-detail-html table" not in css
     assert ".dictionary-row" in css
 
 

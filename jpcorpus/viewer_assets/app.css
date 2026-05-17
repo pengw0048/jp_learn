@@ -1166,33 +1166,8 @@ select {
 }
 
 .dictionary-detail-html {
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.65;
   overflow-wrap: anywhere;
-}
-
-.dictionary-detail-html :is(p, div, ul, ol, table) {
-  margin-block: 0 8px;
-}
-
-.dictionary-detail-html :is(ol, ul) {
-  padding-left: 1.35em;
-}
-
-.dictionary-detail-html :is(li) {
-  margin-block: 2px 6px;
-}
-
-.dictionary-detail-html table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.dictionary-detail-html :is(td, th) {
-  padding: 4px 6px;
-  border: 1px solid var(--line);
-  vertical-align: top;
+  overflow-x: auto;
 }
 
 .dictionary-detail-line {

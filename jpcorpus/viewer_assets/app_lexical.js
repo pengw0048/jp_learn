@@ -433,7 +433,7 @@ window.JPCORPUS_LEXICAL = (() => {
       const container = el("article", "dictionary-detail-html");
       const template = document.createElement("template");
       template.innerHTML = String(html || "");
-      template.content.querySelectorAll("script, style, iframe, object, embed, link, meta").forEach((node) => node.remove());
+      template.content.querySelectorAll("script, iframe, object, embed").forEach((node) => node.remove());
       template.content.querySelectorAll("*").forEach((node) => {
         [...node.attributes].forEach((attribute) => {
           const name = attribute.name.toLowerCase();
