@@ -1928,6 +1928,19 @@ mark {
   background: var(--accent-soft);
 }
 
+.reader-speech-button.loading::after {
+  content: "";
+  display: inline-block;
+  width: 0.65em;
+  height: 0.65em;
+  margin-left: 0.45em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  vertical-align: -0.08em;
+  animation: tts-spin 0.75s linear infinite;
+}
+
 .reader-speech-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;

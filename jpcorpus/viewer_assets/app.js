@@ -40,6 +40,7 @@ const {
   strong,
 } = window.JPCORPUS_DOM;
 const WORD_LIST_PAGE_SIZE = 600;
+const READER_SPEECH_PREFETCH_LINES = 3;
 
 const text = window.JPCORPUS_TEXT;
 const {
@@ -1156,10 +1157,10 @@ function renderReaderSpeechButton(enabled) {
 }
 
 function readerSpeechButtonLabel() {
-  if (app.reader.tts.preparing) {
-    return t("readerPreparingSpeech");
+  if (app.reader.tts.playing) {
+    return t("readerStopReading");
   }
-  return app.reader.tts.playing ? t("readerStopReading") : t("readerReadAloud");
+  return app.reader.tts.preparing ? t("readerPreparingSpeech") : t("readerReadAloud");
 }
 
 function startReaderSpeechFromLine(lineKey, options = {}) {
@@ -1185,20 +1186,21 @@ async function startReaderSpeech(startKey = null, options = {}) {
   app.reader.tts.lineKey = lines[0].key;
   markReaderSpeechStart(lines[0].key);
   updateReaderSpeechUi();
-  let pendingPrefetch = null;
-  let pendingPrefetchKey = "";
-  const beginPrefetch = (line) => {
-    if (!line || app.tts.provider !== "voicevox") {
-      pendingPrefetch = null;
-      pendingPrefetchKey = "";
+  const pendingPrefetch = new Map();
+  const scheduleReaderSpeechPrefetch = (index) => {
+    const line = lines[index];
+    if (!line || app.tts.provider !== "voicevox" || pendingPrefetch.has(line.key)) {
       return;
     }
-    if (pendingPrefetchKey === line.key) {
-      return;
-    }
-    pendingPrefetchKey = line.key;
-    pendingPrefetch = prefetchReaderSpeechLine(line, runId);
+    pendingPrefetch.set(line.key, prefetchReaderSpeechLine(line, runId));
   };
+  const scheduleReaderSpeechPrefetchWindow = (index) => {
+    const count = options.singleLine ? 1 : READER_SPEECH_PREFETCH_LINES;
+    for (let offset = 0; offset < count; offset += 1) {
+      scheduleReaderSpeechPrefetch(index + offset);
+    }
+  };
+  scheduleReaderSpeechPrefetchWindow(0);
   try {
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
@@ -1208,15 +1210,15 @@ async function startReaderSpeech(startKey = null, options = {}) {
       let prepared = null;
       app.reader.tts.preparing = true;
       setReaderSpeakingLine(line.key);
-      if (pendingPrefetch && pendingPrefetchKey === line.key) {
-        const result = await pendingPrefetch;
+      if (pendingPrefetch.has(line.key)) {
+        const result = await pendingPrefetch.get(line.key);
         if (!isReaderSpeechRunActive(runId)) {
           break;
         }
         prepared = result?.prepared || null;
-        pendingPrefetch = null;
-        pendingPrefetchKey = "";
+        pendingPrefetch.delete(line.key);
       }
+      scheduleReaderSpeechPrefetchWindow(index + 1);
       const ok = await speakPreparedText(prepared, line.text, {
         awaitEnd: true,
         isCancelled: () => !isReaderSpeechRunActive(runId),
@@ -1226,9 +1228,6 @@ async function startReaderSpeech(startKey = null, options = {}) {
           }
           app.reader.tts.preparing = false;
           setReaderSpeakingLine(line.key);
-          if (!options.singleLine) {
-            beginPrefetch(lines[index + 1]);
-          }
         },
         onEnd: () => {
           if (isReaderSpeechRunCurrent(runId) && app.reader.tts.lineKey === line.key) {
@@ -1383,7 +1382,9 @@ function updateReaderSpeechUi() {
   }
   document.querySelectorAll(".reader-speech-button").forEach((button) => {
     button.classList.toggle("active", app.reader.tts.playing);
+    button.classList.toggle("loading", app.reader.tts.preparing);
     button.setAttribute("aria-pressed", app.reader.tts.playing ? "true" : "false");
+    button.setAttribute("aria-busy", app.reader.tts.preparing ? "true" : "false");
     button.title = t(app.reader.speechStartKey ? "readerReadFromSelectedHint" : "readerReadAloudHint");
     button.textContent = readerSpeechButtonLabel();
   });

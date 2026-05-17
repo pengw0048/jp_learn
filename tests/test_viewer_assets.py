@@ -145,6 +145,9 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "setReaderSpeechStartLine(null)" in app
     assert 'document.querySelectorAll(".reader-speech-button")' in app
     assert "prefetchReaderSpeechLine" in app
+    assert "READER_SPEECH_PREFETCH_LINES = 3" in app
+    assert "scheduleReaderSpeechPrefetchWindow(index + 1)" in app
+    assert 'button.classList.toggle("loading", app.reader.tts.preparing)' in app
     assert "markReaderSpeechStart" in app
     assert "visibleHeight" in app
     assert "stopAllSpeech();" in app
