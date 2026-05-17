@@ -40,8 +40,6 @@ uv sync --extra dev
 uv run pytest
 ```
 
-准备固定一个可用版本前，可以按 [release checklist](docs/release-checklist.md) 跑一遍 smoke test。
-
 ### 配置
 
 你可以在网页 UI 里填写配置，也可以手动编辑 `.env`。
@@ -188,8 +186,6 @@ For development and tests, install the dev extra:
 uv sync --extra dev
 uv run pytest
 ```
-
-Before freezing a usable build, run through the [release checklist](docs/release-checklist.md).
 
 ### Configuration
 
