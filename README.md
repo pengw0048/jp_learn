@@ -1,8 +1,8 @@
-# jpcorpus / 个人日语语料
+# jpcorpus / 日语阅读助手
 
 ## 中文
 
-`jpcorpus` 是一个本地优先的个人日语学习工具。它把你看过的动画、听过的歌、导入的小说和网页文章整理成一个可浏览、可阅读、可复习的日语语料库。
+`jpcorpus` 是一个本地优先的日语阅读学习工具。它把你看过的动画、听过的歌、导入的小说和网页文章整理成一个可浏览、可阅读、可复习的个人语料库。
 
 它目前主要做这些事：
 
@@ -149,7 +149,7 @@ JLPT 没有官方公开词表，所以项目里的 JLPT 等级只是学习参考
 
 ## English
 
-`jpcorpus` is a local-first personal Japanese learning app. It turns watched anime, songs, books, and web articles into a browsable corpus for vocabulary lookup, contextual examples, reading, and review.
+`jpcorpus` is a local-first Japanese reading companion. It turns watched anime, songs, books, and web articles into a personal corpus for vocabulary lookup, contextual examples, reading, and review.
 
 It currently:
 

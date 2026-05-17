@@ -203,7 +203,7 @@ window.JPCORPUS_LEXICAL = (() => {
           item.append(line);
           sourceTarget ||= line;
         }
-        if (group.name && sourceTarget) {
+        if (group.name && sourceTarget && !sourceTarget.dictionarySourceInline) {
           appendUserDictionarySource(sourceTarget, group.name);
         }
         list.append(item);
@@ -244,11 +244,16 @@ window.JPCORPUS_LEXICAL = (() => {
 
     function userDictionaryDefinitionBlock(definitions, sourceName = "", results = []) {
       const text = userDictionaryDefinitionText(definitions);
-      const previewText = userDictionaryPreviewText(text);
+      const needsDetail = userDictionaryNeedsDetail(text);
+      const previewText = needsDetail ? userDictionaryPreviewText(text) : text.replace(/\s+/g, " ").trim();
       const content = el("p", "user-dictionary-definition");
+      if (sourceName) {
+        content.append(el("small", "user-dictionary-source user-dictionary-source-prefix", sourceName));
+        content.dictionarySourceInline = true;
+      }
       const preview = el("span", "user-dictionary-definition-preview", previewText);
       content.append(preview);
-      if (!userDictionaryNeedsDetail(text)) {
+      if (!needsDetail) {
         return { node: content, sourceTarget: content };
       }
       content.append(" ");
@@ -279,12 +284,57 @@ window.JPCORPUS_LEXICAL = (() => {
     }
 
     function userDictionaryPreviewText(text) {
-      const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean);
-      const singleLine = (lines.length > 1 ? lines.slice(0, 3).join(" ") : text).replace(/\s+/g, " ").trim();
+      const meaningLines = userDictionaryMeaningLines(text);
+      const singleLine = (meaningLines.length ? meaningLines.slice(0, 2).join("；") : text).replace(/\s+/g, " ").trim();
       if (singleLine.length > 96) {
         return `${singleLine.slice(0, 96).trim()}...`;
       }
       return singleLine;
+    }
+
+    function userDictionaryMeaningLines(text) {
+      const lines = [];
+      for (const rawLine of String(text || "").split(/\n|[；;]/)) {
+        const rawText = String(rawLine || "").trim();
+        if (/^例[:：]?/.test(rawText)) {
+          if (lines.length) {
+            break;
+          }
+          continue;
+        }
+        const line = cleanUserDictionaryPreviewLine(rawLine);
+        if (!line) {
+          continue;
+        }
+        lines.push(line);
+      }
+      const meaningLines = lines.filter((line) => userDictionaryLooksLikeMeaning(line));
+      return meaningLines.length ? meaningLines : lines.filter((line) => !userDictionaryLooksLikeMetaLine(line));
+    }
+
+    function cleanUserDictionaryPreviewLine(line) {
+      return String(line || "")
+        .replace(/\s*例[:：].*$/, "")
+        .replace(/^[(（]?\d+[)）.．]\s*/, "")
+        .replace(/^【[^】]+】\s*/, "")
+        .replace(/^\[[^\]]+\]\s*/, "")
+        .trim();
+    }
+
+    function userDictionaryLooksLikeMeaning(line) {
+      if (!line || userDictionaryLooksLikeMetaLine(line)) {
+        return false;
+      }
+      return /[\u4e00-\u9fff]/.test(line) && !/[\u3040-\u30ff]/.test(line);
+    }
+
+    function userDictionaryLooksLikeMetaLine(line) {
+      return !line
+        || /^例[:：]?$/.test(line)
+        || /^【[^】]+】$/.test(line)
+        || /^\[[^\]]+\]$/.test(line)
+        || /^[\u3040-\u30ff\s·・]+$/.test(line)
+        || (/[\u3040-\u30ff]/.test(line) && /^[\u3040-\u30ff\u4e00-\u9fff]{1,6}$/.test(line));
     }
 
     function userDictionaryHtmlEntries(results) {

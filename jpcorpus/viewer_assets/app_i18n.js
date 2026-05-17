@@ -1,6 +1,6 @@
 window.JPCORPUS_TEXT = {
   zh: {
-    appTitle: "个人日语语料",
+    appTitle: "日语阅读助手",
     generatedAt: "生成于 {date}",
     searchPlaceholder: "搜索词、假名、中文、变形/词根、作品",
     sortLabel: "排序",
@@ -244,7 +244,7 @@ window.JPCORPUS_TEXT = {
     maintenanceProgressGeneric: "已处理 {completed}/{total}",
   },
   en: {
-    appTitle: "Personal Japanese Corpus",
+    appTitle: "Japanese Reading Companion",
     generatedAt: "Generated {date}",
     searchPlaceholder: "Search word, kana, meaning, form/root, title",
     sortLabel: "Sort",
