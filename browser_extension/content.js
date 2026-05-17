@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.25";
+  const SCRIPT_VERSION = "0.1.26";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -31,6 +31,9 @@
       confirmStudy: "确认一次",
       known: "直接认识",
       studying: "学习中",
+      uncertain: "模糊",
+      statusKnown: "已认识",
+      statusIgnored: "已忽略",
       studyChecks: "学习进度 {count}/{target}",
       ignore: "忽略",
       ignored: "已忽略",
@@ -78,6 +81,9 @@
       confirmStudy: "Confirm once",
       known: "Mark known",
       studying: "Learning",
+      uncertain: "Unsure",
+      statusKnown: "Known",
+      statusIgnored: "Ignored",
       studyChecks: "Study progress {count}/{target}",
       ignore: "Ignore",
       ignored: "Ignored",
@@ -189,6 +195,7 @@
       root: null,
       toolbar: null,
       toolbarStatus: null,
+      toolbarStatusTimer: null,
       toolbarDrag: null,
       importSelectionButton: null,
       paragraphPicker: null,
@@ -470,6 +477,7 @@
       annotation.reading,
       annotation.level,
       annotation.pos,
+      readerStatusLabel(annotation),
       readerStudyCountLabel(annotation),
     ].filter(Boolean).forEach((item) => {
       const chip = document.createElement("span");
@@ -623,6 +631,23 @@
       return 0;
     }
     return Math.min(value, STUDY_TARGET_COUNT);
+  }
+
+  function readerStatusLabel(annotation) {
+    const status = normalizeReaderStatus(annotation.status);
+    if (status === "learning") {
+      return tr("studying");
+    }
+    if (status === "uncertain") {
+      return tr("uncertain");
+    }
+    if (status === "known") {
+      return tr("statusKnown");
+    }
+    if (status === "ignored") {
+      return tr("statusIgnored");
+    }
+    return "";
   }
 
   function readerStudyCountLabel(annotation) {
@@ -940,7 +965,7 @@
       if (!response?.ok) {
         throw new Error(response?.error || tr("importFailed"));
       }
-      setReaderToolbarStatus(importResultMessage(response.result));
+      setReaderToolbarStatus(importResultMessage(response.result), { transient: true });
     });
   }
 
@@ -954,7 +979,7 @@
       if (!response?.ok) {
         throw new Error(response?.error || tr("importFailed"));
       }
-      setReaderToolbarStatus(importResultMessage(response.result));
+      setReaderToolbarStatus(importResultMessage(response.result), { transient: true });
     });
   }
 
@@ -998,6 +1023,10 @@
 
   function removeReaderToolbar() {
     stopReaderToolbarDrag();
+    if (reader?.toolbarStatusTimer) {
+      window.clearTimeout(reader.toolbarStatusTimer);
+      reader.toolbarStatusTimer = null;
+    }
     reader?.toolbar?.remove();
     document.removeEventListener("selectionchange", updateReaderSelectionButton, true);
     if (reader) {
@@ -1032,13 +1061,24 @@
     button.title = hasSelection ? "" : tr("noSelection");
   }
 
-  function setReaderToolbarStatus(message) {
+  function setReaderToolbarStatus(message, options = {}) {
     if (!reader?.toolbarStatus) {
       return;
+    }
+    if (reader.toolbarStatusTimer) {
+      window.clearTimeout(reader.toolbarStatusTimer);
+      reader.toolbarStatusTimer = null;
     }
     const text = cleanText(message);
     reader.toolbarStatus.textContent = text;
     reader.toolbarStatus.hidden = !text;
+    if (text && options.transient) {
+      reader.toolbarStatusTimer = window.setTimeout(() => {
+        if (reader?.toolbarStatus?.textContent === text) {
+          setReaderToolbarStatus("");
+        }
+      }, 4200);
+    }
   }
 
   function startReaderParagraphPicker(button) {
@@ -2292,10 +2332,14 @@
     }, tone === "error" ? 8000 : 4200);
   }
 
-  function positionToastUnderToolbar(toast) {
+  function positionToastUnderToolbar(toast = null) {
+    const targetToast = toast || document.querySelector(".jpcorpus-import-toast");
+    if (!targetToast) {
+      return;
+    }
     const toolbar = document.querySelector("#jpcorpus-reader-toolbar");
     if (!toolbar) {
-      Object.assign(toast.style, {
+      Object.assign(targetToast.style, {
         top: "18px",
         right: "18px",
       });
@@ -2304,7 +2348,7 @@
     const rect = toolbar.getBoundingClientRect();
     const right = Math.max(8, window.innerWidth - rect.right);
     const top = Math.min(window.innerHeight - 48, rect.bottom + 8);
-    Object.assign(toast.style, {
+    Object.assign(targetToast.style, {
       top: `${Math.max(8, top)}px`,
       right: `${right}px`,
       maxWidth: `${Math.max(220, Math.min(360, rect.width))}px`,

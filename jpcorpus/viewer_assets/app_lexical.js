@@ -179,7 +179,7 @@ window.JPCORPUS_LEXICAL = (() => {
       const section = el("section", "user-dictionary-results");
       section.append(el("h3", "section-title", t("userDictionaryResults")));
       const list = el("div", "user-dictionary-result-list");
-      groupedUserDictionaryResults(results).slice(0, 4).forEach((group) => {
+      groupedUserDictionaryResults(results).sort(compareUserDictionaryGroups).slice(0, 4).forEach((group) => {
         const definitions = compactUserDictionaryDefinitions(group.results);
         const spellings = compactUserDictionaryReferences(group.results, "spelling");
         const references = compactUserDictionaryReferences(group.results, "see_also");
@@ -225,6 +225,7 @@ window.JPCORPUS_LEXICAL = (() => {
             key,
             name: result.dictionary_name || t("userDictionaryUnknown"),
             results: [],
+            index: groups.length,
           };
           byKey.set(key, group);
           groups.push(group);
@@ -232,6 +233,34 @@ window.JPCORPUS_LEXICAL = (() => {
         byKey.get(key).results.push(result);
       });
       return groups;
+    }
+
+    function compareUserDictionaryGroups(left, right) {
+      return userDictionaryGroupScore(right) - userDictionaryGroupScore(left)
+        || left.index - right.index;
+    }
+
+    function userDictionaryGroupScore(group) {
+      const definitions = compactUserDictionaryDefinitions(group.results);
+      if (!definitions.length) {
+        return 0;
+      }
+      const text = userDictionaryDefinitionText(definitions);
+      const preview = userDictionaryPreviewText(text);
+      let score = 1;
+      if (/[\u4e00-\u9fff]/.test(preview)) {
+        score += 6;
+      }
+      if (!/[\u3040-\u30ff]{5,}/.test(preview)) {
+        score += 2;
+      }
+      if (!userDictionaryNeedsDetail(text)) {
+        score += 2;
+      }
+      if (group.results.some((result) => result.html)) {
+        score += 1;
+      }
+      return score;
     }
 
     function compactUserDictionaryDefinitions(results) {
@@ -371,6 +400,7 @@ window.JPCORPUS_LEXICAL = (() => {
         overlay.dictionaryDetailKeydown = closeOnEscape;
         document.addEventListener("keydown", closeOnEscape);
       }
+      document.body?.classList?.add("dictionary-detail-open");
       const heading = el("h3", "", t("userDictionaryDetailTitle"));
       const meta = el("p", "dictionary-detail-source", sourceName || t("userDictionaryUnknown"));
       const body = el("div", "dictionary-detail-body");
@@ -408,7 +438,9 @@ window.JPCORPUS_LEXICAL = (() => {
         [...node.attributes].forEach((attribute) => {
           const name = attribute.name.toLowerCase();
           const value = String(attribute.value || "").trim().toLowerCase();
-          if (name.startsWith("on") || value.startsWith("javascript:")) {
+          if (name.startsWith("on")
+            || value.startsWith("javascript:")
+            || ["bgcolor", "color", "face", "size", "style"].includes(name)) {
             node.removeAttribute(attribute.name);
           }
         });
@@ -426,6 +458,9 @@ window.JPCORPUS_LEXICAL = (() => {
         document.removeEventListener("keydown", overlay.dictionaryDetailKeydown);
       }
       overlay?.remove();
+      if (!document.querySelector(".dictionary-detail-modal-backdrop")) {
+        document.body?.classList?.remove("dictionary-detail-open");
+      }
     }
 
     function userDictionaryDetailNodes(definitions, text) {

@@ -53,6 +53,10 @@ body {
   line-height: 1.55;
 }
 
+body.dictionary-detail-open .app-shell {
+  filter: saturate(0.96);
+}
+
 button,
 input,
 select {
@@ -1172,6 +1176,19 @@ select {
   margin-block: 0 8px;
 }
 
+.dictionary-detail-html :is(ol, ul) {
+  padding-left: 1.35em;
+}
+
+.dictionary-detail-html :is(li) {
+  margin-block: 2px 6px;
+}
+
+.dictionary-detail-html :is(font, span) {
+  color: inherit;
+  font-size: inherit;
+}
+
 .dictionary-detail-html br {
   display: block;
   content: "";
@@ -2157,6 +2174,38 @@ mark {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 10px;
+}
+
+.reader-recent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reader-recent-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reader-recent-buttons button {
+  max-width: 260px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.reader-recent-buttons button:hover,
+.reader-recent-buttons button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .reader-word-list-tabs {

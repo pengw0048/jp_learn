@@ -134,6 +134,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert 'readerSetStartLine: "点这一行，把这里设为朗读起点"' in i18n
     assert 'readerFuriganaChoice: "注音"' in i18n
     assert 'readerSourceControl: "当前阅读"' in i18n
+    assert 'readerRecent: "最近阅读"' in i18n
     assert "reader-speech-button" in app
     assert "reader-furigana-button" in app
     assert "reader-quick-actions" in app
@@ -154,6 +155,8 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert 'window.addEventListener("pagehide", stopAllSpeech)' in app
     assert "stopAllSpeech();" in reader_mode
     assert "renderReaderModeControlsSummary" in reader_mode
+    assert "renderRecentReaderList" in reader_mode
+    assert "recentReaderEntries" in reader_mode
     assert "STORAGE_READER_FURIGANA" in storage
     assert 'el("ruby", "reader-ruby")' in reader
     assert "readerLineText" in reader
@@ -165,6 +168,7 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-line-speech-start" in css
     assert "reader-furigana-enabled" in css
     assert "reader-mode-controls-kicker" in css
+    assert "reader-recent-buttons" in css
 
 
 def test_detail_orders_reader_context_before_lexical_notes():
@@ -197,10 +201,13 @@ def test_dictionary_manager_assets_are_wired():
     assert "renderUserDictionaryResults" in lexical
     assert 'event.key === "Escape"' in lexical
     assert "dictionary-detail-reference" in lexical
+    assert '["bgcolor", "color", "face", "size", "style"].includes(name)' in lexical
+    assert 'document.body?.classList?.add("dictionary-detail-open")' in lexical
     assert 'dictionaryManagerTitle: "本地词典"' in i18n
     assert 'userDictionaryResults: "本地词典"' in i18n
     assert ".user-dictionary-results" in css
     assert ".dictionary-detail-reference" in css
+    assert "body.dictionary-detail-open" in css
     assert ".dictionary-row" in css
 
 

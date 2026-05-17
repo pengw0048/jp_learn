@@ -143,11 +143,66 @@ window.JPCORPUS_READER_MODE = (() => {
       sourcePicker.append(select);
       toolbar.append(
         tabs,
+        renderRecentReaderList(groups),
         sourcePicker,
         renderReaderUnitPicker(units, selectedUnit),
         renderReaderWordListPicker(),
       );
       return toolbar;
+    }
+
+    function renderRecentReaderList(groups) {
+      const entries = recentReaderEntries(groups);
+      if (!entries.length) {
+        return document.createDocumentFragment();
+      }
+      const wrap = el("div", "reader-recent-list");
+      wrap.append(el("span", "reader-source-picker-label", t("readerRecent")));
+      const buttons = el("div", "reader-recent-buttons");
+      entries.forEach((entry) => {
+        const button = el("button", "", entry.label);
+        button.type = "button";
+        button.title = [entry.source.title, entry.unit.label, entry.progressLabel].filter(Boolean).join(" · ");
+        button.classList.toggle("active", entry.source.key === app.reader.groupKey && entry.unit.key === app.reader.documentKey);
+        button.addEventListener("click", () => {
+          stopAllSpeech();
+          app.reader.sourceType = entry.source.type || "all";
+          app.reader.groupKey = entry.source.key;
+          app.reader.documentKey = entry.unit.key;
+          clearReaderSelection();
+          render();
+        });
+        buttons.append(button);
+      });
+      wrap.append(buttons);
+      return wrap;
+    }
+
+    function recentReaderEntries(groups) {
+      return groups
+        .flatMap((source) => readerUnitsForSource(source).map((unit) => {
+          const position = app.reader.positions[readerPositionKey(source, unit)] || {};
+          const progress = Math.min(100, Math.max(0, Math.round(Number(position.progress) || 0)));
+          const updatedAt = Number(position.updatedAt) || 0;
+          return {
+            source,
+            unit,
+            progress,
+            updatedAt,
+            progressLabel: progress > 0 ? t("readerProgress", { percent: formatNumber(progress) }) : "",
+          };
+        }))
+        .filter((entry) => entry.updatedAt > 0 || entry.progress > 0)
+        .sort((left, right) => right.updatedAt - left.updatedAt || right.progress - left.progress)
+        .slice(0, 5)
+        .map((entry) => ({
+          ...entry,
+          label: [
+            entry.source.title || t("sourceInventoryUnknown"),
+            entry.unit.label,
+            entry.progressLabel,
+          ].filter(Boolean).join(" · "),
+        }));
     }
 
     function renderReaderUnitPicker(units, selectedUnit) {
@@ -420,6 +475,10 @@ window.JPCORPUS_READER_MODE = (() => {
       }
       if (unit) {
         title.append(el("span", "source-meta", unit.label));
+        const progress = readerUnitProgressLabel(source, unit);
+        if (progress) {
+          title.append(el("span", "source-meta reader-progress-meta", progress));
+        }
       }
       const hint = !source.sourceDocuments?.length && source.exampleItems.length > 0
         ? t("sourceReaderFallback")
