@@ -42,6 +42,7 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert 'importSelection: "导入选中"' in content
     assert 'importArticle: "导入正文"' in content
     assert 'pickImport: "点选导入"' in content
+    assert 'studying: "学习中"' in content
     assert 'readAll: "朗读全文"' in content
     assert 'readParagraph: "朗读选段"' in content
     assert 'pickParagraph: "点要朗读的段落。Esc 取消。"' in content
@@ -70,5 +71,7 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert '"default_popup"' not in manifest
     assert 'files: ["vendor/Readability.js", "content.js"]' in (ROOT / "browser_extension" / "popup.js").read_text(encoding="utf-8")
     assert 'button.textContent = tr("stopReading");' in content
+    assert 'button.classList.add("active");' in content
+    assert "setReaderSpeechButtonLoading" in content
     assert "resetReaderSpeechButton" in content
     assert "jpcorpus-reader-speaking" in content

@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.18";
+  const SCRIPT_VERSION = "0.1.19";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -27,7 +27,7 @@
       updatedStudy: "已更新学习状态：{word}",
       addStudy: "加入学习",
       known: "已认识",
-      studying: "复习中",
+      studying: "学习中",
       ignore: "忽略",
       ignored: "已忽略",
       clearStatus: "取消标记",
@@ -71,7 +71,7 @@
       updatedStudy: "Updated study status: {word}",
       addStudy: "Add to study",
       known: "Known",
-      studying: "Reviewing",
+      studying: "Learning",
       ignore: "Ignore",
       ignored: "Ignored",
       clearStatus: "Clear",
@@ -949,8 +949,8 @@
     activeReaderSpeechButton = button;
     button.textContent = tr("stopReading");
     button.setAttribute("aria-pressed", "true");
-    button.setAttribute("aria-busy", "true");
-    button.classList.add("active", "loading");
+    button.classList.add("active");
+    setReaderSpeechButtonLoading(button, true);
     try {
       const voicevoxResult = await speakReaderVoicevoxUnits(units, runId);
       if (!voicevoxResult.ok && isActiveReaderSpeech(runId)) {
@@ -982,15 +982,19 @@
         if (!isActiveReaderSpeech(runId)) {
           return { ok: false, nextIndex: index };
         }
+        setReaderSpeechButtonLoading(activeReaderSpeechButton, true);
         const dataUrl = await preparedAudio.get(index);
         preparedAudio.delete(index);
         if (!dataUrl) {
+          setReaderSpeechButtonLoading(activeReaderSpeechButton, false);
           return { ok: false, nextIndex: index };
         }
         scheduleAudio(index + SPEECH_PREFETCH_UNITS);
         if (!isActiveReaderSpeech(runId)) {
+          setReaderSpeechButtonLoading(activeReaderSpeechButton, false);
           return { ok: false, nextIndex: index };
         }
+        setReaderSpeechButtonLoading(activeReaderSpeechButton, false);
         showReaderSpeechHighlight(units[index].range, units[index].fallbackElement);
         const played = await playReaderAudioUrl(dataUrl, runId);
         if (!played) {
@@ -1215,6 +1219,7 @@
 
   function speakReaderBrowserSegment(text, runId) {
     return new Promise((resolve) => {
+      setReaderSpeechButtonLoading(activeReaderSpeechButton, false);
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "ja-JP";
       const voice = preferredJapaneseVoice(window.speechSynthesis.getVoices());
@@ -1258,8 +1263,16 @@
     }
     button.textContent = button.dataset.readerIdleLabel || tr("readParagraph");
     button.setAttribute("aria-pressed", "false");
-    button.setAttribute("aria-busy", "false");
-    button.classList.remove("active", "loading");
+    setReaderSpeechButtonLoading(button, false);
+    button.classList.remove("active");
+  }
+
+  function setReaderSpeechButtonLoading(button, loading) {
+    if (!button) {
+      return;
+    }
+    button.setAttribute("aria-busy", loading ? "true" : "false");
+    button.classList.toggle("loading", Boolean(loading));
   }
 
   function isActiveReaderSpeech(runId) {
