@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -77,3 +79,12 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "setReaderSpeechButtonLoading" in content
     assert "resetReaderSpeechButton" in content
     assert "jpcorpus-reader-speaking" in content
+
+
+def test_extension_manifest_version_matches_content_script() -> None:
+    content = (ROOT / "browser_extension" / "content.js").read_text(encoding="utf-8")
+    manifest = json.loads((ROOT / "browser_extension" / "manifest.json").read_text(encoding="utf-8"))
+    script_version = re.search(r'SCRIPT_VERSION = "([^"]+)"', content)
+
+    assert script_version is not None
+    assert manifest["version"] == script_version.group(1)
