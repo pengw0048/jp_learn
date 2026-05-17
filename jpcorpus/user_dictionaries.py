@@ -290,12 +290,21 @@ def select_dictionary_rows(conn: sqlite3.Connection, candidates: list[str], *, l
 
 def yomitan_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row]) -> list[dict[str, Any]]:
     results = []
+    seen: set[tuple[str, str, tuple[str, ...]]] = set()
     for row in rows:
         try:
             content = json.loads(row["content_json"] or "{}")
         except json.JSONDecodeError:
             content = {}
         definitions = unique_strings(content.get("definitions") or [])
+        key = (
+            str(content.get("headword") or row["headword"] or ""),
+            str(content.get("reading") or row["reading"] or ""),
+            tuple(definitions),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
         text = "；".join(definitions)
         results.append(
             {
@@ -621,7 +630,81 @@ def detect_dictionary_format(source_path: Path) -> str:
 
 
 def yomitan_glossary_texts(value: Any) -> list[str]:
-    return unique_strings(_flatten_yomitan_glossary(value))
+    primary = _extract_yomitan_primary_glosses(value)
+    if primary:
+        return unique_strings(primary)
+    return unique_strings(clean_yomitan_definition(text) for text in _flatten_yomitan_glossary(value))
+
+
+def _extract_yomitan_primary_glosses(value: Any) -> list[str]:
+    glosses: list[str] = []
+    for node in _find_yomitan_gloss_lists(value):
+        content = node.get("content")
+        items = content if isinstance(content, list) else [content]
+        for item in items:
+            text = clean_yomitan_definition(_yomitan_structured_text(item))
+            if text:
+                glosses.append(text)
+    return glosses
+
+
+def _find_yomitan_gloss_lists(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        results: list[dict[str, Any]] = []
+        for item in value:
+            results.extend(_find_yomitan_gloss_lists(item))
+        return results
+    if not isinstance(value, dict):
+        return []
+    data = value.get("data") if isinstance(value.get("data"), dict) else {}
+    if data.get("content") == "glosses":
+        return [value]
+    results = []
+    for key in ("content", "children"):
+        if key in value:
+            results.extend(_find_yomitan_gloss_lists(value[key]))
+    return results
+
+
+def _yomitan_structured_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return html.unescape(value)
+    if isinstance(value, int | float | bool):
+        return str(value)
+    if isinstance(value, list):
+        return "".join(_yomitan_structured_text(item) for item in value)
+    if isinstance(value, dict):
+        data = value.get("data") if isinstance(value.get("data"), dict) else {}
+        marker = str(data.get("content") or "")
+        if marker in {
+            "backlink",
+            "details-entry-examples",
+            "example-sentence",
+            "example-sentence-a",
+            "example-sentence-b",
+            "extra-info",
+            "tags",
+        }:
+            return ""
+        for key in ("content", "children", "text"):
+            if key in value:
+                return _yomitan_structured_text(value[key])
+    return ""
+
+
+def clean_yomitan_definition(value: Any) -> str:
+    text = normalize_space(str(value or ""))
+    if not text:
+        return ""
+    if text in {"Wiktionary", "Kaikki", "|", "词源"}:
+        return ""
+    if re.fullmatch(r"\d+\s*例", text):
+        return ""
+    if text in {"n", "v", "vi", "vt", "adj", "adv", "intj", "godan", "non-lemma", "sl", "alternative kanji"}:
+        return ""
+    return text
 
 
 def _flatten_yomitan_glossary(value: Any) -> list[str]:

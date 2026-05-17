@@ -990,8 +990,8 @@ select {
 
 .user-dictionary-results {
   display: grid;
-  gap: 8px;
-  padding: 9px 11px;
+  gap: 6px;
+  padding: 8px 10px;
   border-left: 3px solid var(--text-source);
   border-radius: 0 8px 8px 0;
   background: color-mix(in srgb, var(--text-source), white 90%);
@@ -999,31 +999,21 @@ select {
 
 .user-dictionary-results .section-title {
   color: var(--text-source);
+  font-size: 13px;
 }
 
 .user-dictionary-result-list {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .user-dictionary-result {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--text-source), var(--line) 52%);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.user-dictionary-result-heading {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: baseline;
+  gap: 7px;
   min-width: 0;
-  color: var(--text);
-  font-size: 13px;
+  padding: 0;
+  background: transparent;
 }
 
 .dictionary-format {
@@ -1043,28 +1033,28 @@ select {
   min-width: 0;
   color: var(--muted);
   font-family: var(--font-ja);
+  font-weight: 700;
   overflow-wrap: anywhere;
-}
-
-.user-dictionary-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 7px;
 }
 
 .user-dictionary-definition {
-  display: grid;
-  gap: 4px;
+  flex: 1;
   min-width: 0;
   color: var(--text);
-  font-size: 13px;
-  line-height: 1.55;
-  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
-.user-dictionary-definition p {
+.user-dictionary-definition {
   margin: 0;
-  overflow-wrap: anywhere;
+}
+
+.user-dictionary-source {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.72;
 }
 
 .study-card {

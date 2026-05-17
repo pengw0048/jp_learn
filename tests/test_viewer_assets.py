@@ -201,6 +201,79 @@ def test_dictionary_manager_assets_are_wired():
     assert ".dictionary-row" in css
 
 
+def test_user_dictionary_results_render_compact_primary_definitions():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        global.document = {{
+          createDocumentFragment: () => makeNode("fragment"),
+          createTextNode: (value) => makeTextNode(value),
+        }};
+
+        function makeTextNode(value) {{
+          return {{
+            get textContent() {{
+              return String(value || "");
+            }},
+          }};
+        }}
+
+        function makeNode(tag, className = "", value = "") {{
+          return {{
+            tag,
+            className,
+            title: "",
+            children: [],
+            value: String(value || ""),
+            append(...items) {{
+              this.children.push(...items.map((item) => typeof item === "string" ? makeTextNode(item) : item));
+            }},
+            get childElementCount() {{
+              return this.children.filter((child) => child && child.tag).length;
+            }},
+            get textContent() {{
+              return this.value + this.children.map((child) => child.textContent || "").join("");
+            }},
+            set textContent(nextValue) {{
+              this.value = String(nextValue || "");
+              this.children = [];
+            }},
+          }};
+        }}
+
+        require({str(VIEWER_ASSET_DIR / "app_lexical.js")!r});
+        const helpers = window.JPCORPUS_LEXICAL.createLexicalHelpers({{
+          el: makeNode,
+          t: (key) => ({{ userDictionaryResults: "本地词典", userDictionaryUnknown: "未命名词典" }}[key] || key),
+          getLanguage: () => "zh",
+        }});
+        const section = helpers.renderUserDictionaryResults({{
+          word: "行く",
+          user_dictionary_results: [
+            {{
+              dictionary_name: "wty-ja-zh",
+              format: "yomitan",
+              headword: "行く",
+              tags: ["v", "godan"],
+              definitions: ["去，前往", "送达", "离开，逝去"],
+            }},
+          ],
+        }});
+        const text = section.textContent;
+
+        assert.equal(text.includes("去，前往；送达；离开，逝去"), true);
+        assert.equal(text.includes("YOMITAN"), false);
+        assert.equal(text.includes("godan"), false);
+      """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_example_highlight_can_add_unmarked_word_to_study():
     node = shutil.which("node")
     if not node:

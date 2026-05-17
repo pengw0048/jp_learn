@@ -179,36 +179,30 @@ window.JPCORPUS_LEXICAL = (() => {
       const section = el("section", "user-dictionary-results");
       section.append(el("h3", "section-title", t("userDictionaryResults")));
       const list = el("div", "user-dictionary-result-list");
-      results.forEach((result) => {
-        const item = el("article", "user-dictionary-result");
-        const heading = el("div", "user-dictionary-result-heading");
-        heading.append(
-          el("strong", "", result.dictionary_name || t("userDictionaryUnknown")),
-          el("span", "dictionary-format", String(result.format || "").toUpperCase()),
-        );
-        const wordLine = [result.headword, result.reading].filter(Boolean).join(" · ");
-        if (wordLine) {
-          heading.append(el("span", "user-dictionary-headword", wordLine));
-        }
-        item.append(heading);
-        const tags = asArray(result.tags).filter(Boolean);
-        if (tags.length) {
-          const tagRow = el("div", "user-dictionary-tags");
-          tags.slice(0, 8).forEach((tag) => tagRow.append(el("span", "lexical-chip", tag)));
-          item.append(tagRow);
-        }
+      results.slice(0, 4).forEach((result) => {
         const definitions = asArray(result.definitions).filter(Boolean);
-        const content = el("div", "user-dictionary-definition");
-        if (definitions.length) {
-          definitions.slice(0, 5).forEach((definition) => {
-            content.append(el("p", "", String(definition || "")));
-          });
-        } else if (result.text) {
-          content.append(el("p", "", String(result.text || "")));
+        const text = definitions.length ? definitions.slice(0, 4).join("；") : String(result.text || "");
+        if (!text) {
+          return;
+        }
+        const item = el("article", "user-dictionary-result");
+        const content = el("p", "user-dictionary-definition");
+        const resultHeadword = String(result.headword || "");
+        if (resultHeadword && resultHeadword !== word.word) {
+          content.append(el("span", "user-dictionary-headword", `${resultHeadword}：`), text);
+        } else {
+          content.textContent = text;
         }
         item.append(content);
+        const source = result.dictionary_name || t("userDictionaryUnknown");
+        if (source) {
+          item.append(el("small", "user-dictionary-source", source));
+        }
         list.append(item);
       });
+      if (!list.childElementCount) {
+        return document.createDocumentFragment();
+      }
       section.append(list);
       return section;
     }

@@ -65,6 +65,67 @@ def test_yomitan_dictionary_upload_imports_stream(tmp_path):
     assert dictionaries.lookup_user_dictionaries("ありがとう", base_dir=tmp_path / "dicts")[0]["definitions"] == ["谢谢"]
 
 
+def test_yomitan_structured_content_keeps_primary_glosses_only(tmp_path):
+    source = tmp_path / "wty.zip"
+    structured = {
+        "type": "structured-content",
+        "content": [
+            {
+                "tag": "div",
+                "content": [
+                    {
+                        "tag": "details",
+                        "data": {"content": "details-entry-Etymology"},
+                        "content": [
+                            {"tag": "summary", "content": "词源"},
+                            {"tag": "div", "content": "源自古日语。"},
+                        ],
+                    }
+                ],
+            },
+            {
+                "tag": "ol",
+                "data": {"content": "glosses"},
+                "content": [
+                    {
+                        "tag": "li",
+                        "content": [
+                            {
+                                "tag": "div",
+                                "content": [
+                                    "去，前往",
+                                    {
+                                        "tag": "details",
+                                        "data": {"content": "details-entry-examples"},
+                                        "content": [{"tag": "summary", "content": "3 例"}, "例句"],
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                    {"tag": "li", "content": [{"tag": "div", "content": "送达"}]},
+                ],
+            },
+            {
+                "tag": "div",
+                "data": {"content": "backlink"},
+                "content": [{"tag": "a", "content": "Wiktionary"}, " | ", {"tag": "a", "content": "Kaikki"}],
+            },
+        ],
+    }
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("index.json", json.dumps({"title": "WTY"}))
+        archive.writestr(
+            "term_bank_1.json",
+            json.dumps([["行く", "", "v godan vi", "v", 0, [structured]]], ensure_ascii=False),
+        )
+
+    dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
+
+    matches = dictionaries.lookup_user_dictionaries("行く", base_dir=tmp_path / "dicts")
+    assert matches[0]["definitions"] == ["去，前往", "送达"]
+
+
 def test_dictionary_enable_toggle_controls_lookup(tmp_path):
     source = tmp_path / "test.zip"
     write_yomitan_zip(source)
