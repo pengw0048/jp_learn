@@ -65,6 +65,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "scheduleAudio(index + SPEECH_PREFETCH_UNITS)" in content
     assert "rangeForSpeechOffsets" in content
     assert "readabilityMatchScore" in content
+    assert "readabilityLengthRatio" in content
+    assert "candidate.readabilityLengthRatio >= 0.45" in content
     assert "SYNTHESIZE_VOICEVOX" in content
     assert "SYNTHESIZE_VOICEVOX" in background
     assert "chrome.action.onClicked.addListener" in background

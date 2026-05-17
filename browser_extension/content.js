@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.19";
+  const SCRIPT_VERSION = "0.1.20";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -279,14 +279,22 @@
       .filter((candidate) => candidate.text.length >= 80)
       .map((candidate) => {
         const matchScore = readabilityMatchScore(candidate.text, readabilityText);
+        const lengthRatio = readabilityLengthRatio(candidate.text, readabilityText);
         return {
           ...candidate,
           score: candidate.score + matchScore,
           readabilityMatchScore: matchScore,
+          readabilityLengthRatio: lengthRatio,
         };
       })
       .sort((left, right) => right.score - left.score);
-    const readabilityMatched = candidates.find((candidate) => candidate.readabilityMatchScore >= 1400);
+    const readabilityMatched = candidates
+      .filter((candidate) => candidate.readabilityMatchScore >= 1400 && candidate.readabilityLengthRatio >= 0.45)
+      .sort((left, right) => (
+        right.readabilityMatchScore - left.readabilityMatchScore
+        || right.readabilityLengthRatio - left.readabilityLengthRatio
+        || left.text.length - right.text.length
+      ))[0];
     if (readabilityMatched) {
       return readabilityMatched.element;
     }
@@ -1808,6 +1816,15 @@
     const lengthRatio = Math.min(candidate.length, article.length) / Math.max(candidate.length, article.length);
     const extraPenalty = Math.max(0, candidate.length - article.length) * 0.18;
     return hitRatio * 6000 + lengthRatio * 1200 - extraPenalty;
+  }
+
+  function readabilityLengthRatio(candidateText, readabilityText) {
+    const candidate = compactArticleText(candidateText);
+    const article = compactArticleText(readabilityText);
+    if (candidate.length < 80 || article.length < 80) {
+      return 0;
+    }
+    return Math.min(candidate.length, article.length) / Math.max(candidate.length, article.length);
   }
 
   function compactArticleText(text) {
