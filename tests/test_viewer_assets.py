@@ -174,6 +174,22 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-recent-buttons" in css
 
 
+def test_study_mode_can_add_current_filter_to_queue():
+    i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
+    app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
+
+    assert "renderStudyQueueControls" in app
+    assert "studyAddCandidates" in app
+    assert "addCurrentStudyFilter" in app
+    assert 'statusFor(word) === "none"' in app
+    assert "studyCountFor(word) < STUDY_TARGET_COUNT" in app
+    assert 'setStatus(word, "learning")' in app
+    assert 'studyAddCurrentFilter: "加入当前筛选 {count} 个"' in i18n
+    assert "studyAddCurrentFilterHint" in i18n
+    assert ".study-add-filter-button" in css
+
+
 def test_detail_orders_reader_context_before_lexical_notes():
     app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
 

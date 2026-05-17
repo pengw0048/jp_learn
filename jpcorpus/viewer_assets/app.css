@@ -366,6 +366,37 @@ select {
   font-size: 13px;
 }
 
+.study-queue-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.study-queue-count {
+  min-width: 0;
+}
+
+.study-add-filter-button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.study-add-filter-button:disabled {
+  cursor: default;
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  opacity: 0.7;
+}
+
 .word-list {
   flex: 1 1 auto;
   min-height: 0;

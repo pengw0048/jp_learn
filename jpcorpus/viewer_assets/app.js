@@ -1174,9 +1174,7 @@ function renderLevelFilter() {
 function renderWordList() {
   const words = currentWordSet();
   if (app.mode === "study") {
-    refs.resultCount.textContent = t("studyWordsFound", {
-      count: formatNumber(words.length),
-    });
+    refs.resultCount.replaceChildren(renderStudyQueueControls(words.length));
   } else {
     refs.resultCount.textContent = t("wordsFound", {
       count: formatNumber(words.length),
@@ -1207,6 +1205,25 @@ function renderWordList() {
   }
   refs.wordList.replaceChildren(...nodes);
   refs.wordList.scrollTop = scrollTop;
+}
+
+function renderStudyQueueControls(queueCount) {
+  const wrap = el("div", "study-queue-controls");
+  const candidates = studyAddCandidates();
+  const label = el("span", "study-queue-count", t("studyWordsFound", {
+    count: formatNumber(queueCount),
+  }));
+  const addButton = el("button", "study-add-filter-button", t("studyAddCurrentFilter", {
+    count: formatNumber(candidates.length),
+  }));
+  addButton.type = "button";
+  addButton.disabled = candidates.length === 0;
+  addButton.title = candidates.length > 0
+    ? t("studyAddCurrentFilterHint")
+    : t("studyAddCurrentFilterEmpty");
+  addButton.addEventListener("click", addCurrentStudyFilter);
+  wrap.append(label, addButton);
+  return wrap;
 }
 
 function renderReadingPane() {
@@ -2054,6 +2071,25 @@ function filteredWords() {
 
 function currentWordSet() {
   return app.mode === "study" ? studyQueue() : filteredWords();
+}
+
+function studyAddCandidates() {
+  return filteredWords()
+    .filter((word) => statusFor(word) === "none")
+    .filter((word) => studyCountFor(word) < STUDY_TARGET_COUNT);
+}
+
+function addCurrentStudyFilter() {
+  const candidates = studyAddCandidates();
+  if (!candidates.length) {
+    return;
+  }
+  candidates.forEach((word) => setStatus(word, "learning"));
+  const queue = studyQueue();
+  app.selectedWord = queue[0] || null;
+  app.study.showAnswer = false;
+  resetWordListLimit();
+  render();
 }
 
 function studyQueue() {
