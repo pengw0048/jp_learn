@@ -186,10 +186,12 @@ def test_dictionary_manager_assets_are_wired():
     css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
 
     assert 'id="dictionary-file"' in html
+    assert 'id="dictionary-name"' not in html
     assert 'id="dictionary-list"' in html
     assert "renderDictionaryManager" in app
     assert "importDictionaryFromPicker" in app
     assert "clearLoadedWordDetails" in app
+    assert "dictionaryName" not in app
     assert "importDictionary" in api
     assert "/api/dictionaries/import" in api
     assert "renderUserDictionaryResults" in lexical

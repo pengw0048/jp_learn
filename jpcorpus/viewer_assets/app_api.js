@@ -86,12 +86,9 @@ window.JPCORPUS_API = (() => {
     return postJson("/api/jobs/maintenance", spec);
   }
 
-  function importDictionary({ file, name }) {
+  function importDictionary({ file }) {
     const form = new FormData();
     form.append("file", file);
-    if (name) {
-      form.append("name", name);
-    }
     return fetchJson("/api/dictionaries/import", {
       method: "POST",
       body: form,

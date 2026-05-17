@@ -233,7 +233,6 @@ const refs = {
   ttsPreview: $("#tts-preview"),
   ttsStatus: $("#tts-status"),
   dictionaryFile: $("#dictionary-file"),
-  dictionaryName: $("#dictionary-name"),
   dictionaryImport: $("#dictionary-import"),
   dictionaryStatus: $("#dictionary-status"),
   dictionaryList: $("#dictionary-list"),
@@ -1055,11 +1054,9 @@ async function importDictionaryFromPicker() {
   try {
     const result = await api.importDictionary({
       file,
-      name: refs.dictionaryName.value.trim(),
     });
     app.maintenance.dictionaries = result.dictionaries || null;
     refs.dictionaryFile.value = "";
-    refs.dictionaryName.value = "";
     refs.dictionaryStatus.textContent = result.imported ? t("dictionaryImported") : t("dictionaryAlreadyImported");
     clearLoadedWordDetails();
     render();
