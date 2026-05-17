@@ -59,6 +59,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "startReaderParagraphPicker" in content
     assert "toggleReaderFurigana" in content
     assert "renderReaderTokenText" in content
+    assert "readerSelectedText" in content
+    assert "updateReaderSelectionButton" in content
     assert "positionToastUnderToolbar" in content
     assert "speakReaderParagraph" in content
     assert "readerSpeechUnitsForElement" in content
@@ -78,6 +80,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert 'button.classList.add("active");' in content
     assert "setReaderSpeechButtonLoading" in content
     assert "resetReaderSpeechButton" in content
+    assert "stopReaderTransientState" in content
+    assert 'window.addEventListener("pagehide", stopReaderTransientState, true);' in content
     assert "jpcorpus-reader-speaking" in content
 
 

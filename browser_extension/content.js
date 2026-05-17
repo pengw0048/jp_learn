@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.20";
+  const SCRIPT_VERSION = "0.1.22";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -120,6 +120,8 @@
       extensionLang = normalizeLang(changes.lang.newValue);
     }
   });
+  window.addEventListener("pagehide", stopReaderTransientState, true);
+  document.addEventListener("visibilitychange", onReaderVisibilityChange, true);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "START_AREA_PICKER") {
@@ -179,6 +181,7 @@
       root: null,
       toolbar: null,
       toolbarStatus: null,
+      importSelectionButton: null,
       paragraphPicker: null,
       furigana: false,
     };
@@ -653,11 +656,15 @@
     importSelection.type = "button";
     importSelection.className = "jpcorpus-reader-import-button";
     importSelection.textContent = tr("importSelection");
+    importSelection.title = tr("noSelection");
     importSelection.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       importSelectedTextFromPage(importSelection);
     });
+    reader.importSelectionButton = importSelection;
+    updateReaderSelectionButton();
+    document.addEventListener("selectionchange", updateReaderSelectionButton, true);
 
     const importArticle = document.createElement("button");
     importArticle.type = "button";
@@ -763,9 +770,10 @@
   }
 
   async function importSelectedTextFromPage(button) {
-    const text = String(window.getSelection()?.toString() || "").trim();
+    const text = readerSelectedText();
     if (!text) {
       setReaderToolbarStatus(tr("noSelection"));
+      updateReaderSelectionButton();
       return;
     }
     await runReaderToolbarAction(button, tr("importingSelection"), async () => {
@@ -809,9 +817,13 @@
       setReaderToolbarStatus(error.message || String(error));
       showToast(error.message || String(error), "error");
     } finally {
-      button.disabled = false;
       button.classList.remove("loading");
       button.textContent = idleLabel;
+      if (button === reader?.importSelectionButton) {
+        updateReaderSelectionButton();
+      } else {
+        button.disabled = false;
+      }
     }
   }
 
@@ -834,10 +846,26 @@
 
   function removeReaderToolbar() {
     reader?.toolbar?.remove();
+    document.removeEventListener("selectionchange", updateReaderSelectionButton, true);
     if (reader) {
       reader.toolbar = null;
       reader.toolbarStatus = null;
+      reader.importSelectionButton = null;
     }
+  }
+
+  function readerSelectedText() {
+    return String(window.getSelection()?.toString() || "").trim();
+  }
+
+  function updateReaderSelectionButton() {
+    const button = reader?.importSelectionButton;
+    if (!button) {
+      return;
+    }
+    const hasSelection = Boolean(readerSelectedText());
+    button.disabled = !hasSelection;
+    button.title = hasSelection ? "" : tr("noSelection");
   }
 
   function setReaderToolbarStatus(message) {
@@ -1257,6 +1285,18 @@
     document.querySelectorAll(".jpcorpus-reader-speech-button.active").forEach(resetReaderSpeechButton);
   }
 
+  function stopReaderTransientState() {
+    stopReaderSpeech();
+    stopReaderParagraphPicker();
+    stopPicker();
+  }
+
+  function onReaderVisibilityChange() {
+    if (document.hidden) {
+      stopReaderTransientState();
+    }
+  }
+
   function finishReaderSpeech(button) {
     activeReaderUtterance = null;
     activeReaderAudio = null;
@@ -1449,6 +1489,15 @@
         border-color: #147d73 !important;
         background: #eef5f4 !important;
         color: #147d73 !important;
+      }
+      #jpcorpus-reader-toolbar button:disabled {
+        cursor: default !important;
+        opacity: 0.48 !important;
+      }
+      #jpcorpus-reader-toolbar button:disabled:hover {
+        border-color: #d6e0e3 !important;
+        background: #ffffff !important;
+        color: #657178 !important;
       }
       #jpcorpus-reader-toolbar button.loading::after {
         content: "" !important;
