@@ -31,6 +31,7 @@ from .paths import (
     ensure_parent,
 )
 from .tokenize import JapaneseTokenizer
+from .user_dictionaries import attach_user_dictionary_results, dictionary_registry_status
 from .viewer_config import (
     ALLOWED_PROVIDERS,
     llm_config_status,
@@ -443,6 +444,7 @@ def maintenance_status(runner: ViewerJobRunner | None) -> dict[str, Any]:
         "tasks": sorted(ALLOWED_MAINTENANCE_TASKS),
         "llm": llm_config_status(),
         "config": viewer_config_status(),
+        "dictionaries": dictionary_registry_status(),
         "job": runner.current_job() if runner else None,
     }
 
@@ -555,11 +557,11 @@ def load_viewer_word_detail(corpus_path: Path, word_text: str) -> dict[str, Any]
         raise ValueError("Missing word.")
     detail = load_split_word_detail(corpus_path, target)
     if detail:
-        return {"word": detail}
+        return {"word": attach_user_dictionary_results(detail)}
     payload = load_corpus_payload(corpus_path)
     for word in payload.get("words") or []:
         if isinstance(word, dict) and word.get("word") == target:
-            return {"word": word}
+            return {"word": attach_user_dictionary_results(word)}
     raise ValueError(f"Word not found: {target}")
 
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, unquote, urlparse
@@ -11,6 +14,14 @@ import webbrowser
 
 from .env import load_dotenv
 from .imported_texts import delete_imported_text_documents, import_text_document
+from .user_dictionaries import (
+    delete_dictionary_record,
+    dictionary_registry_status,
+    import_dictionary_file,
+    import_dictionary_upload,
+    reindex_dictionary_record,
+    update_dictionary_record,
+)
 from .viewer_jobs import (
     ViewerJobRunner,
     annotate_text_blocks,
@@ -79,6 +90,9 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
         if request_path == "/api/maintenance":
             self._send_json(maintenance_status(self.job_runner))
             return
+        if request_path == "/api/dictionaries":
+            self._send_json(dictionary_registry_status())
+            return
         if request_path == "/api/study-state":
             self._send_json(viewer_study_state())
             return
@@ -113,6 +127,10 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             "/api/study-state",
             "/api/word-status",
             "/api/tts/voicevox",
+            "/api/dictionaries/import",
+            "/api/dictionaries/update",
+            "/api/dictionaries/delete",
+            "/api/dictionaries/reindex",
         }:
             self.send_error(HTTPStatus.NOT_FOUND, "Viewer API endpoint not found.")
             return
@@ -120,7 +138,19 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
             self._send_json({"error": "Maintenance API is disabled."}, status=HTTPStatus.FORBIDDEN)
             return
         try:
+            if request_path == "/api/dictionaries/import":
+                self._send_json(self._handle_dictionary_import(), status=HTTPStatus.CREATED)
+                return
             payload = self._read_json()
+            if request_path == "/api/dictionaries/update":
+                self._send_json(update_dictionary_record(str(payload.get("id") or ""), payload))
+                return
+            if request_path == "/api/dictionaries/delete":
+                self._send_json(delete_dictionary_record(str(payload.get("id") or "")))
+                return
+            if request_path == "/api/dictionaries/reindex":
+                self._send_json(reindex_dictionary_record(str(payload.get("id") or "")))
+                return
             if request_path == "/api/config":
                 config = save_viewer_config(payload)
                 self._send_json({"config": config})
@@ -177,6 +207,49 @@ class CorpusViewerHandler(SimpleHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("JSON request body must be an object.")
         return payload
+
+    def _handle_dictionary_import(self) -> dict:
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.startswith("multipart/form-data"):
+            form = self._read_multipart_form()
+            file_part = form["files"].get("file")
+            if not file_part:
+                raise ValueError("Dictionary upload requires a file field.")
+            return import_dictionary_upload(
+                filename=file_part["filename"],
+                stream=BytesIO(file_part["content"]),
+                name=form["fields"].get("name"),
+            )
+        payload = self._read_json()
+        source_path = str(payload.get("path") or "").strip()
+        if not source_path:
+            raise ValueError("Dictionary import requires a file upload or local path.")
+        return import_dictionary_file(Path(source_path), name=str(payload.get("name") or "").strip() or None)
+
+    def _read_multipart_form(self) -> dict:
+        length = int(self.headers.get("Content-Length") or "0")
+        if length <= 0:
+            return {"fields": {}, "files": {}}
+        content_type = self.headers.get("Content-Type", "")
+        content = self.rfile.read(length)
+        message = BytesParser(policy=email_policy).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + content
+        )
+        fields: dict[str, str] = {}
+        files: dict[str, dict] = {}
+        for part in message.iter_parts():
+            if part.get_content_disposition() != "form-data":
+                continue
+            name = part.get_param("name", header="content-disposition")
+            if not name:
+                continue
+            payload = part.get_payload(decode=True) or b""
+            filename = part.get_filename()
+            if filename:
+                files[name] = {"filename": filename, "content": payload}
+            else:
+                fields[name] = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        return {"fields": fields, "files": files}
 
     def _send_json(self, payload: dict, *, status: HTTPStatus = HTTPStatus.OK) -> None:
         content = json.dumps(payload, ensure_ascii=False).encode("utf-8")

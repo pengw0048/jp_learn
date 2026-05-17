@@ -56,6 +56,10 @@ window.JPCORPUS_API = (() => {
     return fetchJson("/api/maintenance", { cache: "no-store" });
   }
 
+  function loadDictionaries() {
+    return fetchJson("/api/dictionaries", { cache: "no-store" });
+  }
+
   function deleteImportedText(sourceFiles) {
     return postJson("/api/delete-imported-text", { source_files: sourceFiles });
   }
@@ -82,6 +86,30 @@ window.JPCORPUS_API = (() => {
     return postJson("/api/jobs/maintenance", spec);
   }
 
+  function importDictionary({ file, name }) {
+    const form = new FormData();
+    form.append("file", file);
+    if (name) {
+      form.append("name", name);
+    }
+    return fetchJson("/api/dictionaries/import", {
+      method: "POST",
+      body: form,
+    });
+  }
+
+  function updateDictionary(payload) {
+    return postJson("/api/dictionaries/update", payload);
+  }
+
+  function deleteDictionary(payload) {
+    return postJson("/api/dictionaries/delete", payload);
+  }
+
+  function reindexDictionary(payload) {
+    return postJson("/api/dictionaries/reindex", payload);
+  }
+
   function currentJob() {
     return fetchJson("/api/jobs/current", { cache: "no-store" });
   }
@@ -106,12 +134,17 @@ window.JPCORPUS_API = (() => {
   return {
     loadCorpusIndex,
     loadMaintenanceStatus,
+    loadDictionaries,
     deleteImportedText,
     loadWordDetail,
     loadSourceDetails,
     saveConfig,
     explain,
     startMaintenanceJob,
+    importDictionary,
+    updateDictionary,
+    deleteDictionary,
+    reindexDictionary,
     currentJob,
     studyState,
     saveWordStatus,

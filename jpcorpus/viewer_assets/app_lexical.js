@@ -171,6 +171,48 @@ window.JPCORPUS_LEXICAL = (() => {
       return section;
     }
 
+    function renderUserDictionaryResults(word) {
+      const results = asArray(word.user_dictionary_results);
+      if (!results.length) {
+        return document.createDocumentFragment();
+      }
+      const section = el("section", "user-dictionary-results");
+      section.append(el("h3", "section-title", t("userDictionaryResults")));
+      const list = el("div", "user-dictionary-result-list");
+      results.forEach((result) => {
+        const item = el("article", "user-dictionary-result");
+        const heading = el("div", "user-dictionary-result-heading");
+        heading.append(
+          el("strong", "", result.dictionary_name || t("userDictionaryUnknown")),
+          el("span", "dictionary-format", String(result.format || "").toUpperCase()),
+        );
+        const wordLine = [result.headword, result.reading].filter(Boolean).join(" · ");
+        if (wordLine) {
+          heading.append(el("span", "user-dictionary-headword", wordLine));
+        }
+        item.append(heading);
+        const tags = asArray(result.tags).filter(Boolean);
+        if (tags.length) {
+          const tagRow = el("div", "user-dictionary-tags");
+          tags.slice(0, 8).forEach((tag) => tagRow.append(el("span", "lexical-chip", tag)));
+          item.append(tagRow);
+        }
+        const definitions = asArray(result.definitions).filter(Boolean);
+        const content = el("div", "user-dictionary-definition");
+        if (definitions.length) {
+          definitions.slice(0, 5).forEach((definition) => {
+            content.append(el("p", "", String(definition || "")));
+          });
+        } else if (result.text) {
+          content.append(el("p", "", String(result.text || "")));
+        }
+        item.append(content);
+        list.append(item);
+      });
+      section.append(list);
+      return section;
+    }
+
     function appendLexicalRow(parent, label, nodes, valueClassName = "lexical-note-values") {
       if (!nodes.length) {
         return;
@@ -304,6 +346,7 @@ window.JPCORPUS_LEXICAL = (() => {
       displayMeaningRaw,
       renderLexicalNotes,
       renderMeaningValue,
+      renderUserDictionaryResults,
     };
   }
 

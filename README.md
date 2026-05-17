@@ -10,6 +10,7 @@
 - 从 Jimaku 下载可用的日语字幕。
 - 从 LRCLIB 拉取歌词。
 - 导入 `texts/` 里的 `.txt` 和 `.epub`，也可以从网页或浏览器扩展导入文章。
+- 从维护面板导入本地 Yomitan `.zip` 或 MDX `.mdx` 词典。
 - 用本地词典、JLPT 词表、JMdict、zhwiktionary fallback 等资源生成单词表、例句、阅读视图和词语知识。
 - 在网页阅读器或浏览器扩展里点词查词、标记学习状态，并按你的学习进度复习。
 
@@ -78,6 +79,15 @@ Shell 里的环境变量优先级高于 `.env`。网页 UI 只有在 `127.0.0.1`
 
 EPUB 会优先使用书内 metadata，文件名作为备用标题。
 
+### 本地词典
+
+维护面板里的“本地词典”支持导入：
+
+- **Yomitan `.zip`**：适合 Yomitan/Anki 生态的结构化词典，导入后会建立本地索引。
+- **MDX `.mdx`**：适合 MDict/FreeMdict 生态的词典，导入后索引词头，查询时按需读取原词典内容。
+
+导入的词典保存在 `~/.jpcorpus/dictionaries/`。你可以在 UI 里启用/停用、调整优先级、重建索引或删除词典。启用的词典会作为“本地词典”显示在词条详情中；`corpus.json` 不需要因此重建。
+
 ### 学习和阅读
 
 主界面提供两种常用方式：
@@ -124,6 +134,7 @@ corpus.words/                  # per-word detail shards
 corpus.sources/                # per-source reader/detail shards
 browser_extension/             # optional Chrome extension
 ~/.jpcorpus/state.db           # local tokens, sync state, caches, study state
+~/.jpcorpus/dictionaries/      # imported Yomitan/MDX dictionaries and indexes
 ```
 
 `corpus.json` 和 sidecar 文件都是生成物；需要更新时从 UI 点“刷新”即可。
@@ -146,6 +157,7 @@ It currently:
 - Downloads Japanese subtitles from Jimaku when available.
 - Fetches lyrics from LRCLIB.
 - Imports local `.txt` and `.epub` files from `texts/`, plus web articles from the viewer or Chrome extension.
+- Imports local Yomitan `.zip` or MDX `.mdx` dictionaries from the Maintenance panel.
 - Builds word lists, examples, reader views, and lexical notes from local dictionaries, JLPT data, JMdict, and zhwiktionary fallback data.
 - Lets you click words in the viewer or extension, review vocabulary, and track local study progress.
 
@@ -214,6 +226,15 @@ Supported sources:
 
 EPUB imports prefer book metadata and fall back to the file name.
 
+### Local Dictionaries
+
+The Local dictionaries section in Maintenance supports:
+
+- **Yomitan `.zip`**: structured dictionaries from the Yomitan/Anki ecosystem. The app builds a local lookup index on import.
+- **MDX `.mdx`**: dictionaries from the MDict/FreeMdict ecosystem. The app indexes headwords and reads entries from the original MDX on demand.
+
+Imported dictionaries live under `~/.jpcorpus/dictionaries/`. The UI can enable/disable dictionaries, change priority, rebuild indexes, or delete them. Enabled dictionaries appear in word details under Local dictionaries; `corpus.json` does not need to be rebuilt for dictionary changes.
+
 ### Study and Reading
 
 The viewer has two core workflows:
@@ -260,6 +281,7 @@ corpus.words/                  # per-word detail shards
 corpus.sources/                # per-source reader/detail shards
 browser_extension/             # optional Chrome extension
 ~/.jpcorpus/state.db           # local tokens, sync state, caches, study state
+~/.jpcorpus/dictionaries/      # imported Yomitan/MDX dictionaries and indexes
 ```
 
 `corpus.json` and its sidecars are generated files. Use Refresh in the UI to update them.

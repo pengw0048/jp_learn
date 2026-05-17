@@ -159,6 +159,27 @@
         <section class="maintenance-card">
           <div class="maintenance-section-header">
             <div>
+              <h3 data-i18n="dictionaryManagerTitle">本地词典</h3>
+              <p class="maintenance-help" data-i18n="dictionaryManagerHelp">导入 Yomitan zip 或 MDX 词典；启用后会显示在词条详情里。</p>
+            </div>
+          </div>
+          <div class="dictionary-import-row">
+            <label>
+              <span data-i18n="dictionaryFile">词典文件</span>
+              <input id="dictionary-file" type="file" accept=".zip,.mdx" />
+            </label>
+            <label>
+              <span data-i18n="dictionaryName">显示名称</span>
+              <input id="dictionary-name" type="text" autocomplete="off" data-i18n-placeholder="dictionaryNamePlaceholder" />
+            </label>
+            <button id="dictionary-import" class="secondary-button" type="button" data-i18n="dictionaryImport">导入</button>
+          </div>
+          <p id="dictionary-status" class="maintenance-help"></p>
+          <div id="dictionary-list" class="dictionary-list"></div>
+        </section>
+        <section class="maintenance-card">
+          <div class="maintenance-section-header">
+            <div>
               <h3 data-i18n="configTitle">API key 状态</h3>
               <p id="config-path" class="maintenance-help"></p>
             </div>

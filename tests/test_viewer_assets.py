@@ -172,7 +172,31 @@ def test_detail_orders_reader_context_before_lexical_notes():
 
     assert app.index("const nodes = [renderDetailHeader(word)]") < app.index("const readerContext = renderReaderContextPanel(word);")
     assert app.index("nodes.push(readerContext);") < app.index("nodes.push(renderLexicalNotes(word));")
+    assert app.index("nodes.push(renderLexicalNotes(word));") < app.index("nodes.push(renderUserDictionaryResults(word));")
+    assert app.index("nodes.push(renderUserDictionaryResults(word));") < app.index("nodes.push(renderExamples(word));")
     assert app.index("nodes.push(renderLexicalNotes(word));") < app.index("nodes.push(renderExamples(word));")
+
+
+def test_dictionary_manager_assets_are_wired():
+    html = (VIEWER_ASSET_DIR / "index.html").read_text(encoding="utf-8")
+    app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    api = (VIEWER_ASSET_DIR / "app_api.js").read_text(encoding="utf-8")
+    lexical = (VIEWER_ASSET_DIR / "app_lexical.js").read_text(encoding="utf-8")
+    i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
+    css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
+
+    assert 'id="dictionary-file"' in html
+    assert 'id="dictionary-list"' in html
+    assert "renderDictionaryManager" in app
+    assert "importDictionaryFromPicker" in app
+    assert "clearLoadedWordDetails" in app
+    assert "importDictionary" in api
+    assert "/api/dictionaries/import" in api
+    assert "renderUserDictionaryResults" in lexical
+    assert 'dictionaryManagerTitle: "本地词典"' in i18n
+    assert 'userDictionaryResults: "本地词典"' in i18n
+    assert ".user-dictionary-results" in css
+    assert ".dictionary-row" in css
 
 
 def test_example_highlight_can_add_unmarked_word_to_study():

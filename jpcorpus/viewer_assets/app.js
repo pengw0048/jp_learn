@@ -128,6 +128,8 @@ const app = {
     syncNotice: "",
     syncApplying: false,
     syncError: "",
+    dictionaries: null,
+    dictionaryBusy: false,
   },
   tts: {
     provider: readTtsProvider(),
@@ -144,6 +146,7 @@ const {
   displayMeaningRaw,
   renderLexicalNotes,
   renderMeaningValue,
+  renderUserDictionaryResults,
 } = window.JPCORPUS_LEXICAL.createLexicalHelpers({
   el,
   t,
@@ -229,6 +232,11 @@ const refs = {
   ttsRateValue: $("#tts-rate-value"),
   ttsPreview: $("#tts-preview"),
   ttsStatus: $("#tts-status"),
+  dictionaryFile: $("#dictionary-file"),
+  dictionaryName: $("#dictionary-name"),
+  dictionaryImport: $("#dictionary-import"),
+  dictionaryStatus: $("#dictionary-status"),
+  dictionaryList: $("#dictionary-list"),
   maintenanceProgress: $("#maintenance-progress"),
   maintenanceProgressFill: $("#maintenance-progress-fill"),
   maintenanceProgressLabel: $("#maintenance-progress-label"),
@@ -570,8 +578,10 @@ function bindControls() {
   refs.maintenanceActionButtons.forEach((button) => {
     button.addEventListener("click", () => startMaintenanceJob(button.dataset.maintenanceTask));
   });
+  refs.dictionaryFile.addEventListener("change", renderMaintenance);
   refs.sourcePanelClose.addEventListener("click", hideSourcePanel);
   refs.configSave.addEventListener("click", saveConfig);
+  refs.dictionaryImport.addEventListener("click", importDictionaryFromPicker);
   refs.corpusSyncApply.addEventListener("click", applyPendingCorpusReload);
   bindTtsSettings();
   refs.configForm.addEventListener("toggle", () => {
@@ -707,6 +717,7 @@ async function loadMaintenanceStatus() {
     app.maintenance.job = payload.job || null;
     app.maintenance.config = payload.config || null;
     app.maintenance.llm = payload.llm || null;
+    app.maintenance.dictionaries = payload.dictionaries || null;
     if (app.maintenance.job?.status === "succeeded" && app.maintenance.job.result?.reload_corpus) {
       app.maintenance.reloadedJobId = app.maintenance.job.id;
     }
@@ -735,6 +746,7 @@ function renderMaintenance() {
   renderConfigStatus();
   renderLlmConfigFields();
   renderTtsSettings();
+  renderDictionaryManager();
   const task = maintenanceTask();
   const job = app.maintenance.job;
   const visibleJob = visibleMaintenanceJob(job);
@@ -747,6 +759,71 @@ function renderMaintenance() {
   renderMaintenanceProgress(visibleJob);
   refs.maintenanceLog.textContent = visibleJob?.log?.join("\n") || "";
   renderCorpusSyncBanner();
+}
+
+function renderDictionaryManager() {
+  if (!refs.dictionaryList) {
+    return;
+  }
+  const registry = app.maintenance.dictionaries || {};
+  const dictionaries = Array.isArray(registry.dictionaries) ? registry.dictionaries : [];
+  refs.dictionaryImport.disabled = !app.maintenance.enabled || app.maintenance.dictionaryBusy || !refs.dictionaryFile.files.length;
+  if (!dictionaries.length) {
+    refs.dictionaryList.replaceChildren(el("p", "dictionary-empty", t("dictionaryEmpty")));
+    return;
+  }
+  refs.dictionaryList.replaceChildren(
+    ...dictionaries
+      .slice()
+      .sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0))
+      .map((dictionary, index, list) => renderDictionaryRow(dictionary, index, list)),
+  );
+}
+
+function renderDictionaryRow(dictionary, index, list) {
+  const row = el("div", `dictionary-row ${dictionary.enabled ? "" : "disabled"}`.trim());
+  const checkbox = el("input", "");
+  checkbox.type = "checkbox";
+  checkbox.checked = Boolean(dictionary.enabled);
+  checkbox.disabled = app.maintenance.dictionaryBusy;
+  checkbox.addEventListener("change", () => updateDictionary(dictionary.id, { enabled: checkbox.checked }));
+
+  const body = el("div", "dictionary-row-body");
+  const title = el("div", "dictionary-row-title");
+  title.append(
+    el("strong", "", dictionary.name || dictionary.source_file || dictionary.id),
+    el("span", "dictionary-format", String(dictionary.format || "").toUpperCase()),
+  );
+  const stats = dictionary.stats || {};
+  const meta = el(
+    "div",
+    "dictionary-row-meta",
+    [
+      dictionary.source_file,
+      dictionary.status === "ready" ? t("dictionaryReady") : t("dictionaryError"),
+      stats.headword_count ? t("dictionaryHeadwords", { count: formatNumber(stats.headword_count) }) : "",
+      dictionary.error,
+    ].filter(Boolean).join(" · "),
+  );
+  body.append(title, meta);
+
+  const actions = el("div", "dictionary-row-actions");
+  const up = dictionaryActionButton("↑", t("dictionaryMoveUp"), () => moveDictionary(dictionary, list[index - 1]), index === 0);
+  const down = dictionaryActionButton("↓", t("dictionaryMoveDown"), () => moveDictionary(dictionary, list[index + 1]), index === list.length - 1);
+  const reindex = dictionaryActionButton("↻", t("dictionaryReindex"), () => reindexDictionary(dictionary.id), false);
+  const remove = dictionaryActionButton("×", t("dictionaryDelete"), () => deleteDictionary(dictionary), false);
+  actions.append(up, down, reindex, remove);
+  row.append(checkbox, body, actions);
+  return row;
+}
+
+function dictionaryActionButton(label, title, handler, disabled) {
+  const button = el("button", "dictionary-icon-button", label);
+  button.type = "button";
+  button.title = title;
+  button.disabled = disabled || app.maintenance.dictionaryBusy;
+  button.addEventListener("click", handler);
+  return button;
 }
 
 function renderLlmConfigFields() {
@@ -891,8 +968,7 @@ function ensureWordDetail(word) {
 function needsWordDetail(word) {
   return Boolean(word)
     && word.has_detail !== false
-    && !word._detailLoaded
-    && !Array.isArray(word.examples);
+    && !word._detailLoaded;
 }
 
 function ensureSourceDetails(documents) {
@@ -965,6 +1041,117 @@ async function saveConfig() {
   } finally {
     refs.configSave.disabled = !app.maintenance.enabled;
   }
+}
+
+async function importDictionaryFromPicker() {
+  const file = refs.dictionaryFile.files[0];
+  if (!file) {
+    refs.dictionaryStatus.textContent = t("dictionaryChooseFile");
+    return;
+  }
+  app.maintenance.dictionaryBusy = true;
+  refs.dictionaryStatus.textContent = t("dictionaryImporting", { name: file.name });
+  renderMaintenance();
+  try {
+    const result = await api.importDictionary({
+      file,
+      name: refs.dictionaryName.value.trim(),
+    });
+    app.maintenance.dictionaries = result.dictionaries || null;
+    refs.dictionaryFile.value = "";
+    refs.dictionaryName.value = "";
+    refs.dictionaryStatus.textContent = result.imported ? t("dictionaryImported") : t("dictionaryAlreadyImported");
+    clearLoadedWordDetails();
+    render();
+  } catch (error) {
+    refs.dictionaryStatus.textContent = t("dictionaryImportFailed", { error: error.message });
+  } finally {
+    app.maintenance.dictionaryBusy = false;
+    renderMaintenance();
+  }
+}
+
+async function updateDictionary(id, updates) {
+  app.maintenance.dictionaryBusy = true;
+  renderMaintenance();
+  try {
+    app.maintenance.dictionaries = await api.updateDictionary({ id, ...updates });
+    clearLoadedWordDetails();
+    render();
+  } catch (error) {
+    refs.dictionaryStatus.textContent = t("dictionaryUpdateFailed", { error: error.message });
+  } finally {
+    app.maintenance.dictionaryBusy = false;
+    renderMaintenance();
+  }
+}
+
+async function moveDictionary(dictionary, neighbor) {
+  if (!dictionary || !neighbor) {
+    return;
+  }
+  const currentPriority = Number(dictionary.priority || 0);
+  const neighborPriority = Number(neighbor.priority || 0);
+  app.maintenance.dictionaryBusy = true;
+  renderMaintenance();
+  try {
+    await api.updateDictionary({ id: dictionary.id, priority: neighborPriority });
+    app.maintenance.dictionaries = await api.updateDictionary({ id: neighbor.id, priority: currentPriority });
+    clearLoadedWordDetails();
+    render();
+  } catch (error) {
+    refs.dictionaryStatus.textContent = t("dictionaryUpdateFailed", { error: error.message });
+  } finally {
+    app.maintenance.dictionaryBusy = false;
+    renderMaintenance();
+  }
+}
+
+async function reindexDictionary(id) {
+  app.maintenance.dictionaryBusy = true;
+  refs.dictionaryStatus.textContent = t("dictionaryReindexing");
+  renderMaintenance();
+  try {
+    app.maintenance.dictionaries = await api.reindexDictionary({ id });
+    refs.dictionaryStatus.textContent = t("dictionaryReindexed");
+    clearLoadedWordDetails();
+    render();
+  } catch (error) {
+    refs.dictionaryStatus.textContent = t("dictionaryReindexFailed", { error: error.message });
+  } finally {
+    app.maintenance.dictionaryBusy = false;
+    renderMaintenance();
+  }
+}
+
+async function deleteDictionary(dictionary) {
+  if (!dictionary || !window.confirm(t("dictionaryDeleteConfirm", { name: dictionary.name || dictionary.id }))) {
+    return;
+  }
+  app.maintenance.dictionaryBusy = true;
+  renderMaintenance();
+  try {
+    app.maintenance.dictionaries = await api.deleteDictionary({ id: dictionary.id });
+    refs.dictionaryStatus.textContent = t("dictionaryDeleted");
+    clearLoadedWordDetails();
+    render();
+  } catch (error) {
+    refs.dictionaryStatus.textContent = t("dictionaryDeleteFailed", { error: error.message });
+  } finally {
+    app.maintenance.dictionaryBusy = false;
+    renderMaintenance();
+  }
+}
+
+function clearLoadedWordDetails() {
+  app.wordDetailRequests.clear();
+  app.words.forEach((word) => {
+    if (word && typeof word === "object") {
+      delete word._detailLoaded;
+      delete word._detailLoading;
+      delete word.user_dictionary_results;
+    }
+  });
 }
 
 function renderLevelFilter() {
@@ -1497,6 +1684,7 @@ function renderDetail() {
     nodes.push(readerContext);
   }
   nodes.push(renderLexicalNotes(word));
+  nodes.push(renderUserDictionaryResults(word));
   nodes.push(renderExamples(word));
   refs.wordDetail.replaceChildren(...nodes);
 }
