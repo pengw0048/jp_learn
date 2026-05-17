@@ -22,7 +22,7 @@ Optional extension syntax check:
 
 ```bash
 node --check browser_extension/background.js
-node --check browser_extension/content_script.js
+node --check browser_extension/content.js
 node --check browser_extension/popup.js
 ```
 
