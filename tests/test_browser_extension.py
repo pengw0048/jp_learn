@@ -51,9 +51,11 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert 'readParagraph: "朗读选段"' in content
     assert 'pickParagraph: "点要朗读的段落。Esc 取消。"' in content
     assert 'furigana: "假名"' in content
+    assert 'dragToolbar: "拖动工具栏"' in content
     assert 'switchLanguage: "EN"' in content
     assert 'stopReading: "停止"' in content
     assert "jpcorpus-reader-toolbar" in content
+    assert "jpcorpus-reader-toolbar-drag" in content
     assert "jpcorpus-reader-toolbar-status" in content
     assert "jpcorpus-reader-speech-button" in content
     assert "importSelectedTextFromPage" in content
@@ -68,6 +70,9 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "readerSelectedText" in content
     assert "updateReaderSelectionButton" in content
     assert "positionToastUnderToolbar" in content
+    assert "READER_TOOLBAR_POSITION_KEY" in content
+    assert "startReaderToolbarDrag" in content
+    assert "applyReaderToolbarPosition" in content
     assert "speakReaderParagraph" in content
     assert "readerSpeechUnitsForElement" in content
     assert "speakReaderVoicevoxUnits" in content

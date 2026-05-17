@@ -1,11 +1,12 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.23";
+  const SCRIPT_VERSION = "0.1.24";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
   window.__jpcorpusContentVersion = SCRIPT_VERSION;
   window.__jpcorpusPickerLoaded = true;
   const CJK_FONT_CSS = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  const READER_TOOLBAR_POSITION_KEY = "jpcorpus.readerToolbarPosition.v1";
   const STUDY_TARGET_COUNT = 7;
   const SPEECH_SOFT_CHARS = 70;
   const SPEECH_MAX_CHARS = 120;
@@ -49,6 +50,7 @@
       pickParagraph: "点要朗读的段落。Esc 取消。",
       cancelPick: "取消选择",
       furigana: "假名",
+      dragToolbar: "拖动工具栏",
       switchLanguage: "EN",
       stopReading: "停止",
       closeReader: "关闭",
@@ -95,6 +97,7 @@
       pickParagraph: "Click a passage to read. Esc cancels.",
       cancelPick: "Cancel pick",
       furigana: "Furigana",
+      dragToolbar: "Move toolbar",
       switchLanguage: "中",
       stopReading: "Stop",
       closeReader: "Close",
@@ -186,6 +189,7 @@
       root: null,
       toolbar: null,
       toolbarStatus: null,
+      toolbarDrag: null,
       importSelectionButton: null,
       paragraphPicker: null,
       furigana: false,
@@ -706,6 +710,14 @@
     status.className = "jpcorpus-reader-toolbar-status";
     status.hidden = true;
 
+    const dragHandle = document.createElement("span");
+    dragHandle.className = "jpcorpus-reader-toolbar-drag";
+    dragHandle.textContent = "⋮⋮";
+    dragHandle.title = tr("dragToolbar");
+    dragHandle.setAttribute("role", "button");
+    dragHandle.setAttribute("aria-label", tr("dragToolbar"));
+    dragHandle.addEventListener("pointerdown", startReaderToolbarDrag);
+
     const importSelection = document.createElement("button");
     importSelection.type = "button";
     importSelection.className = "jpcorpus-reader-import-button";
@@ -816,11 +828,97 @@
       toggleExtensionLanguage();
     });
 
-    actions.append(importSelection, importArticle, pickImport, readAll, readParagraph, furigana, lang, close);
+    actions.append(dragHandle, importSelection, importArticle, pickImport, readAll, readParagraph, furigana, lang, close);
     toolbar.append(actions, status);
     document.documentElement.append(toolbar);
     reader.toolbar = toolbar;
     reader.toolbarStatus = status;
+    restoreReaderToolbarPosition(toolbar);
+  }
+
+  function restoreReaderToolbarPosition(toolbar) {
+    chrome.storage?.local?.get({ [READER_TOOLBAR_POSITION_KEY]: null }, (result) => {
+      if (!toolbar.isConnected) {
+        return;
+      }
+      const position = result?.[READER_TOOLBAR_POSITION_KEY];
+      if (!isStoredToolbarPosition(position)) {
+        return;
+      }
+      applyReaderToolbarPosition(toolbar, position.left, position.top);
+    });
+  }
+
+  function isStoredToolbarPosition(value) {
+    return Boolean(value)
+      && Number.isFinite(value.left)
+      && Number.isFinite(value.top);
+  }
+
+  function startReaderToolbarDrag(event) {
+    if (!reader?.toolbar || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const toolbar = reader.toolbar;
+    const rect = toolbar.getBoundingClientRect();
+    reader.toolbarDrag = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    toolbar.classList.add("dragging");
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    document.addEventListener("pointermove", onReaderToolbarDrag, true);
+    document.addEventListener("pointerup", finishReaderToolbarDrag, true);
+    document.addEventListener("pointercancel", finishReaderToolbarDrag, true);
+  }
+
+  function onReaderToolbarDrag(event) {
+    if (!reader?.toolbar || !reader.toolbarDrag || event.pointerId !== reader.toolbarDrag.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    applyReaderToolbarPosition(
+      reader.toolbar,
+      event.clientX - reader.toolbarDrag.offsetX,
+      event.clientY - reader.toolbarDrag.offsetY,
+    );
+    positionToastUnderToolbar();
+  }
+
+  function finishReaderToolbarDrag(event) {
+    if (!reader?.toolbarDrag || event.pointerId !== reader.toolbarDrag.pointerId) {
+      return;
+    }
+    const toolbar = reader.toolbar;
+    reader.toolbarDrag = null;
+    toolbar?.classList.remove("dragging");
+    document.removeEventListener("pointermove", onReaderToolbarDrag, true);
+    document.removeEventListener("pointerup", finishReaderToolbarDrag, true);
+    document.removeEventListener("pointercancel", finishReaderToolbarDrag, true);
+    if (!toolbar) {
+      return;
+    }
+    const rect = toolbar.getBoundingClientRect();
+    chrome.storage?.local?.set({
+      [READER_TOOLBAR_POSITION_KEY]: {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+      },
+    });
+  }
+
+  function applyReaderToolbarPosition(toolbar, left, top) {
+    const rect = toolbar.getBoundingClientRect();
+    const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+    const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
+    const nextLeft = Math.min(Math.max(8, Number(left) || 8), maxLeft);
+    const nextTop = Math.min(Math.max(8, Number(top) || 8), maxTop);
+    toolbar.style.left = `${nextLeft}px`;
+    toolbar.style.top = `${nextTop}px`;
+    toolbar.style.right = "auto";
   }
 
   async function importSelectedTextFromPage(button) {
@@ -899,6 +997,7 @@
   }
 
   function removeReaderToolbar() {
+    stopReaderToolbarDrag();
     reader?.toolbar?.remove();
     document.removeEventListener("selectionchange", updateReaderSelectionButton, true);
     if (reader) {
@@ -906,6 +1005,17 @@
       reader.toolbarStatus = null;
       reader.importSelectionButton = null;
     }
+  }
+
+  function stopReaderToolbarDrag() {
+    if (!reader?.toolbarDrag) {
+      return;
+    }
+    reader.toolbarDrag = null;
+    reader.toolbar?.classList.remove("dragging");
+    document.removeEventListener("pointermove", onReaderToolbarDrag, true);
+    document.removeEventListener("pointerup", finishReaderToolbarDrag, true);
+    document.removeEventListener("pointercancel", finishReaderToolbarDrag, true);
   }
 
   function readerSelectedText() {
@@ -1515,6 +1625,28 @@
         background: rgba(255, 255, 255, 0.96) !important;
         box-shadow: 0 14px 36px rgba(31, 39, 42, 0.18) !important;
         font: 760 13px/1 ${CJK_FONT_CSS} !important;
+      }
+      .jpcorpus-reader-toolbar-drag {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-width: 20px !important;
+        height: 32px !important;
+        border-radius: 7px !important;
+        color: #657178 !important;
+        cursor: grab !important;
+        font: 900 15px/1 ${CJK_FONT_CSS} !important;
+        letter-spacing: 1px !important;
+        touch-action: none !important;
+        user-select: none !important;
+      }
+      #jpcorpus-reader-toolbar.dragging,
+      #jpcorpus-reader-toolbar.dragging .jpcorpus-reader-toolbar-drag {
+        cursor: grabbing !important;
+      }
+      .jpcorpus-reader-toolbar-drag:hover {
+        background: #edf4f4 !important;
+        color: #147d73 !important;
       }
       .jpcorpus-reader-toolbar-actions {
         display: flex !important;
