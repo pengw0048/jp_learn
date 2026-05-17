@@ -377,7 +377,20 @@ select {
   min-width: 0;
 }
 
-.study-add-filter-button {
+.study-queue-hint {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.study-queue-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.study-add-level-button,
+.study-clear-level-button {
   min-height: 30px;
   padding: 4px 8px;
   border: 1px solid var(--accent);
@@ -389,7 +402,14 @@ select {
   white-space: nowrap;
 }
 
-.study-add-filter-button:disabled {
+.study-clear-level-button {
+  border-color: var(--line);
+  background: #fbfcfc;
+  color: var(--muted);
+}
+
+.study-add-level-button:disabled,
+.study-clear-level-button:disabled {
   cursor: default;
   border-color: var(--line);
   background: var(--panel-2);

@@ -174,20 +174,29 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert "reader-recent-buttons" in css
 
 
-def test_study_mode_can_add_current_filter_to_queue():
+def test_study_mode_can_add_and_clear_selected_level():
     i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
     app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
     css = (VIEWER_ASSET_DIR / "app.css").read_text(encoding="utf-8")
 
     assert "renderStudyQueueControls" in app
+    assert "studyLevelTarget" in app
+    assert "studyLevelWords" in app
     assert "studyAddCandidates" in app
-    assert "addCurrentStudyFilter" in app
+    assert "studyClearCandidates" in app
+    assert "addCurrentStudyLevel" in app
+    assert "clearCurrentStudyLevel" in app
+    assert "resetStudyQueueFilters" in app
+    assert "word.level === targetLevel" in app
     assert 'statusFor(word) === "none"' in app
+    assert "isActiveStudyStatus(statusFor(word))" in app
     assert "studyCountFor(word) < STUDY_TARGET_COUNT" in app
     assert 'setStatus(word, "learning")' in app
-    assert 'studyAddCurrentFilter: "加入当前筛选 {count} 个"' in i18n
-    assert "studyAddCurrentFilterHint" in i18n
-    assert ".study-add-filter-button" in css
+    assert 'setStatus(word, "none")' in app
+    assert 'studyAddLevel: "加入 {level} 全部"' in i18n
+    assert "studyClearLevelConfirm" in i18n
+    assert ".study-add-level-button" in css
+    assert ".study-clear-level-button" in css
 
 
 def test_detail_orders_reader_context_before_lexical_notes():

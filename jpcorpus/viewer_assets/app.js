@@ -1209,20 +1209,36 @@ function renderWordList() {
 
 function renderStudyQueueControls(queueCount) {
   const wrap = el("div", "study-queue-controls");
-  const candidates = studyAddCandidates();
   const label = el("span", "study-queue-count", t("studyWordsFound", {
     count: formatNumber(queueCount),
   }));
-  const addButton = el("button", "study-add-filter-button", t("studyAddCurrentFilter", {
-    count: formatNumber(candidates.length),
-  }));
+  const targetLevel = studyLevelTarget();
+  if (!targetLevel) {
+    wrap.append(label, el("span", "study-queue-hint", t("studyChooseLevelBulkHint")));
+    return wrap;
+  }
+
+  const addCandidates = studyAddCandidates();
+  const clearCandidates = studyClearCandidates();
+  const actions = el("div", "study-queue-actions");
+  const addButton = el("button", "study-add-level-button", t("studyAddLevel", { level: targetLevel }));
   addButton.type = "button";
-  addButton.disabled = candidates.length === 0;
-  addButton.title = candidates.length > 0
-    ? t("studyAddCurrentFilterHint")
-    : t("studyAddCurrentFilterEmpty");
-  addButton.addEventListener("click", addCurrentStudyFilter);
-  wrap.append(label, addButton);
+  addButton.disabled = addCandidates.length === 0;
+  addButton.title = addCandidates.length > 0
+    ? t("studyAddLevelHint", { level: targetLevel, count: formatNumber(addCandidates.length) })
+    : t("studyAddLevelEmpty", { level: targetLevel });
+  addButton.addEventListener("click", addCurrentStudyLevel);
+
+  const clearButton = el("button", "study-clear-level-button", t("studyClearLevel", { level: targetLevel }));
+  clearButton.type = "button";
+  clearButton.disabled = clearCandidates.length === 0;
+  clearButton.title = clearCandidates.length > 0
+    ? t("studyClearLevelHint", { level: targetLevel, count: formatNumber(clearCandidates.length) })
+    : t("studyClearLevelEmpty", { level: targetLevel });
+  clearButton.addEventListener("click", clearCurrentStudyLevel);
+
+  actions.append(addButton, clearButton);
+  wrap.append(label, actions);
   return wrap;
 }
 
@@ -2073,22 +2089,69 @@ function currentWordSet() {
   return app.mode === "study" ? studyQueue() : filteredWords();
 }
 
+function studyLevelTarget() {
+  return app.level === "all" ? null : app.level;
+}
+
+function studyLevelWords() {
+  const targetLevel = studyLevelTarget();
+  if (!targetLevel) {
+    return [];
+  }
+  return app.words.filter((word) => word.level === targetLevel);
+}
+
 function studyAddCandidates() {
-  return filteredWords()
+  return studyLevelWords()
     .filter((word) => statusFor(word) === "none")
     .filter((word) => studyCountFor(word) < STUDY_TARGET_COUNT);
 }
 
-function addCurrentStudyFilter() {
+function studyClearCandidates() {
+  return studyLevelWords()
+    .filter((word) => isActiveStudyStatus(statusFor(word)))
+    .filter((word) => studyCountFor(word) < STUDY_TARGET_COUNT);
+}
+
+function resetStudyQueueFilters() {
+  app.query = "";
+  refs.searchInput.value = "";
+  app.status = "all";
+  refs.statusFilter.value = app.status;
+  app.source = "all";
+  refs.sourceFilter.value = app.source;
+  resetWordListLimit();
+}
+
+function addCurrentStudyLevel() {
   const candidates = studyAddCandidates();
   if (!candidates.length) {
     return;
   }
   candidates.forEach((word) => setStatus(word, "learning"));
+  resetStudyQueueFilters();
   const queue = studyQueue();
   app.selectedWord = queue[0] || null;
   app.study.showAnswer = false;
-  resetWordListLimit();
+  render();
+}
+
+function clearCurrentStudyLevel() {
+  const targetLevel = studyLevelTarget();
+  const candidates = studyClearCandidates();
+  if (!targetLevel || !candidates.length) {
+    return;
+  }
+  if (!window.confirm(t("studyClearLevelConfirm", {
+    level: targetLevel,
+    count: formatNumber(candidates.length),
+  }))) {
+    return;
+  }
+  candidates.forEach((word) => setStatus(word, "none"));
+  resetStudyQueueFilters();
+  app.selectedWord = chooseInitialWord(studyQueue());
+  app.study.showAnswer = false;
   render();
 }
 
