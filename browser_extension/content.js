@@ -8,6 +8,7 @@
   const CJK_FONT_CSS = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   const SPEECH_SOFT_CHARS = 70;
   const SPEECH_MAX_CHARS = 120;
+  const SPEECH_PREFETCH_UNITS = 3;
   const MESSAGES = {
     zh: {
       stillAnnotating: "jpcorpus 仍在标注这个页面...",
@@ -966,17 +967,27 @@
     if (!units.length) {
       return { ok: false, nextIndex: 0 };
     }
+    const preparedAudio = new Map();
+    const scheduleAudio = (index) => {
+      if (index >= units.length || preparedAudio.has(index)) {
+        return;
+      }
+      preparedAudio.set(index, prepareReaderVoicevoxUnit(units[index]).catch(() => ""));
+    };
     try {
-      let nextAudio = prepareReaderVoicevoxUnit(units[0]);
+      for (let index = 0; index < Math.min(SPEECH_PREFETCH_UNITS, units.length); index += 1) {
+        scheduleAudio(index);
+      }
       for (let index = 0; index < units.length; index += 1) {
         if (!isActiveReaderSpeech(runId)) {
           return { ok: false, nextIndex: index };
         }
-        const dataUrl = await nextAudio;
+        const dataUrl = await preparedAudio.get(index);
+        preparedAudio.delete(index);
         if (!dataUrl) {
           return { ok: false, nextIndex: index };
         }
-        nextAudio = units[index + 1] ? prepareReaderVoicevoxUnit(units[index + 1]) : null;
+        scheduleAudio(index + SPEECH_PREFETCH_UNITS);
         if (!isActiveReaderSpeech(runId)) {
           return { ok: false, nextIndex: index };
         }
