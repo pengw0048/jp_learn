@@ -187,18 +187,24 @@ window.JPCORPUS_LEXICAL = (() => {
           return;
         }
         const item = el("article", "user-dictionary-result");
+        let sourceTarget = null;
         if (definitions.length) {
           const content = el("p", "user-dictionary-definition", definitions.join("；"));
           item.append(content);
+          sourceTarget = content;
         }
         if (spellings.length) {
-          item.append(userDictionaryReferenceLine(t("userDictionarySpellings"), spellings));
+          const line = userDictionaryReferenceLine(t("userDictionarySpellings"), spellings);
+          item.append(line);
+          sourceTarget ||= line;
         }
         if (references.length) {
-          item.append(userDictionaryReferenceLine(t("userDictionarySeeAlso"), references));
+          const line = userDictionaryReferenceLine(t("userDictionarySeeAlso"), references);
+          item.append(line);
+          sourceTarget ||= line;
         }
-        if (group.name) {
-          item.append(el("small", "user-dictionary-source", group.name));
+        if (group.name && sourceTarget) {
+          appendUserDictionarySource(sourceTarget, group.name);
         }
         list.append(item);
       });
@@ -240,6 +246,12 @@ window.JPCORPUS_LEXICAL = (() => {
       const reference = el("p", "user-dictionary-reference");
       reference.append(el("span", "", `${label}：`), values.join("、"));
       return reference;
+    }
+
+    function appendUserDictionarySource(node, source) {
+      const sourceNode = el("small", "user-dictionary-source", source);
+      sourceNode.title = source;
+      node.append(" ", sourceNode);
     }
 
     function compactUserDictionaryReferences(results, type) {

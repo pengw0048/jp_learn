@@ -291,6 +291,7 @@ def test_user_dictionary_results_render_compact_primary_definitions():
         assert.equal(text.includes("去，前往；送达；离开，逝去"), true);
         assert.equal(text.includes("口语用法"), true);
         assert.equal(text.includes("写法：ゆく"), true);
+        assert.equal((text.match(/wty-ja-zh/g) || []).length, 1);
         assert.equal(text.includes("YOMITAN"), false);
         assert.equal(text.includes("godan"), false);
       """

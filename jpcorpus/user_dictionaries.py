@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import sqlite3
+import struct
 import unicodedata
 import zipfile
 from collections.abc import Iterable
@@ -124,10 +125,36 @@ def import_dictionary_file(
     if existing:
         if name:
             existing["name"] = name.strip()
+        elif dictionary_name_needs_refresh(existing):
+            existing["name"] = dictionary_title_from_source(source_path, dictionary_format)
+        if dictionary_index_is_ready(existing):
+            existing["updated_at"] = _now_iso()
+            registry = save_dictionary_registry(registry, base_dir=base_dir)
+            return {
+                "imported": False,
+                "dictionary": public_dictionary_record(existing),
+                "dictionaries": dictionary_registry_status(base_dir=base_dir),
+            }
+        ensure_dictionary_source(existing, source_path, base_dir=base_dir)
+        try:
+            existing["status"] = "indexing"
+            existing["error"] = ""
+            existing["updated_at"] = _now_iso()
+            save_dictionary_registry(registry, base_dir=base_dir)
+            stats = build_dictionary_index(existing)
+            existing["status"] = "ready"
+            existing["stats"] = stats
+            existing["error"] = ""
+        except Exception as exc:
+            existing["status"] = "error"
+            existing["error"] = str(exc)
+            existing["stats"] = {}
+            raise
+        finally:
             existing["updated_at"] = _now_iso()
             registry = save_dictionary_registry(registry, base_dir=base_dir)
         return {
-            "imported": False,
+            "imported": True,
             "dictionary": public_dictionary_record(existing),
             "dictionaries": dictionary_registry_status(base_dir=base_dir),
         }
@@ -224,6 +251,36 @@ def reindex_dictionary_record(dictionary_id: str, *, base_dir: Path = DEFAULT_US
         record["updated_at"] = _now_iso()
         save_dictionary_registry(registry, base_dir=base_dir)
     return dictionary_registry_status(base_dir=base_dir)
+
+
+def dictionary_index_is_ready(record: dict[str, Any]) -> bool:
+    return record.get("status") == "ready" and Path(record.get("index_path") or "").is_file()
+
+
+def dictionary_name_needs_refresh(record: dict[str, Any]) -> bool:
+    name = str(record.get("name") or "").strip()
+    return not name or re.search(r"-\d{20}$", name) is not None
+
+
+def ensure_dictionary_source(
+    record: dict[str, Any],
+    source_path: Path,
+    *,
+    base_dir: Path = DEFAULT_USER_DICTIONARY_DIR,
+) -> None:
+    record_id = str(record.get("id") or "").strip()
+    if record.get("source_path"):
+        destination_dir = ensure_dir(Path(record["source_path"]).parent)
+    else:
+        destination_dir = ensure_dir(Path(base_dir) / record_id)
+    destination_source = Path(record.get("source_path") or destination_dir / f"source{source_path.suffix.lower()}")
+    if not record.get("source_path"):
+        record["source_path"] = str(destination_source)
+    if not record.get("index_path"):
+        record["index_path"] = str(destination_dir / "index.sqlite3")
+    record["source_file"] = source_path.name
+    if not destination_source.is_file():
+        shutil.copy2(source_path, destination_source)
 
 
 def lookup_user_dictionaries(
@@ -558,7 +615,39 @@ def dictionary_title_from_source(source_path: Path, dictionary_format: str) -> s
                     return title
         except zipfile.BadZipFile:
             pass
+    if dictionary_format == "mdx":
+        title = mdx_title_from_source(source_path)
+        if title:
+            return title
     return source_path.stem
+
+
+def mdx_title_from_source(source_path: Path) -> str:
+    try:
+        MDX = import_mdx_class()
+        mdx = MDX(str(source_path))
+    except Exception:
+        return ""
+    header = getattr(mdx, "header", {}) or {}
+    title = decode_mdx_header_text(header.get(b"Title") or header.get("Title"))
+    if title and "No HTML" not in title:
+        return title
+    description = strip_html_to_text(decode_mdx_header_text(header.get(b"Description") or header.get("Description")))
+    match = re.search(r"《([^》]{2,80})》", description)
+    if match:
+        return normalize_dictionary_text(match.group(1))
+    return normalize_dictionary_text(description.splitlines()[0] if description else "")
+
+
+def decode_mdx_header_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        for encoding in ("utf-8", "utf-16", "utf-16-le"):
+            try:
+                return value.decode(encoding).strip()
+            except UnicodeDecodeError:
+                continue
+        return value.decode("utf-8", errors="replace").strip()
+    return str(value or "").strip()
 
 
 def dictionary_entry_lookup_keys(headword: str, reading: str = "") -> list[str]:
@@ -903,6 +992,7 @@ def truncate_text(value: str, limit: int) -> str:
 
 def import_mdx_class() -> Any:
     try:
+        ensure_mdict_lzo_support()
         from mdict_utils.reader import MDX
     except Exception as exc:  # pragma: no cover - dependency error message path
         raise DictionaryImportError(f"MDX support is unavailable: {exc}") from exc
@@ -911,10 +1001,34 @@ def import_mdx_class() -> Any:
 
 def read_mdx_record(mdx: Any, *, key: bytes, offset: int, length: int) -> Any:
     try:
+        ensure_mdict_lzo_support()
         from mdict_utils.reader import get_record
     except Exception as exc:  # pragma: no cover - dependency error message path
         raise DictionaryImportError(f"MDX support is unavailable: {exc}") from exc
     return get_record(mdx, key, offset, length)
+
+
+def ensure_mdict_lzo_support() -> None:
+    try:
+        import lzo  # noqa: F401
+    except ImportError:
+        try:
+            from mdict_utils.base import lzo as pure_lzo
+            from mdict_utils.base import readmdict
+        except Exception as exc:  # pragma: no cover - dependency error message path
+            raise DictionaryImportError(f"MDX LZO support is unavailable: {exc}") from exc
+        readmdict.lzo = _MdictLzoAdapter(pure_lzo)
+
+
+class _MdictLzoAdapter:
+    def __init__(self, pure_lzo: Any) -> None:
+        self._pure_lzo = pure_lzo
+
+    def decompress(self, data: bytes, initSize: int = 16000, blockSize: int = 8192) -> bytes:  # noqa: N803
+        if data.startswith(b"\xf0") and len(data) >= 5:
+            initSize = struct.unpack(">I", data[1:5])[0]
+            data = data[5:]
+        return self._pure_lzo.decompress(data, initSize=initSize, blockSize=blockSize)
 
 
 def cached_mdx(source_path: Path) -> Any:

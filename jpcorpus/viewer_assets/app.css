@@ -1065,10 +1065,17 @@ select {
 }
 
 .user-dictionary-source {
-  flex: none;
+  display: inline-block;
+  max-width: 18ch;
+  margin-left: 8px;
   color: var(--muted);
   font-size: 11px;
+  font-weight: 600;
   opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: baseline;
+  white-space: nowrap;
 }
 
 .study-card {

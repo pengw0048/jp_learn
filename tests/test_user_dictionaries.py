@@ -5,6 +5,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from jpcorpus import user_dictionaries as dictionaries
 
 
@@ -47,6 +49,51 @@ def test_yomitan_dictionary_import_and_lookup(tmp_path):
 
     duplicate = dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
     assert duplicate["imported"] is False
+
+
+def test_dictionary_import_refreshes_upload_timestamp_name(tmp_path):
+    source = tmp_path / "test.zip"
+    write_yomitan_zip(source)
+    base_dir = tmp_path / "dicts"
+    dictionaries.import_dictionary_file(source, base_dir=base_dir)
+    registry = dictionaries.load_dictionary_registry(base_dir=base_dir)
+    registry["dictionaries"][0]["name"] = "test-20260517155649246624"
+    dictionaries.save_dictionary_registry(registry, base_dir=base_dir)
+
+    duplicate = dictionaries.import_dictionary_file(source, base_dir=base_dir)
+    assert duplicate["imported"] is False
+    assert duplicate["dictionary"]["name"] == "Test Chinese"
+
+
+def test_dictionary_import_retries_failed_duplicate(tmp_path, monkeypatch):
+    source = tmp_path / "test.zip"
+    write_yomitan_zip(source)
+    attempts = 0
+
+    def fake_build_index(_record):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("boom")
+        Path(_record["index_path"]).touch()
+        return {"entry_count": 1, "headword_count": 1, "lookup_count": 1}
+
+    monkeypatch.setattr(dictionaries, "build_dictionary_index", fake_build_index)
+
+    with pytest.raises(RuntimeError):
+        dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
+
+    failed = dictionaries.dictionary_registry_status(base_dir=tmp_path / "dicts")["dictionaries"][0]
+    assert failed["status"] == "error"
+
+    retried = dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
+    assert retried["imported"] is True
+    assert retried["dictionary"]["status"] == "ready"
+    assert retried["dictionary"]["stats"]["headword_count"] == 1
+
+    duplicate = dictionaries.import_dictionary_file(source, base_dir=tmp_path / "dicts")
+    assert duplicate["imported"] is False
+    assert attempts == 2
 
 
 def test_yomitan_dictionary_upload_imports_stream(tmp_path):
@@ -203,3 +250,26 @@ def test_mdx_dictionary_indexes_keys_and_strips_html(tmp_path, monkeypatch):
     matches = dictionaries.lookup_user_dictionaries("大統領", base_dir=tmp_path / "dicts")
     assert matches[0]["dictionary_name"] == "MDict"
     assert matches[0]["definitions"] == ["总统\n国家元首"]
+
+
+def test_mdx_import_enables_bundled_lzo_fallback():
+    dictionaries.import_mdx_class()
+
+    from mdict_utils.base import readmdict
+
+    assert readmdict.lzo is not None
+
+
+def test_mdx_title_uses_header_description(tmp_path, monkeypatch):
+    class FakeMDX:
+        def __init__(self, _fname):
+            self.header = {
+                b"Title": b"Title (No HTML code allowed)",
+                b"Description": "<font>《小学館V2日漢辞典》</font>".encode(),
+            }
+
+    monkeypatch.setattr(dictionaries, "import_mdx_class", lambda: FakeMDX)
+    source = tmp_path / "upload-20260517155649246624.mdx"
+    source.write_bytes(b"fake")
+
+    assert dictionaries.dictionary_title_from_source(source, "mdx") == "小学館V2日漢辞典"
