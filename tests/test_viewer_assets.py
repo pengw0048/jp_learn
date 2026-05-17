@@ -254,8 +254,7 @@ def test_user_dictionary_results_render_compact_primary_definitions():
             userDictionaryUnknown: "未命名词典",
             userDictionarySpellings: "写法",
             userDictionarySeeAlso: "参见",
-            userDictionaryExpand: "展开释义",
-            userDictionaryCollapse: "收起",
+            userDictionaryDetails: "详情",
           }}[key] || key),
           getLanguage: () => "zh",
         }});
@@ -301,7 +300,7 @@ def test_user_dictionary_results_render_compact_primary_definitions():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
-def test_long_user_dictionary_results_are_collapsible():
+def test_long_user_dictionary_results_open_detail_button():
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
@@ -346,8 +345,7 @@ def test_long_user_dictionary_results_are_collapsible():
             userDictionaryUnknown: "未命名词典",
             userDictionarySpellings: "写法",
             userDictionarySeeAlso: "参见",
-            userDictionaryExpand: "展开释义",
-            userDictionaryCollapse: "收起",
+            userDictionaryDetails: "详情",
           }}[key] || key),
           getLanguage: () => "zh",
         }});
@@ -362,12 +360,12 @@ def test_long_user_dictionary_results_are_collapsible():
             }},
           ],
         }});
-        const details = section.children[1].children[0].children[0];
+        const line = section.children[1].children[0].children[0];
         const text = section.textContent;
 
-        assert.equal(details.tag, "details");
-        assert.equal(text.includes("展开释义"), true);
-        assert.equal(text.includes("收起"), true);
+        assert.equal(line.tag, "p");
+        assert.equal(text.includes("详情"), true);
+        assert.equal(text.includes("释义 5"), false);
         assert.equal((text.match(/新日漢大辭典/g) || []).length, 1);
       """
     )

@@ -250,6 +250,7 @@ def test_mdx_dictionary_indexes_keys_and_strips_html(tmp_path, monkeypatch):
     matches = dictionaries.lookup_user_dictionaries("大統領", base_dir=tmp_path / "dicts")
     assert matches[0]["dictionary_name"] == "MDict"
     assert matches[0]["definitions"] == ["总统\n国家元首"]
+    assert matches[0]["html"] == "<div>总统<br>国家元首</div>"
 
 
 def test_mdx_import_enables_bundled_lzo_fallback():

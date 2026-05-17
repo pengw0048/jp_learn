@@ -189,7 +189,7 @@ window.JPCORPUS_LEXICAL = (() => {
         const item = el("article", "user-dictionary-result");
         let sourceTarget = null;
         if (definitions.length) {
-          const definitionBlock = userDictionaryDefinitionBlock(definitions);
+          const definitionBlock = userDictionaryDefinitionBlock(definitions, group.name, group.results);
           item.append(definitionBlock.node);
           sourceTarget = definitionBlock.sourceTarget;
         }
@@ -242,22 +242,28 @@ window.JPCORPUS_LEXICAL = (() => {
       ).slice(0, 8);
     }
 
-    function userDictionaryDefinitionBlock(definitions) {
+    function userDictionaryDefinitionBlock(definitions, sourceName = "", results = []) {
       const text = userDictionaryDefinitionText(definitions);
-      if (!userDictionaryNeedsCollapse(text)) {
-        const content = el("p", "user-dictionary-definition", text);
+      const previewText = userDictionaryPreviewText(text);
+      const content = el("p", "user-dictionary-definition");
+      const preview = el("span", "user-dictionary-definition-preview", previewText);
+      content.append(preview);
+      if (!userDictionaryNeedsDetail(text)) {
         return { node: content, sourceTarget: content };
       }
-      const details = el("details", "user-dictionary-definition-details");
-      const summary = el("summary", "user-dictionary-definition-summary");
-      const preview = el("span", "user-dictionary-definition user-dictionary-preview", userDictionaryPreviewText(text));
-      summary.append(
-        preview,
-        el("span", "user-dictionary-toggle user-dictionary-toggle-closed", t("userDictionaryExpand")),
-        el("span", "user-dictionary-toggle user-dictionary-toggle-open", t("userDictionaryCollapse")),
-      );
-      details.append(summary, el("p", "user-dictionary-definition user-dictionary-full", text));
-      return { node: details, sourceTarget: preview };
+      content.append(" ");
+      const button = el("button", "user-dictionary-detail-button", t("userDictionaryDetails"));
+      button.type = "button";
+      if (typeof button.addEventListener === "function") {
+        button.addEventListener("click", () => openUserDictionaryDetail({
+          definitions,
+          htmlEntries: userDictionaryHtmlEntries(results),
+          sourceName,
+          text,
+        }));
+      }
+      content.append(button);
+      return { node: content, sourceTarget: content };
     }
 
     function userDictionaryDefinitionText(definitions) {
@@ -268,19 +274,127 @@ window.JPCORPUS_LEXICAL = (() => {
       return joined;
     }
 
-    function userDictionaryNeedsCollapse(text) {
-      return text.length > 360 || text.split(/\n/).filter(Boolean).length > 5;
+    function userDictionaryNeedsDetail(text) {
+      return text.length > 120 || text.split(/\n/).filter(Boolean).length > 2;
     }
 
     function userDictionaryPreviewText(text) {
-      const lines = text.split(/\n/).filter(Boolean);
-      if (lines.length > 4) {
-        return `${lines.slice(0, 4).join("\n")}...`;
+      const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean);
+      const singleLine = (lines.length > 1 ? lines.slice(0, 3).join(" ") : text).replace(/\s+/g, " ").trim();
+      if (singleLine.length > 96) {
+        return `${singleLine.slice(0, 96).trim()}...`;
       }
-      if (text.length > 260) {
-        return `${text.slice(0, 260).trim()}...`;
+      return singleLine;
+    }
+
+    function userDictionaryHtmlEntries(results) {
+      return uniqueUserDictionaryStrings(
+        asArray(results)
+          .filter((result) => result.kind !== "reference")
+          .map((result) => result.html)
+          .filter(Boolean),
+      ).slice(0, 4);
+    }
+
+    function openUserDictionaryDetail({ definitions, htmlEntries = [], sourceName, text }) {
+      if (typeof document === "undefined") {
+        return;
       }
-      return text;
+      closeUserDictionaryDetail();
+      const overlay = el("div", "dictionary-detail-modal-backdrop");
+      overlay.setAttribute("role", "presentation");
+      const dialog = el("section", "dictionary-detail-modal");
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-label", t("userDictionaryDetailTitle"));
+      const closeButton = el("button", "dictionary-detail-close", "×");
+      closeButton.type = "button";
+      closeButton.setAttribute("aria-label", t("close"));
+      closeButton.addEventListener("click", closeUserDictionaryDetail);
+      const heading = el("h3", "", t("userDictionaryDetailTitle"));
+      const meta = el("p", "dictionary-detail-source", sourceName || t("userDictionaryUnknown"));
+      const body = el("div", "dictionary-detail-body");
+      if (htmlEntries.length) {
+        htmlEntries.forEach((html, index) => {
+          const entry = sanitizedUserDictionaryHtml(html);
+          if (entry.childElementCount || entry.textContent.trim()) {
+            if (index > 0) {
+              body.append(el("hr", "dictionary-detail-separator"));
+            }
+            body.append(entry);
+          }
+        });
+      }
+      if (!body.childElementCount) {
+        userDictionaryDetailNodes(definitions, text).forEach((node) => body.append(node));
+      }
+      dialog.append(closeButton, heading, meta, body);
+      overlay.append(dialog);
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) {
+          closeUserDictionaryDetail();
+        }
+      });
+      document.body.append(overlay);
+      closeButton.focus();
+    }
+
+    function sanitizedUserDictionaryHtml(html) {
+      const container = el("article", "dictionary-detail-html");
+      const template = document.createElement("template");
+      template.innerHTML = String(html || "");
+      template.content.querySelectorAll("script, style, iframe, object, embed, link, meta").forEach((node) => node.remove());
+      template.content.querySelectorAll("*").forEach((node) => {
+        [...node.attributes].forEach((attribute) => {
+          const name = attribute.name.toLowerCase();
+          const value = String(attribute.value || "").trim().toLowerCase();
+          if (name.startsWith("on") || value.startsWith("javascript:")) {
+            node.removeAttribute(attribute.name);
+          }
+        });
+      });
+      container.append(template.content.cloneNode(true));
+      return container;
+    }
+
+    function closeUserDictionaryDetail() {
+      if (typeof document === "undefined") {
+        return;
+      }
+      document.querySelector(".dictionary-detail-modal-backdrop")?.remove();
+    }
+
+    function userDictionaryDetailNodes(definitions, text) {
+      const lines = userDictionaryDetailLines(text || definitions.join("\n"));
+      return lines.map((line) => {
+        const className = userDictionaryDetailLineClass(line);
+        return el("p", className, line);
+      });
+    }
+
+    function userDictionaryDetailLines(text) {
+      const sourceLines = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+      const lines = sourceLines.length > 1 ? sourceLines : String(text || "").split(/[；;]/).map((line) => line.trim()).filter(Boolean);
+      return lines.flatMap((line) => splitLongDictionaryLine(line));
+    }
+
+    function splitLongDictionaryLine(line) {
+      const text = String(line || "").trim();
+      if (text.length <= 120) {
+        return [text];
+      }
+      const parts = text.split(/(?<=[。！？?])/).map((part) => part.trim()).filter(Boolean);
+      return parts.length > 1 ? parts : [text];
+    }
+
+    function userDictionaryDetailLineClass(line) {
+      if (/^例[:：]?$/.test(line) || /^例[:：]/.test(line)) {
+        return "dictionary-detail-line dictionary-detail-example";
+      }
+      if (/^（?\(?\d+[)）.．]/.test(line) || /^【[^】]+】$/.test(line)) {
+        return "dictionary-detail-line dictionary-detail-heading";
+      }
+      return "dictionary-detail-line";
     }
 
     function userDictionaryReferenceLine(label, values) {

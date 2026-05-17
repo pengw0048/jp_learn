@@ -424,6 +424,7 @@ def mdx_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row]) -> 
             offset=int(row["record_offset"]),
             length=int(row["record_length"]),
         )
+        raw_html = truncate_text(decode_mdx_record_text(raw), MAX_LOOKUP_TEXT_CHARS)
         text = truncate_text(strip_html_to_text(raw), MAX_LOOKUP_TEXT_CHARS)
         if not text:
             continue
@@ -437,6 +438,7 @@ def mdx_rows_to_results(record: dict[str, Any], rows: Iterable[sqlite3.Row]) -> 
                 "tags": [],
                 "definitions": [text],
                 "text": text,
+                "html": raw_html,
             }
         )
     return results
@@ -955,12 +957,23 @@ def normalize_space(value: str) -> str:
 
 
 def strip_html_to_text(value: Any) -> str:
-    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value or "")
+    text = decode_mdx_record_text(value)
     parser = _HTMLTextExtractor()
     parser.feed(text)
     parser.close()
     lines = [normalize_space(line) for line in "".join(parser.parts).splitlines()]
     return "\n".join(line for line in lines if line)
+
+
+def decode_mdx_record_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        for encoding in ("utf-8", "utf-16", "utf-16-le"):
+            try:
+                return value.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
 
 
 class _HTMLTextExtractor(HTMLParser):
