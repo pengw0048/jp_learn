@@ -8,7 +8,7 @@ import zipfile
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
 from .models import SubtitleLine, TextFile
@@ -122,7 +122,18 @@ def read_text_sidecar_metadata(path: Path) -> EPUBMetadata:
         return EPUBMetadata()
     title = normalize_display_text(payload.get("title") or "")
     creator = normalize_display_text(payload.get("author") or payload.get("creator") or "")
+    if not creator:
+        creator = domain_from_url(payload.get("url"))
     return EPUBMetadata(title=title or None, creator=creator or None)
+
+
+def domain_from_url(value: object) -> str:
+    try:
+        parsed = urlparse(str(value or ""))
+    except ValueError:
+        return ""
+    hostname = normalize_display_text(parsed.hostname or "")
+    return hostname[4:] if hostname.startswith("www.") else hostname
 
 
 def epub_rootfile_path(archive: zipfile.ZipFile) -> str | None:

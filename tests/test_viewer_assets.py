@@ -606,7 +606,11 @@ def test_corpus_sync_defers_reload_while_reading_and_applies_elsewhere():
 
           const imported = await runScenario(false, "refresh_imported_texts");
           assert.equal(imported.calls.reloads, 1);
-          assert.equal(imported.app.maintenance.syncNotice, "corpusUpdateImported");
+          assert.equal(imported.app.maintenance.syncNotice, "");
+
+          const deferredImported = await runScenario(true, "refresh_imported_texts");
+          assert.equal(deferredImported.calls.reloads, 0);
+          assert.equal(deferredImported.refs.corpusSyncMessage.textContent, "corpusUpdateImportedReady");
         }})().catch((error) => {{
           console.error(error);
           process.exit(1);
@@ -653,6 +657,64 @@ def test_maintenance_status_hides_successful_imported_text_refresh():
         assert.equal(helpers.visibleMaintenanceJob(failedImportRefresh), failedImportRefresh);
         assert.equal(helpers.maintenanceStatusLabel(failedImportRefresh), "maintenanceFailedTask");
         """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_source_groups_show_imported_text_domain_meta():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_sources.js")!r});
+
+        const helpers = window.JPCORPUS_SOURCES.createSourceHelpers({{
+          app: {{
+            corpus: {{
+              shows: [],
+              sources: [{{
+                source_type: "text",
+                source_title: "NHK 記事",
+                source_artist: "www3.nhk.or.jp",
+                source_file: "web/nhk.txt",
+                line_count: 3,
+                words: ["学校"],
+              }}],
+            }},
+            words: [],
+            expandedSourceGroups: new Set(),
+            sourceDetails: new Map(),
+            sourceDetailRequests: new Map(),
+            sourceDetailFailures: new Set(),
+          }},
+          api: {{}},
+          asArray: (value) => Array.isArray(value) ? value : [],
+          el: () => null,
+          emptyMessage: () => null,
+          fileStem: (value) => String(value || ""),
+          formatNumber: (value) => String(value),
+          hasExampleAnnotations: () => false,
+          hideSourcePanel: () => {{}},
+          normalizedTextTitle: (value) => String(value || ""),
+          refs: {{ sourceInventory: null, sourcePanel: {{ hidden: true }} }},
+          render: () => {{}},
+          startMaintenanceJob: async () => null,
+          stopAllSpeech: () => {{}},
+          storageMode: "mode",
+          strong: () => null,
+          t: (key) => key,
+        }});
+
+        const groups = helpers.buildSourceGroups("text");
+
+        assert.equal(groups.length, 1);
+        assert.equal(groups[0].title, "NHK 記事");
+        assert.equal(groups[0].meta, "www3.nhk.or.jp");
+      """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 

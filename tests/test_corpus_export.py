@@ -635,6 +635,22 @@ def test_text_file_uses_sidecar_metadata_title(tmp_path: Path):
     assert text_file.name == "web/imported.txt"
 
 
+def test_text_file_uses_sidecar_url_domain_as_author(tmp_path: Path):
+    text = tmp_path / "web" / "nhk.txt"
+    text.parent.mkdir()
+    text.write_text("今日は学校へ行く。", encoding="utf-8")
+    text.with_name("nhk.meta.json").write_text(
+        '{"title": "NHK 記事", "url": "https://www3.nhk.or.jp/news/easy/example.html"}',
+        encoding="utf-8",
+    )
+
+    text_file = text_file_from_path(text, root=tmp_path)
+
+    assert text_file.title == "NHK 記事"
+    assert text_file.author == "www3.nhk.or.jp"
+    assert text_file.name == "web/nhk.txt"
+
+
 def test_discover_text_files_includes_txt_and_epub(tmp_path: Path):
     (tmp_path / "book.txt").write_text("今日は学校へ行く。", encoding="utf-8")
     write_sample_epub(tmp_path / "novel.epub")

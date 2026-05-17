@@ -185,6 +185,8 @@ window.JPCORPUS_SOURCES = (() => {
         : source.title;
       const meta = source.type === "lyrics" && source.album
         ? source.artist
+        : source.type === "text"
+          ? source.artist
         : "";
       return {
         key,

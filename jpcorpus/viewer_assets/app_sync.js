@@ -37,6 +37,8 @@ window.JPCORPUS_SYNC = (() => {
         refs.corpusSyncMessage.textContent = t("corpusUpdateApplying");
       } else if (app.maintenance.syncError) {
         refs.corpusSyncMessage.textContent = t("corpusUpdateFailed", { error: app.maintenance.syncError });
+      } else if (isImportedTextRefresh(job)) {
+        refs.corpusSyncMessage.textContent = t("corpusUpdateImportedReady");
       } else {
         refs.corpusSyncMessage.textContent = t("corpusUpdateReady");
       }
@@ -168,9 +170,11 @@ window.JPCORPUS_SYNC = (() => {
     }
 
     function corpusNoticeLabel(job) {
-      return (job.kind || job.spec?.type) === "refresh_imported_texts"
-        ? t("corpusUpdateImported")
-        : t("corpusUpdateApplied");
+      return isImportedTextRefresh(job) ? "" : t("corpusUpdateApplied");
+    }
+
+    function isImportedTextRefresh(job) {
+      return (job?.kind || job?.spec?.type) === "refresh_imported_texts";
     }
 
     return {
