@@ -1025,6 +1025,39 @@ def test_chinese_glossary_has_common_greeting_overrides(tmp_path: Path):
     assert glossary.lookup_with_source("御免") == ("对不起；不好意思", "override")
 
 
+def test_chinese_glossary_cleans_prebuilt_zhwiktionary_payloads(tmp_path: Path):
+    path = tmp_path / "zhwiktionary-ja.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ヴァイオリン": {
+                    "gloss": ":Template:音乐 小提琴。",
+                    "readings": ["ゔぁいおりん"],
+                    "parts_of_speech": ["名词"],
+                },
+                "温める": {
+                    "gloss": "口语中有时用「あっためる」；温，热，烫。",
+                    "readings": ["あたためる"],
+                    "parts_of_speech": ["动词"],
+                },
+                "すぎ": {
+                    "gloss": "過ぎる (sugiru) 的未然形及连用形 [一段动词]",
+                    "readings": ["すぎ"],
+                    "parts_of_speech": ["动词"],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    glossary = ChineseGlossary.load(path)
+
+    assert glossary.lookup("ヴァイオリン") == "小提琴。"
+    assert glossary.lookup("温める") == "温，热，烫。"
+    assert glossary.lookup("すぎ") is None
+
+
 def test_select_examples_prefers_quality_and_source_diversity():
     examples = [
         WordExample(

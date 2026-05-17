@@ -286,15 +286,17 @@ def load_glossary_payload(
         key_text = str(key)
         if isinstance(value, dict):
             value_text = str(value.get("gloss") or "")
+            cleaned_text = clean_zhwiktionary_gloss(value_text)
             entry_readings = tuple(str(item) for item in value.get("readings") or [] if str(item))
             entry_parts_of_speech = tuple(
                 str(item) for item in value.get("parts_of_speech") or [] if str(item)
             )
         else:
             value_text = str(value)
+            cleaned_text = clean_gloss(value_text)
             entry_readings = extract_gloss_readings(value_text)
             entry_parts_of_speech = extract_gloss_parts_of_speech(value_text)
-        entries[key_text] = clean_gloss(value_text)
+        entries[key_text] = cleaned_text
         if entry_readings:
             readings[key_text] = entry_readings
         if entry_parts_of_speech:

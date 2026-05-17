@@ -333,22 +333,22 @@ def test_study_card_reveals_answer_before_review_actions():
           studyKindLabel: () => "复习",
           studyTargetCount: 7,
           t: (key, values = {{}}) => ({{
-            studyProgress: `今日 ${{values.current}} / ${{values.total}}`,
+            studyProgress: `学习 ${{values.current}} / ${{values.total}}`,
             studyHint: "hint",
             count: "频次",
             examples: "例句",
             revealAnswer: "看答案",
             nextWord: "下一个",
-            studyCheckButton: "进度 +1",
+            studyCheckButton: "确认一次",
             studyAgain: "还不熟",
-            studyKnown: "已经会了",
+            studyKnown: "直接认识",
           }}[key] || key),
         }});
         const word = {{ word: "行く", reading: "いく", level: "N5" }};
         const hidden = helper.renderStudyCard(word, 0, 2);
         assert.ok(buttonByText(hidden, "看答案"));
         assert.ok(buttonByText(hidden, "下一个"));
-        assert.equal(Boolean(buttonByText(hidden, "进度 +1")), false);
+        assert.equal(Boolean(buttonByText(hidden, "确认一次")), false);
         assert.equal(nodes(hidden).filter((node) => node.className.includes("study-progress-dot filled")).length, 3);
 
         buttonByText(hidden, "看答案").click();
@@ -356,9 +356,9 @@ def test_study_card_reveals_answer_before_review_actions():
         assert.equal(rendered, 1);
 
         const shown = helper.renderStudyCard(word, 0, 2);
-        assert.ok(buttonByText(shown, "进度 +1"));
+        assert.ok(buttonByText(shown, "确认一次"));
         assert.ok(buttonByText(shown, "还不熟"));
-        assert.ok(buttonByText(shown, "已经会了"));
+        assert.ok(buttonByText(shown, "直接认识"));
         assert.equal(Boolean(buttonByText(shown, "看答案")), false);
         """
     )

@@ -1,11 +1,12 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.22";
+  const SCRIPT_VERSION = "0.1.23";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
   window.__jpcorpusContentVersion = SCRIPT_VERSION;
   window.__jpcorpusPickerLoaded = true;
   const CJK_FONT_CSS = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  const STUDY_TARGET_COUNT = 7;
   const SPEECH_SOFT_CHARS = 70;
   const SPEECH_MAX_CHARS = 120;
   const SPEECH_PREFETCH_UNITS = 3;
@@ -26,8 +27,10 @@
       addedStudy: "已加入学习：{word}",
       updatedStudy: "已更新学习状态：{word}",
       addStudy: "加入学习",
-      known: "已认识",
+      confirmStudy: "确认一次",
+      known: "直接认识",
       studying: "学习中",
+      studyChecks: "学习进度 {count}/{target}",
       ignore: "忽略",
       ignored: "已忽略",
       clearStatus: "取消标记",
@@ -70,8 +73,10 @@
       addedStudy: "Added to study: {word}",
       updatedStudy: "Updated study status: {word}",
       addStudy: "Add to study",
-      known: "Known",
+      confirmStudy: "Confirm once",
+      known: "Mark known",
       studying: "Learning",
+      studyChecks: "Study progress {count}/{target}",
       ignore: "Ignore",
       ignored: "Ignored",
       clearStatus: "Clear",
@@ -457,7 +462,12 @@
 
     const meta = document.createElement("div");
     meta.className = "jpcorpus-reader-panel-meta";
-    [annotation.reading, annotation.level, annotation.pos].filter(Boolean).forEach((item) => {
+    [
+      annotation.reading,
+      annotation.level,
+      annotation.pos,
+      readerStudyCountLabel(annotation),
+    ].filter(Boolean).forEach((item) => {
       const chip = document.createElement("span");
       chip.textContent = item;
       meta.append(chip);
@@ -465,7 +475,7 @@
 
     const meaning = document.createElement("p");
     meaning.className = "jpcorpus-reader-panel-meaning";
-    meaning.textContent = annotation.meaning_zh || annotation.meaning || tr("noGlossary");
+    meaning.textContent = readerMeaning(annotation) || tr("noGlossary");
 
     const detail = document.createElement("p");
     detail.className = "jpcorpus-reader-panel-detail";
@@ -493,11 +503,19 @@
   function refreshReaderStudyActions(row, annotation) {
     row.replaceChildren();
     const currentStatus = normalizeReaderStatus(annotation.status);
-    row.append(
-      renderReaderStatusButton(row, annotation, {
+    if (currentStatus === "learning" || currentStatus === "uncertain") {
+      row.append(renderReaderStatusButton(row, annotation, {
         status: "learning",
-        label: currentStatus === "learning" || currentStatus === "uncertain" ? tr("studying") : tr("addStudy"),
-      }),
+        label: tr("confirmStudy"),
+        action: "confirm",
+      }));
+    } else {
+      row.append(renderReaderStatusButton(row, annotation, {
+        status: "learning",
+        label: tr("addStudy"),
+      }));
+    }
+    row.append(
       renderReaderStatusButton(row, annotation, {
         status: "known",
         label: tr("known"),
@@ -529,7 +547,7 @@
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setReaderWordStatus(row, annotation, options.status, button);
+      setReaderWordStatus(row, annotation, options.status, button, options.action);
     });
     return button;
   }
@@ -545,12 +563,16 @@
     });
   }
 
-  async function setReaderWordStatus(row, annotation, status, button) {
+  async function setReaderWordStatus(row, annotation, status, button, action = "") {
     const word = annotation.word || annotation.surface || "";
     if (!word) {
       showToast(tr("cannotUpdateStudy"), "error");
       return;
     }
+    const nextStudyCount = action === "confirm"
+      ? Math.min(readerStudyCount(annotation) + 1, STUDY_TARGET_COUNT)
+      : undefined;
+    const nextStatus = nextStudyCount >= STUDY_TARGET_COUNT ? "known" : status;
     const buttons = Array.from(row.querySelectorAll("button"));
     buttons.forEach((item) => {
       item.disabled = true;
@@ -559,20 +581,52 @@
     try {
       const response = await chrome.runtime.sendMessage({
         type: "SET_WORD_STATUS",
-        payload: { word, status },
+        payload: {
+          word,
+          status: nextStatus,
+          ...(nextStudyCount !== undefined ? { study_count: nextStudyCount } : {}),
+        },
       });
       if (!response?.ok) {
         throw new Error(response?.error || tr("cannotUpdateStudy"));
       }
-      annotation.status = normalizeReaderStatus(response.result?.status || status);
+      annotation.status = normalizeReaderStatus(response.result?.status || nextStatus);
       annotation.study_count = response.result?.study_count || 0;
       updateReaderAnnotationsForWord(word, annotation.status, annotation.study_count);
-      refreshReaderStudyActions(row, annotation);
-      showToast(tr(status === "learning" ? "addedStudy" : "updatedStudy", { word }));
+      if (reader?.selectedToken) {
+        showReaderPanel(annotation, reader.selectedToken);
+      } else {
+        refreshReaderStudyActions(row, annotation);
+      }
+      const toastKey = status === "learning" && action !== "confirm" ? "addedStudy" : "updatedStudy";
+      showToast(tr(toastKey, { word }));
     } catch (error) {
       refreshReaderStudyActions(row, annotation);
       showToast(error.message || String(error), "error");
     }
+  }
+
+  function readerMeaning(annotation) {
+    if (extensionLang === "zh") {
+      return annotation.meaning_zh || "";
+    }
+    return annotation.meaning || annotation.meaning_zh || "";
+  }
+
+  function readerStudyCount(annotation) {
+    const value = Number.parseInt(annotation.study_count, 10);
+    if (!Number.isFinite(value) || value <= 0) {
+      return 0;
+    }
+    return Math.min(value, STUDY_TARGET_COUNT);
+  }
+
+  function readerStudyCountLabel(annotation) {
+    const count = readerStudyCount(annotation);
+    if (count <= 0) {
+      return "";
+    }
+    return tr("studyChecks", { count, target: STUDY_TARGET_COUNT });
   }
 
   function normalizeReaderStatus(status) {

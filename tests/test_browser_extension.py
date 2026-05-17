@@ -45,6 +45,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert 'importArticle: "导入正文"' in content
     assert 'pickImport: "点选导入"' in content
     assert 'studying: "学习中"' in content
+    assert 'confirmStudy: "确认一次"' in content
+    assert 'studyChecks: "学习进度 {count}/{target}"' in content
     assert 'readAll: "朗读全文"' in content
     assert 'readParagraph: "朗读选段"' in content
     assert 'pickParagraph: "点要朗读的段落。Esc 取消。"' in content
@@ -59,6 +61,10 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "startReaderParagraphPicker" in content
     assert "toggleReaderFurigana" in content
     assert "renderReaderTokenText" in content
+    assert "readerMeaning(annotation)" in content
+    assert "readerStudyCountLabel(annotation)" in content
+    assert "action: \"confirm\"" in content
+    assert "study_count: nextStudyCount" in content
     assert "readerSelectedText" in content
     assert "updateReaderSelectionButton" in content
     assert "positionToastUnderToolbar" in content
