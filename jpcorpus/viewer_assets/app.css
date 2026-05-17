@@ -1209,6 +1209,11 @@ select {
   color: var(--muted);
 }
 
+.dictionary-detail-reference {
+  color: var(--text-source);
+  font-weight: 760;
+}
+
 .dictionary-detail-separator {
   width: 100%;
   border: 0;

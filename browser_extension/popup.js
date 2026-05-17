@@ -2,6 +2,7 @@ const DEFAULT_BASE_URL = "http://127.0.0.1:8767";
 
 const MESSAGES = {
   zh: {
+    appName: "日语阅读助手",
     baseUrl: "本地阅读器地址",
     saveUrl: "保存地址",
     settings: "设置",
@@ -30,6 +31,7 @@ const MESSAGES = {
     webTextTitle: "网页文本",
   },
   en: {
+    appName: "Japanese Reading Companion",
     baseUrl: "Local viewer URL",
     saveUrl: "Save URL",
     settings: "Settings",

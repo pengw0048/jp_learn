@@ -195,9 +195,12 @@ def test_dictionary_manager_assets_are_wired():
     assert "importDictionary" in api
     assert "/api/dictionaries/import" in api
     assert "renderUserDictionaryResults" in lexical
+    assert 'event.key === "Escape"' in lexical
+    assert "dictionary-detail-reference" in lexical
     assert 'dictionaryManagerTitle: "本地词典"' in i18n
     assert 'userDictionaryResults: "本地词典"' in i18n
     assert ".user-dictionary-results" in css
+    assert ".dictionary-detail-reference" in css
     assert ".dictionary-row" in css
 
 

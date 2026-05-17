@@ -29,7 +29,11 @@ def test_browser_extension_scripts_parse(script_name: str) -> None:
 
 def test_popup_keeps_success_feedback_after_selection_import() -> None:
     popup = (ROOT / "browser_extension" / "popup.js").read_text(encoding="utf-8")
+    html = (ROOT / "browser_extension" / "popup.html").read_text(encoding="utf-8")
 
+    assert 'appName: "日语阅读助手"' in popup
+    assert 'appName: "Japanese Reading Companion"' in popup
+    assert 'data-i18n="appName"' in html
     assert 'alreadyImported: "已经导入过 {title}。"' in popup
     assert 'imported: "已导入 {title}。"' in popup
     assert "refs.status.textContent = importResultMessage(response.result);" in popup
@@ -103,3 +107,4 @@ def test_extension_manifest_version_matches_content_script() -> None:
 
     assert script_version is not None
     assert manifest["version"] == script_version.group(1)
+    assert manifest["name"] == "Japanese Reading Companion"

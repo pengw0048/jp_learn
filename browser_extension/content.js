@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.24";
+  const SCRIPT_VERSION = "0.1.25";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -13,12 +13,12 @@
   const SPEECH_PREFETCH_UNITS = 3;
   const MESSAGES = {
     zh: {
-      stillAnnotating: "jpcorpus 仍在标注这个页面...",
-      readerOff: "jpcorpus 网页阅读模式已关闭。",
-      annotating: "正在用 jpcorpus 标注这个页面...",
+      stillAnnotating: "日语阅读助手仍在标注这个页面...",
+      readerOff: "日语阅读助手网页阅读模式已关闭。",
+      annotating: "正在用日语阅读助手标注这个页面...",
       noJapaneseText: "没有在正文里找到日语文本。",
       cannotAnnotate: "无法标注这个页面。",
-      annotated: "jpcorpus 标注了 {count} 个词。",
+      annotated: "日语阅读助手标注了 {count} 个词。",
       noAnnotations: "没有应用标注。如果这里明显不对，可以刷新页面再试。",
       close: "关闭",
       noGlossary: "没有找到词典释义。",
@@ -60,12 +60,12 @@
       noReadableArticle: "没有在这个页面找到可读正文。",
     },
     en: {
-      stillAnnotating: "jpcorpus is still annotating this page...",
-      readerOff: "jpcorpus reading mode off.",
-      annotating: "Annotating this page with jpcorpus...",
+      stillAnnotating: "Japanese Reading Companion is still annotating this page...",
+      readerOff: "Japanese Reading Companion reading mode off.",
+      annotating: "Annotating this page with Japanese Reading Companion...",
       noJapaneseText: "No Japanese text found in the main page content.",
       cannotAnnotate: "Could not annotate this page.",
-      annotated: "jpcorpus annotated {count} words.",
+      annotated: "Japanese Reading Companion annotated {count} words.",
       noAnnotations: "No annotations were applied. Try reloading the page if this looks wrong.",
       close: "Close",
       noGlossary: "No glossary entry found.",

@@ -361,6 +361,16 @@ window.JPCORPUS_LEXICAL = (() => {
       closeButton.type = "button";
       closeButton.setAttribute("aria-label", t("close"));
       closeButton.addEventListener("click", closeUserDictionaryDetail);
+      const closeOnEscape = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeUserDictionaryDetail();
+        }
+      };
+      if (typeof document.addEventListener === "function") {
+        overlay.dictionaryDetailKeydown = closeOnEscape;
+        document.addEventListener("keydown", closeOnEscape);
+      }
       const heading = el("h3", "", t("userDictionaryDetailTitle"));
       const meta = el("p", "dictionary-detail-source", sourceName || t("userDictionaryUnknown"));
       const body = el("div", "dictionary-detail-body");
@@ -411,7 +421,11 @@ window.JPCORPUS_LEXICAL = (() => {
       if (typeof document === "undefined") {
         return;
       }
-      document.querySelector(".dictionary-detail-modal-backdrop")?.remove();
+      const overlay = document.querySelector(".dictionary-detail-modal-backdrop");
+      if (overlay?.dictionaryDetailKeydown && typeof document.removeEventListener === "function") {
+        document.removeEventListener("keydown", overlay.dictionaryDetailKeydown);
+      }
+      overlay?.remove();
     }
 
     function userDictionaryDetailNodes(definitions, text) {
@@ -443,6 +457,9 @@ window.JPCORPUS_LEXICAL = (() => {
       }
       if (/^（?\(?\d+[)）.．]/.test(line) || /^【[^】]+】$/.test(line)) {
         return "dictionary-detail-line dictionary-detail-heading";
+      }
+      if (/^(参见|參見|写法|寫法|See also|Spelling)[:：]/i.test(line)) {
+        return "dictionary-detail-line dictionary-detail-reference";
       }
       return "dictionary-detail-line";
     }
