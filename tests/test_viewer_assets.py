@@ -961,6 +961,65 @@ def test_source_groups_show_imported_text_domain_meta():
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
 
 
+def test_source_inventory_hides_detail_action_for_single_reader_items():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+
+    script = dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        global.window = {{}};
+        require({str(VIEWER_ASSET_DIR / "app_sources.js")!r});
+
+        const helpers = window.JPCORPUS_SOURCES.createSourceHelpers({{
+          app: {{
+            corpus: {{ shows: [], sources: [] }},
+            words: [],
+            expandedSourceGroups: new Set(),
+            sourceDetails: new Map(),
+            sourceDetailRequests: new Map(),
+            sourceDetailFailures: new Set(),
+          }},
+          api: {{}},
+          asArray: (value) => Array.isArray(value) ? value : [],
+          el: () => null,
+          emptyMessage: () => null,
+          fileStem: (value) => String(value || ""),
+          formatNumber: (value) => String(value),
+          hasExampleAnnotations: () => false,
+          hideSourcePanel: () => {{}},
+          normalizedTextTitle: (value) => String(value || ""),
+          refs: {{ sourceInventory: null, sourcePanel: {{ hidden: true }} }},
+          render: () => {{}},
+          startMaintenanceJob: async () => null,
+          stopAllSpeech: () => {{}},
+          storageMode: "mode",
+          strong: () => null,
+          t: (key) => key,
+        }});
+
+        assert.equal(helpers.shouldShowSourceGroupDetailAction({{
+          type: "text",
+          children: [{{ label: "Article" }}],
+        }}), false);
+        assert.equal(helpers.shouldShowSourceGroupDetailAction({{
+          type: "lyrics",
+          children: [{{ label: "Track" }}],
+        }}), false);
+        assert.equal(helpers.shouldShowSourceGroupDetailAction({{
+          type: "lyrics",
+          children: [{{ label: "Track 1" }}, {{ label: "Track 2" }}],
+        }}), true);
+        assert.equal(helpers.shouldShowSourceGroupDetailAction({{
+          type: "subtitle",
+          children: [{{ label: "EP01", files: ["a.srt", "b.srt"] }}],
+        }}), true);
+      """
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+
+
 def test_lexical_notes_hide_dictionary_senses_in_chinese_ui():
     node = shutil.which("node")
     if not node:

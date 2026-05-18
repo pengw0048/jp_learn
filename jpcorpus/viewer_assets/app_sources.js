@@ -374,13 +374,6 @@ window.JPCORPUS_SOURCES = (() => {
         heading.append(el("span", "source-meta", source.meta));
       }
 
-      const action = el("button", "source-view-button", t("sourceInventoryView"));
-      action.type = "button";
-      action.disabled = actionsDisabled;
-      action.addEventListener("click", () => {
-        app.sourcePanelGroupKey = source.key;
-        renderSourceInventory();
-      });
       const readAction = el("button", "source-read-button", t("sourceInventoryRead"));
       readAction.type = "button";
       readAction.disabled = actionsDisabled;
@@ -388,7 +381,17 @@ window.JPCORPUS_SOURCES = (() => {
         openSourceInReader(source);
       });
       const actions = el("div", "source-card-actions");
-      actions.append(action, readAction);
+      if (shouldShowSourceGroupDetailAction(source)) {
+        const action = el("button", "source-view-button", t("sourceInventoryView"));
+        action.type = "button";
+        action.disabled = actionsDisabled;
+        action.addEventListener("click", () => {
+          app.sourcePanelGroupKey = source.key;
+          renderSourceInventory();
+        });
+        actions.append(action);
+      }
+      actions.append(readAction);
       if (canDeleteImportedSource(source)) {
         actions.append(renderDeleteImportedSourceButton(source));
       }
@@ -432,6 +435,14 @@ window.JPCORPUS_SOURCES = (() => {
         item.append(toggle);
       }
       return item;
+    }
+
+    function shouldShowSourceGroupDetailAction(source) {
+      if (!source || source.type === "text") {
+        return false;
+      }
+      const children = asArray(source.children);
+      return children.length > 1 || children.some((child) => asArray(child.files).length > 1);
     }
 
     function renderSourceGroupDetail(source) {
@@ -607,6 +618,7 @@ window.JPCORPUS_SOURCES = (() => {
       cleanSourceFileLabel,
       formatEpisodeLabel,
       renderSourceInventory,
+      shouldShowSourceGroupDetailAction,
       sourceDocumentKey,
       sourceDocumentLineCount,
       sourceDocumentWithDetail,
