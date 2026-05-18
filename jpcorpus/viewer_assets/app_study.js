@@ -23,10 +23,11 @@ window.JPCORPUS_STUDY = (() => {
     let studySyncTimer = null;
     let lastRemoteStudyUpdatedAt = "";
     const pendingStudySyncWords = new Set();
+    const STATUS_VALUES = new Set(["learning", "known", "none"]);
 
     function statusFor(word) {
       const stored = app.statuses[word.word] || "none";
-      if (stored === "ignored" || stored === "known" || isActiveStudyStatus(stored)) {
+      if (stored === "known" || isActiveStudyStatus(stored)) {
         return stored;
       }
       const count = studyCountFor(word);
@@ -36,29 +37,27 @@ window.JPCORPUS_STUDY = (() => {
       if (stored === "none" && count > 0) {
         return "learning";
       }
-      return stored;
+      return "none";
     }
 
     function setStatus(word, status) {
-      if (status === "none") {
+      const nextStatus = STATUS_VALUES.has(status) ? status : "none";
+      if (nextStatus === "none") {
         delete app.statuses[word.word];
         setStudyCount(word, 0);
         clearStudySchedule(word);
       } else {
-        app.statuses[word.word] = status;
-        if (isActiveStudyStatus(status) && studyCountFor(word) >= STUDY_TARGET_COUNT) {
+        app.statuses[word.word] = nextStatus;
+        if (isActiveStudyStatus(nextStatus) && studyCountFor(word) >= STUDY_TARGET_COUNT) {
           setStudyCount(word, 0);
         }
-        if (isActiveStudyStatus(status)) {
+        if (isActiveStudyStatus(nextStatus)) {
           scheduleStudyReview(word);
         }
-        if (status === "known") {
+        if (nextStatus === "known") {
           setStudyCount(word, STUDY_TARGET_COUNT);
         }
-        if (status === "ignored") {
-          setStudyCount(word, 0);
-        }
-        if (status === "known" || status === "ignored") {
+        if (nextStatus === "known") {
           clearStudySchedule(word);
         }
       }
@@ -228,7 +227,7 @@ window.JPCORPUS_STUDY = (() => {
       }
       return Object.fromEntries(
         Object.entries(value)
-          .filter(([, status]) => ["learning", "uncertain", "known", "ignored"].includes(status)),
+          .filter(([, status]) => ["learning", "known"].includes(status)),
       );
     }
 

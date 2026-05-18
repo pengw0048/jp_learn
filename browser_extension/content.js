@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.1.27";
+  const SCRIPT_VERSION = "0.1.28";
   if (window.__jpcorpusContentVersion === SCRIPT_VERSION) {
     return;
   }
@@ -32,12 +32,8 @@
       confirmStudy: "确认一次",
       known: "直接认识",
       studying: "学习中",
-      uncertain: "模糊",
       statusKnown: "已认识",
-      statusIgnored: "已忽略",
       studyChecks: "学习进度 {count}/{target}",
-      ignore: "忽略",
-      ignored: "已忽略",
       clearStatus: "取消标记",
       importSelection: "导入选中",
       importArticle: "导入正文",
@@ -82,12 +78,8 @@
       confirmStudy: "Confirm once",
       known: "Mark known",
       studying: "Learning",
-      uncertain: "Unsure",
       statusKnown: "Known",
-      statusIgnored: "Ignored",
       studyChecks: "Study progress {count}/{target}",
-      ignore: "Ignore",
-      ignored: "Ignored",
       clearStatus: "Clear",
       importSelection: "Import selection",
       importArticle: "Import article",
@@ -125,9 +117,7 @@
   let activeReaderHighlightFallback = null;
   const READER_TOKEN_STATUS_CLASSES = [
     "jpcorpus-reader-token-learning",
-    "jpcorpus-reader-token-uncertain",
     "jpcorpus-reader-token-known",
-    "jpcorpus-reader-token-ignored",
   ];
   syncLanguage();
   chrome.storage?.onChanged?.addListener((changes, areaName) => {
@@ -516,28 +506,22 @@
   function refreshReaderStudyActions(row, annotation) {
     row.replaceChildren();
     const currentStatus = normalizeReaderStatus(annotation.status);
-    if (currentStatus === "learning" || currentStatus === "uncertain") {
+    if (currentStatus === "learning") {
       row.append(renderReaderStatusButton(row, annotation, {
         status: "learning",
         label: tr("confirmStudy"),
         action: "confirm",
       }));
-    } else {
+    } else if (currentStatus !== "known") {
       row.append(renderReaderStatusButton(row, annotation, {
         status: "learning",
         label: tr("addStudy"),
       }));
     }
-    row.append(
-      renderReaderStatusButton(row, annotation, {
-        status: "known",
-        label: tr("known"),
-      }),
-      renderReaderStatusButton(row, annotation, {
-        status: "ignored",
-        label: currentStatus === "ignored" ? tr("ignored") : tr("ignore"),
-      }),
-    );
+    row.append(renderReaderStatusButton(row, annotation, {
+      status: "known",
+      label: tr("known"),
+    }));
     if (currentStatus !== "none") {
       row.append(renderReaderStatusButton(row, annotation, {
         status: "none",
@@ -551,8 +535,7 @@
     button.type = "button";
     button.className = "jpcorpus-reader-status-button";
     button.textContent = options.label;
-    const isActive = normalizeReaderStatus(annotation.status) === options.status
-      || (options.status === "learning" && normalizeReaderStatus(annotation.status) === "uncertain");
+    const isActive = normalizeReaderStatus(annotation.status) === options.status;
     if (isActive && options.status !== "none") {
       button.classList.add("active");
     }
@@ -639,14 +622,8 @@
     if (status === "learning") {
       return tr("studying");
     }
-    if (status === "uncertain") {
-      return tr("uncertain");
-    }
     if (status === "known") {
       return tr("statusKnown");
-    }
-    if (status === "ignored") {
-      return tr("statusIgnored");
     }
     return "";
   }
@@ -660,7 +637,7 @@
   }
 
   function normalizeReaderStatus(status) {
-    return ["learning", "uncertain", "known", "ignored", "none"].includes(status) ? status : "none";
+    return ["learning", "known", "none"].includes(status) ? status : "none";
   }
 
   function applyReaderTokenStatusClass(token, status) {
@@ -1659,16 +1636,11 @@
         cursor: pointer !important;
         transition: background 120ms ease, box-shadow 120ms ease, outline-color 120ms ease !important;
       }
-      .jpcorpus-reader-token-learning,
-      .jpcorpus-reader-token-uncertain {
+      .jpcorpus-reader-token-learning {
         box-shadow: inset 0 -0.30em rgba(183, 90, 53, 0.26) !important;
       }
       .jpcorpus-reader-token-known {
         box-shadow: inset 0 -0.22em rgba(101, 113, 120, 0.16) !important;
-      }
-      .jpcorpus-reader-token-ignored {
-        box-shadow: inset 0 -0.16em rgba(101, 113, 120, 0.10) !important;
-        opacity: 0.78 !important;
       }
       .jpcorpus-reader-token:hover,
       .jpcorpus-reader-token.jpcorpus-reader-selected {

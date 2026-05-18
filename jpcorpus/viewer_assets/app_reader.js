@@ -361,7 +361,7 @@ window.JPCORPUS_READER = (() => {
 
     function readerTokenStatusClass(match) {
       const status = statusFor({ word: match.word });
-      return ["learning", "uncertain", "known", "ignored"].includes(status) ? `status-${status}` : "";
+      return ["learning", "known"].includes(status) ? `status-${status}` : "";
     }
 
     function readerLineDomKey(document, line, lineIndex) {

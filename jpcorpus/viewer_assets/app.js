@@ -54,9 +54,7 @@ const {
 const stateLabels = {
   none: { zh: "未标记", en: "Unmarked", symbol: "·" },
   learning: { zh: "学习中", en: "Learning", symbol: "★" },
-  uncertain: { zh: "模糊", en: "Unsure", symbol: "?" },
   known: { zh: "认识", en: "Known", symbol: "✓" },
-  ignored: { zh: "忽略", en: "Ignored", symbol: "−" },
 };
 
 const app = {
@@ -1936,12 +1934,11 @@ function compareReaderMarkedWords(left, right) {
 function readerMarkedStatusRank(status) {
   return {
     learning: 0,
-    uncertain: 1,
   }[status] ?? 4;
 }
 
 function isActiveStudyStatus(status) {
-  return status === "learning" || status === "uncertain";
+  return status === "learning";
 }
 
 function selectWord(word, button) {
@@ -2198,15 +2195,14 @@ function studyQueue() {
 
 function isStudyEligibleWord(word) {
   const status = statusFor(word);
-  return status !== "ignored"
-    && status !== "known";
+  return status !== "known";
 }
 
 function isStudyReviewWord(word) {
   const status = statusFor(word);
   const count = studyCountFor(word);
   return count < STUDY_TARGET_COUNT
-    && (status === "learning" || status === "uncertain");
+    && status === "learning";
 }
 
 function compareReviewStudyWords(left, right) {

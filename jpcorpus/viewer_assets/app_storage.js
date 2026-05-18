@@ -17,6 +17,7 @@ window.JPCORPUS_STORAGE = (() => {
 
   const STUDY_REVIEW_DELAY_DAYS = 1;
   const STUDY_TARGET_COUNT = 7;
+  const STATUS_VALUES = new Set(["learning", "known"]);
   const EXAMPLE_COLUMN_VALUES = new Set(["auto", "1", "2", "3"]);
   const MODE_VALUES = new Set(["browse", "study", "read"]);
   const READER_WORD_LIST_VALUES = new Set(["focus", "all", "study", "piece", "N5", "N4", "N3", "N2", "N1"]);
@@ -53,7 +54,10 @@ window.JPCORPUS_STORAGE = (() => {
   }
 
   function readStatuses() {
-    return readJsonObject(STORAGE_STATUS);
+    return Object.fromEntries(
+      Object.entries(readJsonObject(STORAGE_STATUS))
+        .filter(([word, status]) => word && STATUS_VALUES.has(status)),
+    );
   }
 
   function readStudyCounts() {

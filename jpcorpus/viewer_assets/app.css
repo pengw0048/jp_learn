@@ -16,7 +16,6 @@
   --text-source: #6f5aa8;
   --known: #2f6f3e;
   --learning: #b7791f;
-  --ignored: #7a7f86;
   --shadow: 0 12px 28px rgba(24, 36, 44, 0.08);
   --split-left-width: 380px;
   --font-ui:
@@ -535,16 +534,6 @@ select {
   color: var(--known);
 }
 
-.status-dot.uncertain {
-  background: #fff2d8;
-  color: var(--learning);
-}
-
-.status-dot.ignored {
-  background: #eceff1;
-  color: var(--ignored);
-}
-
 .word-meta,
 .word-meaning {
   color: var(--muted);
@@ -894,18 +883,13 @@ select {
   font-weight: 720;
 }
 
-.reader-marked-chip.learning,
-.reader-marked-chip.uncertain {
+.reader-marked-chip.learning {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
 
 .reader-marked-chip.known {
   background: #eef7ee;
-}
-
-.reader-marked-chip.ignored {
-  opacity: 0.68;
 }
 
 .reader-marked-state {
@@ -2716,18 +2700,12 @@ mark {
   box-shadow: inset 0 -0.22em 0 rgba(20, 116, 111, 0.16);
 }
 
-.reader-token.status-learning,
-.reader-token.status-uncertain {
+.reader-token.status-learning {
   box-shadow: inset 0 -0.24em 0 rgba(184, 92, 56, 0.24);
 }
 
 .reader-token.status-known {
   box-shadow: inset 0 -0.18em 0 rgba(101, 113, 120, 0.15);
-}
-
-.reader-token.status-ignored {
-  opacity: 0.72;
-  box-shadow: inset 0 -0.14em 0 rgba(101, 113, 120, 0.10);
 }
 
 .reader-token:hover {

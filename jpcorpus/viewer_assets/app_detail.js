@@ -160,7 +160,7 @@ window.JPCORPUS_DETAIL = (() => {
         return renderReaderStudyActions(word);
       }
       const wrap = el("div", "status-actions");
-      ["learning", "uncertain", "known", "ignored", "none"].forEach((status) => {
+      ["learning", "known", "none"].forEach((status) => {
         const button = el("button", "");
         button.type = "button";
         button.textContent = stateLabels[status][app.lang];
@@ -180,14 +180,14 @@ window.JPCORPUS_DETAIL = (() => {
       const wrap = el("div", "status-actions reader-study-actions");
       const status = statusFor(word);
       const items = [];
-      if (status === "learning" || status === "uncertain") {
+      if (status === "learning") {
         items.push({
           label: t("studyCheckButton"),
           active: true,
           className: "reader-study-primary",
           action: () => recordReaderStudyProgress(word),
         });
-      } else if (status !== "known" && status !== "ignored") {
+      } else if (status !== "known") {
         items.push({
           label: t("readerAddStudy"),
           active: false,
@@ -200,11 +200,6 @@ window.JPCORPUS_DETAIL = (() => {
           label: t("readerKnown"),
           active: status === "known",
           action: () => setStatus(word, "known"),
-        },
-        {
-          label: t("readerIgnore"),
-          active: status === "ignored",
-          action: () => setStatus(word, "ignored"),
         },
       );
       items.forEach((item) => {

@@ -202,6 +202,24 @@ def test_study_mode_can_add_and_clear_selected_level():
     assert ".study-clear-level-button" in css
 
 
+def test_study_statuses_are_three_state_only():
+    html = (VIEWER_ASSET_DIR / "index.html").read_text(encoding="utf-8")
+    app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
+    detail = (VIEWER_ASSET_DIR / "app_detail.js").read_text(encoding="utf-8")
+    study = (VIEWER_ASSET_DIR / "app_study.js").read_text(encoding="utf-8")
+    storage = (VIEWER_ASSET_DIR / "app_storage.js").read_text(encoding="utf-8")
+    i18n = (VIEWER_ASSET_DIR / "app_i18n.js").read_text(encoding="utf-8")
+
+    assert 'value="uncertain"' not in html
+    assert 'value="ignored"' not in html
+    assert '["learning", "known", "none"]' in detail
+    assert 'new Set(["learning", "known", "none"])' in study
+    assert 'new Set(["learning", "known"])' in storage
+    assert 'return status === "learning";' in app
+    assert "statusUncertain" not in i18n
+    assert "statusIgnored" not in i18n
+
+
 def test_detail_orders_reader_context_before_lexical_notes():
     app = (VIEWER_ASSET_DIR / "app.js").read_text(encoding="utf-8")
 

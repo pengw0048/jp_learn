@@ -50,6 +50,8 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert 'pickImport: "点选导入"' in content
     assert 'studying: "学习中"' in content
     assert 'statusKnown: "已认识"' in content
+    assert 'ignore: "忽略"' not in content
+    assert 'uncertain: "模糊"' not in content
     assert "readerStatusLabel(annotation)" in content
     assert 'confirmStudy: "确认一次"' in content
     assert 'studyChecks: "学习进度 {count}/{target}"' in content

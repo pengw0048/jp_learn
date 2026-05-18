@@ -9,7 +9,7 @@ from .paths import APP_DIR, ensure_parent
 
 
 DEFAULT_VIEWER_STUDY_STATE = APP_DIR / "viewer-study-state.json"
-STUDY_STATUS_VALUES = {"none", "learning", "uncertain", "known", "ignored"}
+STUDY_STATUS_VALUES = {"none", "learning", "known"}
 STUDY_TARGET_COUNT = 7
 
 
@@ -50,10 +50,7 @@ def update_viewer_word_status(raw: dict[str, Any], *, path: Path | None = None) 
         if status == "known":
             counts[word] = STUDY_TARGET_COUNT
             schedule.pop(word, None)
-        elif status == "ignored":
-            counts.pop(word, None)
-            schedule.pop(word, None)
-        elif status in {"learning", "uncertain"}:
+        elif status == "learning":
             count = clamp_study_count(raw.get("study_count", counts.get(word, 0)))
             if count > 0:
                 counts[word] = count
@@ -166,7 +163,7 @@ def study_status_for_word(word: str, state: dict[str, Any]) -> str:
     statuses = state.get("statuses") if isinstance(state, dict) else {}
     counts = state.get("study_counts") if isinstance(state, dict) else {}
     status = statuses.get(word) if isinstance(statuses, dict) else None
-    if status in {"ignored", "known", "learning", "uncertain"}:
+    if status in {"known", "learning"}:
         return status
     count = clamp_study_count(counts.get(word) if isinstance(counts, dict) else 0)
     if count >= STUDY_TARGET_COUNT:
