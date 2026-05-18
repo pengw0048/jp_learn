@@ -88,6 +88,9 @@ def test_extension_reader_toolbar_can_read_selected_paragraph() -> None:
     assert "readerSpeechUnitsForElement" in content
     assert "speakReaderVoicevoxUnits" in content
     assert "SPEECH_PREFETCH_UNITS = 3" in content
+    assert "SPEECH_PREFETCH_CONCURRENCY = 1" in content
+    assert "pumpAudioQueue" in content
+    assert "activeAudioCount < SPEECH_PREFETCH_CONCURRENCY" in content
     assert "scheduleAudio(index + SPEECH_PREFETCH_UNITS)" in content
     assert "rangeForSpeechOffsets" in content
     assert "readabilityMatchScore" in content

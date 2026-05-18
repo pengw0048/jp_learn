@@ -41,6 +41,7 @@ const {
 } = window.JPCORPUS_DOM;
 const WORD_LIST_PAGE_SIZE = 600;
 const READER_SPEECH_PREFETCH_LINES = 3;
+const READER_SPEECH_PREFETCH_CONCURRENCY = 1;
 
 const text = window.JPCORPUS_TEXT;
 const {
@@ -1428,12 +1429,38 @@ async function startReaderSpeech(startKey = null, options = {}) {
   markReaderSpeechStart(lines[0].key);
   updateReaderSpeechUi();
   const pendingPrefetch = new Map();
+  const prefetchQueue = [];
+  let activePrefetchCount = 0;
+  const pumpReaderSpeechPrefetchQueue = () => {
+    while (activePrefetchCount < READER_SPEECH_PREFETCH_CONCURRENCY && prefetchQueue.length > 0) {
+      const next = prefetchQueue.shift();
+      if (!next) {
+        return;
+      }
+      if (!isReaderSpeechRunActive(runId) || app.tts.provider !== "voicevox") {
+        next.resolve({ key: next.line.key, prepared: null });
+        continue;
+      }
+      activePrefetchCount += 1;
+      prefetchReaderSpeechLine(next.line, runId)
+        .then(next.resolve)
+        .catch(() => next.resolve({ key: next.line.key, prepared: null }))
+        .finally(() => {
+          activePrefetchCount -= 1;
+          pumpReaderSpeechPrefetchQueue();
+        });
+    }
+  };
   const scheduleReaderSpeechPrefetch = (index) => {
     const line = lines[index];
     if (!line || app.tts.provider !== "voicevox" || pendingPrefetch.has(line.key)) {
       return;
     }
-    pendingPrefetch.set(line.key, prefetchReaderSpeechLine(line, runId));
+    const promise = new Promise((resolve) => {
+      prefetchQueue.push({ line, resolve });
+    });
+    pendingPrefetch.set(line.key, promise);
+    pumpReaderSpeechPrefetchQueue();
   };
   const scheduleReaderSpeechPrefetchWindow = (index) => {
     const count = options.singleLine ? 1 : READER_SPEECH_PREFETCH_LINES;

@@ -147,6 +147,9 @@ def test_reader_mode_has_read_aloud_strings_and_controls():
     assert 'document.querySelectorAll(".reader-speech-button")' in app
     assert "prefetchReaderSpeechLine" in app
     assert "READER_SPEECH_PREFETCH_LINES = 3" in app
+    assert "READER_SPEECH_PREFETCH_CONCURRENCY = 1" in app
+    assert "pumpReaderSpeechPrefetchQueue" in app
+    assert "activePrefetchCount < READER_SPEECH_PREFETCH_CONCURRENCY" in app
     assert "scheduleReaderSpeechPrefetchWindow(index + 1)" in app
     assert 'button.classList.toggle("loading", app.reader.tts.preparing)' in app
     assert "markReaderSpeechStart" in app

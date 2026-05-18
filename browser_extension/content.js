@@ -11,6 +11,7 @@
   const SPEECH_SOFT_CHARS = 70;
   const SPEECH_MAX_CHARS = 120;
   const SPEECH_PREFETCH_UNITS = 3;
+  const SPEECH_PREFETCH_CONCURRENCY = 1;
   const MESSAGES = {
     zh: {
       stillAnnotating: "日语阅读助手仍在标注这个页面...",
@@ -1209,11 +1210,37 @@
       return { ok: false, nextIndex: 0 };
     }
     const preparedAudio = new Map();
+    const audioQueue = [];
+    let activeAudioCount = 0;
+    const pumpAudioQueue = () => {
+      while (activeAudioCount < SPEECH_PREFETCH_CONCURRENCY && audioQueue.length > 0) {
+        const next = audioQueue.shift();
+        if (!next) {
+          return;
+        }
+        if (!isActiveReaderSpeech(runId)) {
+          next.resolve("");
+          continue;
+        }
+        activeAudioCount += 1;
+        prepareReaderVoicevoxUnit(next.unit)
+          .then(next.resolve)
+          .catch(() => next.resolve(""))
+          .finally(() => {
+            activeAudioCount -= 1;
+            pumpAudioQueue();
+          });
+      }
+    };
     const scheduleAudio = (index) => {
       if (index >= units.length || preparedAudio.has(index)) {
         return;
       }
-      preparedAudio.set(index, prepareReaderVoicevoxUnit(units[index]).catch(() => ""));
+      const promise = new Promise((resolve) => {
+        audioQueue.push({ unit: units[index], resolve });
+      });
+      preparedAudio.set(index, promise);
+      pumpAudioQueue();
     };
     try {
       for (let index = 0; index < Math.min(SPEECH_PREFETCH_UNITS, units.length); index += 1) {
